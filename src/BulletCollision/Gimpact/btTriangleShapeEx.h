@@ -107,6 +107,14 @@ public:
 		m_vertices[2] = t(m_vertices[2]);
 	}
 
+	void offset(btScalar offset)
+	{
+		m_vertices[0] = m_vertices[0] + offset * m_plane;
+		m_vertices[1] = m_vertices[1] + offset * m_plane;
+		m_vertices[2] = m_vertices[2] + offset * m_plane;
+		buildTriPlane(); // TODO optimize this - only the m_plane[3] will change so there must be some cheaper way
+	}
+
 	//! Clips the triangle against this
 	/*!
 	\pre clipped_points must have MAX_TRI_CLIPPING size, and this triangle must have its plane calculated.

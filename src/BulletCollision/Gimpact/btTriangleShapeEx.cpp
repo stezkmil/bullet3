@@ -814,7 +814,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 																   const btTransform& thisTransformLastSafe, const btTransform& otherTransformLastSafe,
 																   const btPrimitiveTriangle& thisBackup, const btPrimitiveTriangle& otherBackup, bool doUnstuck)
 {
-	btScalar margin = m_margin + other.m_margin;
+	btScalar margin = fabs(m_margin) + fabs(other.m_margin);
 
 	contacts.m_point_count = 0;
 	btScalar dist_sq_out, dist, t = 1.0;
@@ -838,7 +838,21 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		//printf("contacts.m_penetration_depth %f\n", contacts.m_penetration_depth);
 	};
 	
-	ret = triangle_triangle_distance(other, dist_sq_out, a_closest_out, b_closest_out);
+	if (m_margin < 0.0 || other.m_margin < 0.0)
+	{
+		btPrimitiveTriangle offsetThisTri(*this), offsetOtherTri(other);
+		if (m_margin < 0.0)
+		{
+			offsetThisTri.offset(m_margin);
+		}
+		if (other.m_margin < 0.0)
+		{
+			offsetOtherTri.offset(m_margin);
+		}
+		ret = offsetThisTri.triangle_triangle_distance(offsetOtherTri, dist_sq_out, a_closest_out, b_closest_out);
+	}
+	else
+		ret = triangle_triangle_distance(other, dist_sq_out, a_closest_out, b_closest_out);
 	dist = sqrtf(dist_sq_out);
 	if (ret && dist_sq_out != 0.0 && dist < margin)
 	{
