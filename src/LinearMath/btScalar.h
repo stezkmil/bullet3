@@ -30,7 +30,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <float.h>
 
 /* SVN $Revision$ on $Date$ from http://bullet.googlecode.com*/
-#define BT_BULLET_VERSION 325
+#define BT_BULLET_VERSION 326
 
 inline int btGetVersion()
 {
