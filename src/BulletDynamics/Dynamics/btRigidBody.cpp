@@ -149,6 +149,19 @@ void btRigidBody::setDamping(btScalar lin_damping, btScalar ang_damping)
 	m_angularDamping = btClamped(ang_damping, btScalar(0.0), btScalar(1.0));
 #endif
 }
+void btRigidBody::setAdditionalDamping(bool additionalDamping,
+	btScalar additionalDampingFactor,
+	btScalar additionalLinearDampingThresholdSqr,
+	btScalar additionalAngularDampingThresholdSqr,
+	btScalar additionalAngularDampingFactor)
+{
+	m_additionalDamping = additionalDamping;
+	m_additionalDampingFactor = additionalDampingFactor;
+	m_additionalLinearDampingThresholdSqr = additionalLinearDampingThresholdSqr;
+	m_additionalAngularDampingThresholdSqr = additionalAngularDampingThresholdSqr;
+	m_additionalAngularDampingFactor = additionalAngularDampingFactor;
+}
+
 
 ///applyDamping damps the velocity, using the given m_linearDamping and m_angularDamping
 void btRigidBody::applyDamping(btScalar timeStep)

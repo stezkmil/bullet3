@@ -242,6 +242,12 @@ public:
 		return m_angularSleepingThreshold;
 	}
 
+	void setAdditionalDamping(bool additionalDamping,
+							  btScalar additionalDampingFactor,
+							  btScalar additionalLinearDampingThresholdSqr,
+							  btScalar additionalAngularDampingThresholdSqr,
+							  btScalar additionalAngularDampingFactor);
+
 	void applyDamping(btScalar timeStep);
 
 	SIMD_FORCE_INLINE const btCollisionShape* getCollisionShape() const
