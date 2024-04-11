@@ -72,7 +72,7 @@ public:
         startTransform.setIdentity();
         startTransform.setOrigin(btVector3(0,-2,0));
         btRigidBody* rb = createRigidBody(mass, startTransform, shape);
-        rb->setLinearVelocity(btVector3(0,+COLLIDING_VELOCITY, 0));
+        //rb->setLinearVelocity(btVector3(0,+COLLIDING_VELOCITY, 0));
     }
     
     void stepSimulation(float deltaTime)
@@ -80,8 +80,8 @@ public:
 		m_linearElasticity->setPoissonRatio(nu);
 		m_linearElasticity->setYoungsModulus(E);
 		m_linearElasticity->setDamping(damping_alpha, damping_beta);
-        float internalTimeStep = 1. / 60.f;
-        m_dynamicsWorld->stepSimulation(deltaTime, 1, internalTimeStep);
+        float internalTimeStep = 1. / 240.f;
+        m_dynamicsWorld->stepSimulation(deltaTime, 4, internalTimeStep);
     }
     
     virtual void renderScene()
@@ -124,25 +124,38 @@ void Collide::initPhysics()
 
     // create volumetric soft body
     {
-        btSoftBody* psb = btSoftBodyHelpers::CreateFromTetGenData(getDeformableDynamicsWorld()->getWorldInfo(),
+        /*btSoftBody* psb = btSoftBodyHelpers::CreateFromTetGenData(getDeformableDynamicsWorld()->getWorldInfo(),
                                                                   TetraCube::getElements(),
                                                                   0,
                                                                   TetraCube::getNodes(),
-                                                                  false, true, true);
+                                                                  false, true, true);*/
+
+        std::string filepath("../../../data/tube/");
+		std::string filename = filepath + "tube_dbg.vtk";
+		btSoftBody* psb = btSoftBodyHelpers::CreateFromVtkFile(getDeformableDynamicsWorld()->getWorldInfo(), filename.c_str());
+
         getDeformableDynamicsWorld()->addSoftBody(psb);
         psb->scale(btVector3(2, 2, 2));
-        psb->translate(btVector3(0, 7, 0));
+        psb->translate(btVector3(2, 7, -5));
         psb->getCollisionShape()->setMargin(0.1);
-        psb->setTotalMass(0.5);
+        psb->setTotalMass(0.1);
+		psb->setMass(0, 0);
+		psb->setMass(100, 0);
+		//psb->generateBendingConstraints(5);
+		psb->setPose(true, true);
+		//psb->m_cfg.piterations = 4;
         psb->m_cfg.kKHR = 1; // collision hardness with kinematic objects
         psb->m_cfg.kCHR = 1; // collision hardness with rigid body
 		psb->m_cfg.kDF = 0;
+		psb->m_cfg.kMT = 1;
+
+		//psb->m_cfg.kMT = 0.5;
         psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
         psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
         btSoftBodyHelpers::generateBoundaryFaces(psb);
         
-        psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
+        //psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
         
         btDeformableLinearElasticityForce* linearElasticity = new btDeformableLinearElasticityForce(100,100,0.01);
 		m_linearElasticity = linearElasticity;
