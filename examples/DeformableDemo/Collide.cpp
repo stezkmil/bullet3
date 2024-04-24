@@ -27,7 +27,7 @@
 #include "../Utils/b3ResourcePath.h"
 
 ///The Collide shows the contact between volumetric deformable objects and rigid objects.
-static btScalar E = 50;
+static btScalar E = 1000000;
 static btScalar nu = 0.3;
 static btScalar damping_alpha = 0.1;
 static btScalar damping_beta = 0.01;
@@ -40,7 +40,7 @@ struct TetraCube
 
 class Collide : public CommonDeformableBodyBase
 {
-	btDeformableLinearElasticityForce* m_linearElasticity;
+	btDeformableNeoHookeanForce* m_linearElasticity;
 
 public:
 	Collide(struct GUIHelperInterface* helper)
@@ -79,7 +79,7 @@ public:
     {
 		m_linearElasticity->setPoissonRatio(nu);
 		m_linearElasticity->setYoungsModulus(E);
-		m_linearElasticity->setDamping(damping_alpha, damping_beta);
+		m_linearElasticity->setDamping(damping_alpha/*, damping_beta*/);
         float internalTimeStep = 1. / 240.f;
         m_dynamicsWorld->stepSimulation(deltaTime, 4, internalTimeStep);
     }
@@ -140,14 +140,14 @@ void Collide::initPhysics()
         psb->getCollisionShape()->setMargin(0.1);
         psb->setTotalMass(0.1);
 		psb->setMass(0, 0);
-		psb->setMass(100, 0);
+		//psb->setMass(100, 0);
 		//psb->generateBendingConstraints(5);
-		psb->setPose(true, true);
-		//psb->m_cfg.piterations = 4;
+		//psb->setPose(true, true);
+		psb->m_cfg.piterations = 4;
         psb->m_cfg.kKHR = 1; // collision hardness with kinematic objects
         psb->m_cfg.kCHR = 1; // collision hardness with rigid body
 		psb->m_cfg.kDF = 0;
-		psb->m_cfg.kMT = 1;
+		//psb->m_cfg.kMT = 1;
 
 		//psb->m_cfg.kMT = 0.5;
         psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
@@ -157,7 +157,8 @@ void Collide::initPhysics()
         
         //psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
         
-        btDeformableLinearElasticityForce* linearElasticity = new btDeformableLinearElasticityForce(100,100,0.01);
+        //btDeformableLinearElasticityForce* linearElasticity = new btDeformableLinearElasticityForce(100,100,0.01);
+		btDeformableNeoHookeanForce* linearElasticity = new btDeformableNeoHookeanForce(100, 100, 0.01);
 		m_linearElasticity = linearElasticity;
         getDeformableDynamicsWorld()->addForce(psb, linearElasticity);
         m_forces.push_back(linearElasticity);
@@ -205,7 +206,7 @@ void Collide::initPhysics()
     {
         SliderParams slider("Young's Modulus", &E);
         slider.m_minVal = 0;
-        slider.m_maxVal = 2000;
+        slider.m_maxVal = 2000000;
         if (m_guiHelper->getParameterInterface())
             m_guiHelper->getParameterInterface()->registerSliderFloatParameter(slider);
     }
