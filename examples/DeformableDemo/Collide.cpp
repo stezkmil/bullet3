@@ -26,6 +26,9 @@
 #include "../CommonInterfaces/CommonDeformableBodyBase.h"
 #include "../Utils/b3ResourcePath.h"
 
+#include <open3d/geometry/TriangleMesh.h>
+#include <open3d/io/TriangleMeshIO.h>
+
 ///The Collide shows the contact between volumetric deformable objects and rigid objects.
 static btScalar E = 1000000;
 static btScalar nu = 0.3;
@@ -129,6 +132,9 @@ void Collide::initPhysics()
                                                                   0,
                                                                   TetraCube::getNodes(),
                                                                   false, true, true);*/
+
+        auto o3dmesh = open3d::io::CreateMeshFromFile("../../../data/tube/tube.OBJ");
+        //open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape();
 
         std::string filepath("../../../data/tube/");
 		std::string filename = filepath + "tube_dbg.vtk";
