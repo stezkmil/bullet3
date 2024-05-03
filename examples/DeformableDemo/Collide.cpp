@@ -27,6 +27,8 @@
 #include "../Utils/b3ResourcePath.h"
 
 #include <open3d/geometry/TriangleMesh.h>
+#include <open3d/geometry/PointCloud.h>
+#include <open3d/geometry/TetraMesh.h>
 #include <open3d/io/TriangleMeshIO.h>
 
 ///The Collide shows the contact between volumetric deformable objects and rigid objects.
@@ -133,7 +135,13 @@ void Collide::initPhysics()
                                                                   TetraCube::getNodes(),
                                                                   false, true, true);*/
 
-        auto o3dmesh = open3d::io::CreateMeshFromFile("../../../data/tube/tube.OBJ");
+        auto o3dTriMesh = open3d::io::CreateMeshFromFile("../../../data/tube/tube.OBJ");
+		auto o3dPointCloud = o3dTriMesh->SamplePointsPoissonDisk(10000, 5.0, nullptr, true);
+		auto o3dTetraMeshTuple = open3d::geometry::TetraMesh::CreateFromPointCloud(*o3dPointCloud);
+		auto o3dTetraMesh = std::get<0>(o3dTetraMeshTuple);
+		auto&& o3dTetraIndices = std::get<1>(o3dTetraMeshTuple);
+		auto alphaTriMesh = open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape(*o3dpointCloud, 0.1, o3dTetraMesh, &o3dTetraIndices);
+		open3d::io::WriteTriangleMeshToOBJ("../../../data/tube/tube_alpha.OBJ", *alphaTriMesh, true, false, true, false, false, false);
         //open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape();
 
         std::string filepath("../../../data/tube/");
