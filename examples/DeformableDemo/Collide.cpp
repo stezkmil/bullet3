@@ -142,7 +142,9 @@ void Collide::initPhysics()
                                                                   false, true, true);*/
 
         auto o3dTriMesh = open3d::io::CreateMeshFromFile("../../../data/tube/tube.OBJ");
-		auto o3dPointCloud = o3dTriMesh->SamplePointsPoissonDisk(10000, 5.0, nullptr, true);
+		//auto o3dPointCloud = std::make_shared<open3d::geometry::PointCloud>();
+		//o3dPointCloud->points_ = o3dTriMesh->vertices_;
+		auto o3dPointCloud = o3dTriMesh->SamplePointsUniformly(o3dTriMesh->vertices_.size() * 4, true);
 		auto o3dTetraMeshTuple = open3d::geometry::TetraMesh::CreateFromPointCloud(*o3dPointCloud);
 		auto o3dTetraMesh = std::get<0>(o3dTetraMeshTuple);
 		o3dTetraMesh->RemoveDegenerateTetras();
@@ -150,12 +152,74 @@ void Collide::initPhysics()
 		o3dTetraMesh->RemoveDuplicatedVertices();
 		o3dTetraMesh->RemoveUnreferencedVertices();
 		auto&& o3dTetraIndices = std::get<1>(o3dTetraMeshTuple);
-		//auto alphaTriMesh = open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape(*o3dPointCloud, 0.1, o3dTetraMesh, &o3dTetraIndices);
-		//open3d::io::WriteTriangleMeshToOBJ("../../../data/tube/tube_alpha.OBJ", *alphaTriMesh, true, false, true, false, false, false);
+
+		auto alphaShapedTetraMesh = std::make_shared<open3d::geometry::TetraMesh>();
+		alphaShapedTetraMesh->vertices_ = o3dTetraMesh->vertices_;
+
+		double alphaValue = 0.1;
+
+		std::vector<double> vsqn(o3dTetraMesh->vertices_.size());
+		for (size_t vidx = 0; vidx < vsqn.size(); ++vidx)
+		{
+			vsqn[vidx] = o3dTetraMesh->vertices_[vidx].squaredNorm();
+		}
+
+		const auto& verts = o3dTetraMesh->vertices_;
+		for (size_t tidx = 0; tidx < o3dTetraMesh->tetras_.size(); ++tidx)
+		{
+			const auto& tetra = o3dTetraMesh->tetras_[tidx];
+			// clang-format off
+        Eigen::Matrix4d tmp;
+        tmp << verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2), 1,
+                verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2), 1,
+                verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2), 1,
+                verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2), 1;
+        double a = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2),
+                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2),
+                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2),
+                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2);
+        double c = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](1), verts[tetra(0)](2), 1,
+                vsqn[tetra(1)], verts[tetra(1)](1), verts[tetra(1)](2), 1,
+                vsqn[tetra(2)], verts[tetra(2)](1), verts[tetra(2)](2), 1,
+                vsqn[tetra(3)], verts[tetra(3)](1), verts[tetra(3)](2), 1;
+        double dx = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](2), 1,
+                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](2), 1,
+                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](2), 1,
+                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](2), 1;
+        double dy = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), 1,
+                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), 1,
+                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), 1,
+                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), 1;
+        double dz = tmp.determinant();
+			// clang-format on
+			if (a == 0)
+			{
+				printf("[CreateFromPointCloudAlphaShape] invalid tetra in TetraMesh\n");
+			}
+			else
+			{
+				double r = std::sqrt(dx * dx + dy * dy + dz * dz - 4 * a * c) /
+						   (2 * std::abs(a));
+
+				if (r <= alphaValue)
+				{
+					alphaShapedTetraMesh->tetras_.push_back(tetra);
+				}
+			}
+		}
+
+		o3dTetraMesh = alphaShapedTetraMesh;
+
+		auto alphaTriMesh = open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape(*o3dPointCloud, 0.1, o3dTetraMesh, &o3dTetraIndices);
+		open3d::io::WriteTriangleMeshToOBJ("../../../data/tube/tube_alpha.OBJ", *alphaTriMesh, true, false, true, false, false, false);
         //open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape();
-		/*open3d::visualization::Visualizer v;
-		v.CreateVisualizerWindow();
-		v.AddGeometry(o3dTetraMesh);*/
+		//open3d::visualization::Visualizer v;
+		//v.CreateVisualizerWindow();
+		//v.AddGeometry(o3dTetraMesh);
 		
         std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
 		ofs.imbue(std::locale::classic());
@@ -169,23 +233,9 @@ void Collide::initPhysics()
 			ofs << std::setprecision(std::numeric_limits<double>::digits10 + 1) << v.x() << " " << v.y() << " " << v.z() << '\n';
 		}
 		ofs << '\n';
-		
-        ofs << "CELLS " << "2"  << " " << ( 2 * 5) << '\n';
-		int cnt = 0;
-		for (auto t : o3dTetraMesh->tetras_)
-		{
-			ofs << t.RowsAtCompileTime << " " << t.x() << " " << t.y() << " " << t.z() << " " << t.w() << '\n';
-			if (cnt == 1)
-			    break;
-			++cnt;
-		}
-		ofs << '\n';
-		ofs << "CELL_TYPES " << "2"  << '\n';
-		ofs << "10" << '\n';
-		ofs << "10" << '\n';
 
 
-        /*ofs << "CELLS "
+        ofs << "CELLS "
 			<<  o3dTetraMesh->tetras_.size() << " " << (o3dTetraMesh->tetras_.size() * 5) << '\n';
 		for (auto t : o3dTetraMesh->tetras_)
 		{
@@ -200,7 +250,7 @@ void Collide::initPhysics()
 		for (auto t : o3dTetraMesh->tetras_)
 		{
 			ofs << "10" << '\n';
-		}*/
+		}
 		ofs.close();
 
         std::string filepath("../../../data/tube/");
@@ -209,7 +259,7 @@ void Collide::initPhysics()
 
         getDeformableDynamicsWorld()->addSoftBody(psb);
         psb->scale(btVector3(2, 2, 2));
-        psb->translate(btVector3(2, 7, -5));
+        psb->translate(btVector3(2, 17, -5));
         psb->getCollisionShape()->setMargin(0.1);
         psb->setTotalMass(0.1);
 		psb->setMass(0, 0);
