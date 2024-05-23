@@ -62,6 +62,8 @@ public:
 	virtual ~Collide()
 	{
 	}
+
+    std::vector<btVector3> samplePointsUniformly();
 	void initPhysics();
 
 	void exitPhysics();
@@ -144,6 +146,22 @@ void Collide::initPhysics()
         auto o3dTriMesh = open3d::io::CreateMeshFromFile("../../../data/tube/tube.OBJ");
 		//auto o3dPointCloud = std::make_shared<open3d::geometry::PointCloud>();
 		//o3dPointCloud->points_ = o3dTriMesh->vertices_;
+
+        std::vector<btVector3> verticesMy(o3dTriMesh->vertices_.size());
+		for (auto i = 0; i < o3dTriMesh->vertices_.size(); ++i)
+			verticesMy[i] = btVector3(o3dTriMesh->vertices_[i].x(), o3dTriMesh->vertices_[i].y(), o3dTriMesh->vertices_[i].z());
+		std::vector<int> trianglesMy(o3dTriMesh->triangles_.size());
+		for (auto i = 0; i < o3dTriMesh->triangles_.size() / 3; i += 3)
+		{
+			trianglesMy[i] = o3dTriMesh->triangles_[i].x();
+			trianglesMy[i + 1] = o3dTriMesh->triangles_[i].y();
+			trianglesMy[i + 2] = o3dTriMesh->triangles_[i].z();
+		}
+		
+        //auto convexHullTetraBody = btSoftBodyHelpers::CreateFromConvexHull(getDeformableDynamicsWorld()->getWorldInfo(), pointCloud.data(), pointCloud.size(), false);
+
+        auto psbMy = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, 0.1, true);
+
 		auto o3dPointCloud = o3dTriMesh->SamplePointsUniformly(o3dTriMesh->vertices_.size() * 4, true);
 		auto o3dTetraMeshTuple = open3d::geometry::TetraMesh::CreateFromPointCloud(*o3dPointCloud);
 		auto o3dTetraMesh = std::get<0>(o3dTetraMeshTuple);

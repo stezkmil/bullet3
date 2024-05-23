@@ -7,6 +7,7 @@ SET(Bullet3Common_SRCS
 	b3AlignedAllocator.cpp
 	b3Vector3.cpp
 	b3Logging.cpp
+	b3RandomStd.cpp
 )
 
 SET(Bullet3Common_HDRS
@@ -21,6 +22,7 @@ SET(Bullet3Common_HDRS
 	b3QuadWord.h
 	b3Quaternion.h
 	b3Random.h
+	b3RandomStd.h
 	b3Scalar.h
 	b3StackAlloc.h
 	b3Transform.h

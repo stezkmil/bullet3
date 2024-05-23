@@ -27,9 +27,20 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <sstream>
 #include <string.h>
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <array>
 #include "btSoftBodyHelpers.h"
 #include "LinearMath/btConvexHull.h"
 #include "LinearMath/btConvexHullComputer.h"
+#include "Bullet3Common/b3RandomStd.h"
+
+#include "libqhullcpp/PointCoordinates.h"
+#include "libqhullcpp/Qhull.h"
+//#include "libqhullcpp/QhullFacet.h"
+#include "libqhullcpp/QhullFacetList.h"
+#include "libqhullcpp/QhullVertexSet.h"
+
 #include <map>
 #include <vector>
 
@@ -1122,6 +1133,193 @@ btSoftBody* btSoftBodyHelpers::CreateFromConvexHull(btSoftBodyWorldInfo& worldIn
 		psb->randomizeConstraints();
 	}
 	return (psb);
+}
+
+std::vector<btVector3> btSoftBodyHelpers::SamplePointsUniformly(int numberOfPoints, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices)
+{
+	std::vector<btScalar> areas(triangleIndices.size() / 3);
+	std::vector<btVector3> pointCloud(numberOfPoints);
+	for (auto ti = 0; ti < triangleIndices.size(); ti += 3)
+	{
+		areas[ti / 3] = AreaOf(vertices[triangleIndices[ti]], vertices[triangleIndices[ti + 1]], vertices[triangleIndices[ti + 2]]);
+	}
+
+	std::discrete_distribution<int> distributionDiscrete(areas.begin(), areas.end());
+	std::uniform_real_distribution<btScalar> distributionUniformReal(0.0, 1.0);
+	RandomStd::mt19937Engine.seed(0);
+
+	for (auto pointIndex = 0; pointIndex < numberOfPoints; ++pointIndex)
+	{
+		btScalar r1 = distributionUniformReal(RandomStd::mt19937Engine);
+		btScalar r2 = distributionUniformReal(RandomStd::mt19937Engine);
+		btScalar a = 1.0 - std::sqrt(r1);
+		double b = std::sqrt(r1) * (1 - r2);
+		double c = std::sqrt(r1) * r2;
+		int tidx = distributionDiscrete(RandomStd::mt19937Engine);
+		int ta = triangleIndices[tidx * 3];
+		int tb = triangleIndices[tidx * 3 + 1];
+		int tc = triangleIndices[tidx * 3 + 2];
+		pointCloud[pointIndex] = a * vertices[ta] + b * vertices[tb] + c * vertices[tc];
+	}
+
+	return pointCloud;
+}
+
+btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices, btScalar alpha, bool createLinks)
+{
+	auto pointCloud = SamplePointsUniformly(vertices.size() * 4, triangleIndices, vertices);
+	btSoftBody* psb = nullptr;
+	if (pointCloud.size() < 4)
+		return psb;
+
+	// qhull cannot deal with this case
+	if (pointCloud.size() == 4)
+	{
+		psb = new btSoftBody(&worldInfo, pointCloud.size(), pointCloud.data(), nullptr);
+		std::vector<int> ni = {0, 1, 2, 3};
+		psb->appendTetra(ni[0], ni[1], ni[2], ni[3]);
+		if (createLinks)
+		{
+			psb->appendLink(ni[0], ni[1], 0, true);
+			psb->appendLink(ni[1], ni[2], 0, true);
+			psb->appendLink(ni[2], ni[0], 0, true);
+			psb->appendLink(ni[0], ni[3], 0, true);
+			psb->appendLink(ni[1], ni[3], 0, true);
+			psb->appendLink(ni[2], ni[3], 0, true);
+		}
+		return psb;
+	}
+
+	std::vector<btScalar> qhullPointsData(pointCloud.size() * 3);
+	for (size_t pidx = 0; pidx < pointCloud.size(); ++pidx)
+	{
+		const auto& pt = pointCloud[pidx];
+		qhullPointsData[pidx * 3 + 0] = pt.x();
+		qhullPointsData[pidx * 3 + 1] = pt.y();
+		qhullPointsData[pidx * 3 + 2] = pt.z();
+	}
+
+	orgQhull::PointCoordinates qhull_points(3, "");
+
+	qhull_points.append(qhullPointsData);
+
+	orgQhull::Qhull qhull;
+	qhull.runQhull(qhull_points.comment().c_str(), qhull_points.dimension(),
+				   qhull_points.count(), qhull_points.coordinates(),
+				   "d Qbb Qt");
+
+	orgQhull::QhullFacetList facets = qhull.facetList();
+
+	std::vector<std::array<btScalar, 4>> tetraVector(facets.count());
+	std::vector<btVector3> vertexVector;
+
+	{
+		std::unordered_map<int, int> vert_map;
+		std::unordered_set<int> inserted_vertices;
+		int tidx = 0;
+		for (orgQhull::QhullFacetList::iterator it = facets.begin();
+			 it != facets.end(); ++it)
+		{
+			if (!(*it).isGood()) continue;
+
+			orgQhull::QhullFacet f = *it;
+			orgQhull::QhullVertexSet vSet = f.vertices();
+			int tetra_subscript = 0;
+			for (orgQhull::QhullVertexSet::iterator vIt = vSet.begin();
+				 vIt != vSet.end(); ++vIt)
+			{
+				orgQhull::QhullVertex v = *vIt;
+				orgQhull::QhullPoint p = v.point();
+
+				int vidx = p.id();
+				tetraVector[tidx][tetra_subscript] = vidx;
+				tetra_subscript++;
+
+				if (inserted_vertices.count(vidx) == 0)
+				{
+					inserted_vertices.insert(vidx);
+					vert_map[vidx] = static_cast<int>(vertexVector.size());
+					double* coords = p.coordinates();
+					vertexVector.push_back(btVector3(coords[0], coords[1], coords[2]));
+				}
+			}
+			tidx++;
+		}
+
+		for (auto& tetra : tetraVector)
+		{
+			tetra[0] = vert_map[tetra[0]];
+			tetra[1] = vert_map[tetra[1]];
+			tetra[2] = vert_map[tetra[2]];
+			tetra[3] = vert_map[tetra[3]];
+		}
+	}
+
+	std::vector<int> alphaShapeTriMeshIndices;
+	std::vector<btVector3> alphaShapeTriMeshVertices;
+
+	std::vector<double> vsqn(vertexVector.size());
+	for (size_t vidx = 0; vidx < vsqn.size(); ++vidx)
+	{
+		vsqn[vidx] = vertexVector[vidx].length2();
+	}
+
+	const auto& verts = vertexVector;
+	for (size_t tidx = 0; tidx < tetraVector.size(); ++tidx)
+	{
+		const auto& tetra = tetraVector[tidx];
+		// clang-format off
+        Eigen::Matrix4d tmp;
+		btMatrix3x3 m;
+        tmp << verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2), 1,
+                verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2), 1,
+                verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2), 1,
+                verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2), 1;
+        double a = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2),
+                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2),
+                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2),
+                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2);
+        double c = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](1), verts[tetra(0)](2), 1,
+                vsqn[tetra(1)], verts[tetra(1)](1), verts[tetra(1)](2), 1,
+                vsqn[tetra(2)], verts[tetra(2)](1), verts[tetra(2)](2), 1,
+                vsqn[tetra(3)], verts[tetra(3)](1), verts[tetra(3)](2), 1;
+        double dx = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](2), 1,
+                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](2), 1,
+                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](2), 1,
+                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](2), 1;
+        double dy = tmp.determinant();
+        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), 1,
+                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), 1,
+                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), 1,
+                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), 1;
+        double dz = tmp.determinant();
+		// clang-format on
+		if (a == 0)
+		{
+			printf("[CreateFromPointCloudAlphaShape] invalid tetra in TetraMesh\n");
+		}
+		else
+		{
+			double r = std::sqrt(dx * dx + dy * dy + dz * dz - 4 * a * c) /
+					   (2 * std::abs(a));
+
+			if (r <= alphaValue)
+			{
+				alphaShapedTetraMesh->tetras_.push_back(tetra);
+			}
+		}
+	}
+
+	//psb = new btSoftBody(&worldInfo, vertexVector.size(), vertexVector.data(), nullptr);
+	//for (auto& tetra : tetraVector)
+	//{
+	//	psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
+	//}
+
+	return psb;
 }
 
 static int nextLine(const char* buffer)
