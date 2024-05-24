@@ -462,6 +462,55 @@ struct btMatrixX
 			}
 		return neg;
 	}
+
+	// Helper function to create a submatrix excluding the specified row and column
+	btMatrixX getSubMatrix(int excludeRow, int excludeCol) const
+	{
+		btMatrixX subMatrix(m_rows - 1, m_cols - 1);
+		int sub_i = 0;
+		for (int i = 0; i < m_rows; ++i)
+		{
+			if (i == excludeRow) continue;
+			int sub_j = 0;
+			for (int j = 0; j < m_cols; ++j)
+			{
+				if (j == excludeCol) continue;
+				subMatrix.setElem(sub_i, sub_j, (*this)(i, j));
+				++sub_j;
+			}
+			++sub_i;
+		}
+		return subMatrix;
+	}
+
+
+	// Recursive method to calculate the determinant
+	T determinant() const
+	{
+		// Determinant is only defined for square matrices
+		btAssert(m_rows == m_cols);
+
+		// Base case for 1x1 matrix
+		if (m_rows == 1)
+		{
+			return (*this)(0, 0);
+		}
+
+		// Base case for 2x2 matrix
+		if (m_rows == 2)
+		{
+			return (*this)(0, 0) * (*this)(1, 1) - (*this)(0, 1) * (*this)(1, 0);
+		}
+
+		T det = 0;
+		for (int col = 0; col < m_cols; ++col)
+		{
+			btMatrixX subMatrix = getSubMatrix(0, col);
+			T sign = (col % 2 == 0) ? 1 : -1;
+			det += sign * (*this)(0, col) * subMatrix.determinant();
+		}
+		return det;
+	}
 };
 
 typedef btMatrixX<float> btMatrixXf;

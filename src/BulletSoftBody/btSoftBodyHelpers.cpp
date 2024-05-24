@@ -31,6 +31,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <unordered_set>
 #include <array>
 #include "btSoftBodyHelpers.h"
+#include "LinearMath/btMatrixX.h"
 #include "LinearMath/btConvexHull.h"
 #include "LinearMath/btConvexHullComputer.h"
 #include "Bullet3Common/b3RandomStd.h"
@@ -1190,6 +1191,123 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 		return psb;
 	}
 
+	auto GetOrderedTriangle = [](int vidx0, int vidx1, int vidx2) -> std::array<int, 3>
+	{
+		if (vidx0 > vidx2)
+		{
+			std::swap(vidx0, vidx2);
+		}
+		if (vidx0 > vidx1)
+		{
+			std::swap(vidx0, vidx1);
+		}
+		if (vidx1 > vidx2)
+		{
+			std::swap(vidx1, vidx2);
+		}
+		return {vidx0, vidx1, vidx2};
+	};
+
+	constexpr static auto indicesCount = 3;
+
+	struct hash_int_vector
+	{
+		std::size_t operator()(const std::array<int, indicesCount>& arr) const
+		{
+			size_t hash_seed = 0;
+			for (int i = 0; i < (int)arr.size(); i++)
+			{
+				auto elem = *(arr.data() + i);
+				hash_seed ^= std::hash<int>()(elem) + 0x9e3779b9 +
+							 (hash_seed << 6) + (hash_seed >> 2);
+			}
+			return hash_seed;
+		}
+	};
+
+	auto RemoveDuplicatedTriangles = [](std::vector<int>& triMeshIndices)
+	{
+		std::unordered_map<std::array<int, indicesCount>, size_t, hash_int_vector> triangleToOldIndex;
+		size_t old_triangle_num = triMeshIndices.size() / 3;
+		size_t k = 0;
+		for (size_t i = 0; i < old_triangle_num; i++)
+		{
+			auto ia = i * 3;
+			auto ib = i * 3 + 1;
+			auto ic = i * 3 + 2;
+			std::array<int, indicesCount> index;
+			// We first need to find the minimum index. Because triangle (0-1-2)
+			// and triangle (2-0-1) are the same.
+			if (triMeshIndices[ia] <= triMeshIndices[ib])
+			{
+				if (triMeshIndices[ia] <= triMeshIndices[ic])
+				{
+					index = {triMeshIndices[ia], triMeshIndices[ib], triMeshIndices[ic]};
+				}
+				else
+				{
+					index = {triMeshIndices[ic], triMeshIndices[ia], triMeshIndices[ib]};
+				}
+			}
+			else
+			{
+				if (triMeshIndices[ib] <= triMeshIndices[ic])
+				{
+					index = {triMeshIndices[ib], triMeshIndices[ic], triMeshIndices[ia]};
+				}
+				else
+				{
+					index = {triMeshIndices[ic], triMeshIndices[ia], triMeshIndices[ib]};
+				}
+			}
+			if (triangleToOldIndex.find(index) == triangleToOldIndex.end())
+			{
+				triangleToOldIndex[index] = i;
+				triMeshIndices[k * 3] = triMeshIndices[i * 3];
+				triMeshIndices[k * 3 + 1] = triMeshIndices[i * 3 + 1];
+				triMeshIndices[k * 3 + 2] = triMeshIndices[i * 3 + 2];
+				
+				k++;
+			}
+		}
+		triMeshIndices.resize(k * 3);
+	};
+
+	auto RemoveUnreferencedVertices = [](std::vector<int>& triMeshIndices, std::vector<btVector3>& triMeshVertices)
+	{
+		std::vector<bool> vertex_has_reference(triMeshVertices.size(), false);
+		for (auto idx = 0; idx < triMeshIndices.size(); ++idx)
+		{
+			vertex_has_reference[triMeshIndices[idx]] = true;
+		}
+		std::vector<int> index_old_to_new(triMeshVertices.size());
+		size_t old_vertex_num = triMeshVertices.size();
+		size_t k = 0;  // new index
+		for (size_t i = 0; i < old_vertex_num; i++)
+		{  // old index
+			if (vertex_has_reference[i])
+			{
+				triMeshVertices[k] = triMeshVertices[i];
+				index_old_to_new[i] = (int)k;
+				k++;
+			}
+			else
+			{
+				index_old_to_new[i] = -1;
+			}
+		}
+		triMeshVertices.resize(k);
+		if (k < old_vertex_num)
+		{
+			for (auto idx = 0; idx < triMeshIndices.size(); idx += 3)
+			{
+				triMeshIndices[idx] = index_old_to_new[triMeshIndices[idx]];
+				triMeshIndices[idx + 1] = index_old_to_new[triMeshIndices[idx + 1]];
+				triMeshIndices[idx + 2] = index_old_to_new[triMeshIndices[idx + 2]];
+			}
+		}
+	};
+
 	std::vector<btScalar> qhullPointsData(pointCloud.size() * 3);
 	for (size_t pidx = 0; pidx < pointCloud.size(); ++pidx)
 	{
@@ -1210,7 +1328,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 
 	orgQhull::QhullFacetList facets = qhull.facetList();
 
-	std::vector<std::array<btScalar, 4>> tetraVector(facets.count());
+	std::vector<std::array<size_t, 4>> tetraVector(facets.count());
 	std::vector<btVector3> vertexVector;
 
 	{
@@ -1256,7 +1374,6 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	}
 
 	std::vector<int> alphaShapeTriMeshIndices;
-	std::vector<btVector3> alphaShapeTriMeshVertices;
 
 	std::vector<double> vsqn(vertexVector.size());
 	for (size_t vidx = 0; vidx < vsqn.size(); ++vidx)
@@ -1268,53 +1385,210 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	for (size_t tidx = 0; tidx < tetraVector.size(); ++tidx)
 	{
 		const auto& tetra = tetraVector[tidx];
-		// clang-format off
-        Eigen::Matrix4d tmp;
-		btMatrix3x3 m;
-        tmp << verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2), 1,
-                verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2), 1,
-                verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2), 1,
-                verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2), 1;
-        double a = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2),
-                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2),
-                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2),
-                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2);
-        double c = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](1), verts[tetra(0)](2), 1,
-                vsqn[tetra(1)], verts[tetra(1)](1), verts[tetra(1)](2), 1,
-                vsqn[tetra(2)], verts[tetra(2)](1), verts[tetra(2)](2), 1,
-                vsqn[tetra(3)], verts[tetra(3)](1), verts[tetra(3)](2), 1;
-        double dx = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](2), 1,
-                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](2), 1,
-                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](2), 1,
-                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](2), 1;
-        double dy = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), 1,
-                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), 1,
-                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), 1,
-                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), 1;
-        double dz = tmp.determinant();
-		// clang-format on
+		double a, c, dx, dy, dz;
+		
+		{
+			btMatrixXu tmp(4, 4);
+
+			tmp.setElem(0, 0, verts[tetra[0]].x());
+			tmp.setElem(0, 1, verts[tetra[0]].y());
+			tmp.setElem(0, 2, verts[tetra[0]].z());
+			tmp.setElem(0, 3, 1.0f);
+
+			tmp.setElem(1, 0, verts[tetra[1]].x());
+			tmp.setElem(1, 1, verts[tetra[1]].y());
+			tmp.setElem(1, 2, verts[tetra[1]].z());
+			tmp.setElem(1, 3, 1.0f);
+
+			tmp.setElem(2, 0, verts[tetra[2]].x());
+			tmp.setElem(2, 1, verts[tetra[2]].y());
+			tmp.setElem(2, 2, verts[tetra[2]].z());
+			tmp.setElem(2, 3, 1.0f);
+
+			tmp.setElem(3, 0, verts[tetra[3]].x());
+			tmp.setElem(3, 1, verts[tetra[3]].y());
+			tmp.setElem(3, 2, verts[tetra[3]].z());
+			tmp.setElem(3, 3, 1.0f);
+
+			a = tmp.determinant();
+		}
+		{
+			btMatrixXu tmp(4, 4);
+
+			tmp.setElem(0, 0, vsqn[tetra[0]]);
+			tmp.setElem(0, 1, verts[tetra[0]].x());
+			tmp.setElem(0, 2, verts[tetra[0]].y());
+			tmp.setElem(0, 3, verts[tetra[0]].z());
+
+			tmp.setElem(1, 0, vsqn[tetra[1]]);
+			tmp.setElem(1, 1, verts[tetra[1]].x());
+			tmp.setElem(1, 2, verts[tetra[1]].y());
+			tmp.setElem(1, 3, verts[tetra[1]].z());
+
+			tmp.setElem(2, 0, vsqn[tetra[2]]);
+			tmp.setElem(2, 1, verts[tetra[2]].x());
+			tmp.setElem(2, 2, verts[tetra[2]].y());
+			tmp.setElem(2, 3, verts[tetra[2]].z());
+
+			tmp.setElem(3, 0, vsqn[tetra[3]]);
+			tmp.setElem(3, 1, verts[tetra[3]].x());
+			tmp.setElem(3, 2, verts[tetra[3]].y());
+			tmp.setElem(3, 3, verts[tetra[3]].z());
+
+			c = tmp.determinant();
+		}
+		{
+			btMatrixXu tmp(4, 4);
+
+			tmp.setElem(0, 0, vsqn[tetra[0]]);
+			tmp.setElem(0, 1, verts[tetra[0]].y());
+			tmp.setElem(0, 2, verts[tetra[0]].z());
+			tmp.setElem(0, 3, 1.0);
+
+			tmp.setElem(1, 0, vsqn[tetra[1]]);
+			tmp.setElem(1, 1, verts[tetra[1]].y());
+			tmp.setElem(1, 2, verts[tetra[1]].z());
+			tmp.setElem(1, 3, 1.0);
+
+			tmp.setElem(2, 0, vsqn[tetra[2]]);
+			tmp.setElem(2, 1, verts[tetra[2]].y());
+			tmp.setElem(2, 2, verts[tetra[2]].z());
+			tmp.setElem(2, 3, 1.0);
+
+			tmp.setElem(3, 0, vsqn[tetra[3]]);
+			tmp.setElem(3, 1, verts[tetra[3]].y());
+			tmp.setElem(3, 2, verts[tetra[3]].z());
+			tmp.setElem(3, 3, 1.0);
+
+			dx = tmp.determinant();
+		}
+		{
+			btMatrixXu tmp(4, 4);
+
+			tmp.setElem(0, 0, vsqn[tetra[0]]);
+			tmp.setElem(0, 1, verts[tetra[0]].x());
+			tmp.setElem(0, 2, verts[tetra[0]].z());
+			tmp.setElem(0, 3, 1.0);
+
+			tmp.setElem(1, 0, vsqn[tetra[1]]);
+			tmp.setElem(1, 1, verts[tetra[1]].x());
+			tmp.setElem(1, 2, verts[tetra[1]].z());
+			tmp.setElem(1, 3, 1.0);
+
+			tmp.setElem(2, 0, vsqn[tetra[2]]);
+			tmp.setElem(2, 1, verts[tetra[2]].x());
+			tmp.setElem(2, 2, verts[tetra[2]].z());
+			tmp.setElem(2, 3, 1.0);
+
+			tmp.setElem(3, 0, vsqn[tetra[3]]);
+			tmp.setElem(3, 1, verts[tetra[3]].x());
+			tmp.setElem(3, 2, verts[tetra[3]].z());
+			tmp.setElem(3, 3, 1.0);
+
+			dy = tmp.determinant();
+		}
+		{
+			btMatrixXu tmp(4, 4);
+
+			tmp.setElem(0, 0, vsqn[tetra[0]]);
+			tmp.setElem(0, 1, verts[tetra[0]].x());
+			tmp.setElem(0, 2, verts[tetra[0]].y());
+			tmp.setElem(0, 3, 1.0);
+
+			tmp.setElem(1, 0, vsqn[tetra[1]]);
+			tmp.setElem(1, 1, verts[tetra[1]].x());
+			tmp.setElem(1, 2, verts[tetra[1]].y());
+			tmp.setElem(1, 3, 1.0);
+
+			tmp.setElem(2, 0, vsqn[tetra[2]]);
+			tmp.setElem(2, 1, verts[tetra[2]].x());
+			tmp.setElem(2, 2, verts[tetra[2]].y());
+			tmp.setElem(2, 3, 1.0);
+
+			tmp.setElem(3, 0, vsqn[tetra[3]]);
+			tmp.setElem(3, 1, verts[tetra[3]].x());
+			tmp.setElem(3, 2, verts[tetra[3]].y());
+			tmp.setElem(3, 3, 1.0);
+
+			dz = tmp.determinant();
+		}
+		
 		if (a == 0)
 		{
-			printf("[CreateFromPointCloudAlphaShape] invalid tetra in TetraMesh\n");
+			//printf("[CreateFromPointCloudAlphaShape] invalid tetra in TetraMesh\n");
 		}
 		else
 		{
 			double r = std::sqrt(dx * dx + dy * dy + dz * dz - 4 * a * c) /
 					   (2 * std::abs(a));
 
-			if (r <= alphaValue)
+			if (r <= alpha)
 			{
-				alphaShapedTetraMesh->tetras_.push_back(tetra);
+				std::array<int, indicesCount> orderedIndices;
+				orderedIndices = GetOrderedTriangle(tetra[0], tetra[1], tetra[2]);
+				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
+
+				orderedIndices = GetOrderedTriangle(tetra[0], tetra[1], tetra[3]);
+				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
+
+				orderedIndices = GetOrderedTriangle(tetra[0], tetra[2], tetra[3]);
+				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
+
+				orderedIndices = GetOrderedTriangle(tetra[0], tetra[2], tetra[3]);
+				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
+
+				orderedIndices = GetOrderedTriangle(tetra[1], tetra[2], tetra[3]);
+				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
 			}
 		}
 	}
 
+	// remove triangles within the mesh
+
+	std::unordered_map<std::array<int, indicesCount>, int, hash_int_vector> triangleCount;
+
+	for (size_t tidx = 0; tidx < alphaShapeTriMeshIndices.size() / 3; ++tidx)
+	{
+		std::array<int, indicesCount> triangle = {
+			alphaShapeTriMeshIndices[tidx] * 3,
+			alphaShapeTriMeshIndices[tidx] * 3 + 1,
+			alphaShapeTriMeshIndices[tidx] * 3 + 2,
+		};
+
+		if (triangleCount.count(triangle) == 0)
+		{
+			triangleCount[triangle] = 1;
+		}
+		else
+		{
+			triangleCount[triangle] += 1;
+		}
+	}
+
+	size_t to_idx = 0;
+	for (size_t tidx = 0; tidx < alphaShapeTriMeshIndices.size() / 3; ++tidx)
+	{
+		std::array<int, indicesCount> triangle = {
+			alphaShapeTriMeshIndices[tidx] * 3,
+			alphaShapeTriMeshIndices[tidx] * 3 + 1,
+			alphaShapeTriMeshIndices[tidx] * 3 + 2,
+		};
+
+		if (triangleCount[triangle] == 1)
+		{
+			alphaShapeTriMeshIndices[to_idx * 3] = triangle[0];
+			alphaShapeTriMeshIndices[to_idx * 3 + 1] = triangle[1];
+			alphaShapeTriMeshIndices[to_idx * 3 + 2] = triangle[2];
+			to_idx++;
+		}
+	}
+	alphaShapeTriMeshIndices.resize(to_idx * 3);
+
+	RemoveDuplicatedTriangles(alphaShapeTriMeshIndices);
+	RemoveUnreferencedVertices(alphaShapeTriMeshIndices, vertexVector);
+
 	//psb = new btSoftBody(&worldInfo, vertexVector.size(), vertexVector.data(), nullptr);
-	//for (auto& tetra : tetraVector)
+	//for (auto& tetra : alphaShapeTetraVector)
 	//{
 	//	psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
 	//}

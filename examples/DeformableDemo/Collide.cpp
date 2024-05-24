@@ -150,12 +150,12 @@ void Collide::initPhysics()
         std::vector<btVector3> verticesMy(o3dTriMesh->vertices_.size());
 		for (auto i = 0; i < o3dTriMesh->vertices_.size(); ++i)
 			verticesMy[i] = btVector3(o3dTriMesh->vertices_[i].x(), o3dTriMesh->vertices_[i].y(), o3dTriMesh->vertices_[i].z());
-		std::vector<int> trianglesMy(o3dTriMesh->triangles_.size());
-		for (auto i = 0; i < o3dTriMesh->triangles_.size() / 3; i += 3)
+		std::vector<int> trianglesMy(o3dTriMesh->triangles_.size() * 3);
+		for (auto i = 0; i < o3dTriMesh->triangles_.size(); ++i)
 		{
-			trianglesMy[i] = o3dTriMesh->triangles_[i].x();
-			trianglesMy[i + 1] = o3dTriMesh->triangles_[i].y();
-			trianglesMy[i + 2] = o3dTriMesh->triangles_[i].z();
+			trianglesMy[i * 3] = o3dTriMesh->triangles_[i].x();
+			trianglesMy[i * 3 + 1] = o3dTriMesh->triangles_[i].y();
+			trianglesMy[i * 3 + 2] = o3dTriMesh->triangles_[i].z();
 		}
 		
         //auto convexHullTetraBody = btSoftBodyHelpers::CreateFromConvexHull(getDeformableDynamicsWorld()->getWorldInfo(), pointCloud.data(), pointCloud.size(), false);
