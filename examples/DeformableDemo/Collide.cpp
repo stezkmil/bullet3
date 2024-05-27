@@ -34,6 +34,7 @@
 #include <open3d/geometry/TetraMesh.h>
 #include <open3d/io/TriangleMeshIO.h>
 #include <open3d/visualization/visualizer/Visualizer.h>
+#include <open3d/utility/Random.h>
 
 #undef NOMINMAX
 
@@ -157,89 +158,103 @@ void Collide::initPhysics()
 			trianglesMy[i * 3 + 1] = o3dTriMesh->triangles_[i].y();
 			trianglesMy[i * 3 + 2] = o3dTriMesh->triangles_[i].z();
 		}
+		std::vector<btVector3> normalsMy(o3dTriMesh->vertex_normals_.size());
+		for (auto i = 0; i < o3dTriMesh->vertex_normals_.size(); ++i)
+			normalsMy[i] = btVector3(o3dTriMesh->vertex_normals_[i].x(), o3dTriMesh->vertex_normals_[i].y(), o3dTriMesh->vertex_normals_[i].z());
 		
         //auto convexHullTetraBody = btSoftBodyHelpers::CreateFromConvexHull(getDeformableDynamicsWorld()->getWorldInfo(), pointCloud.data(), pointCloud.size(), false);
 
-        auto psbMy = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, 0.1, true);
-
-		auto o3dPointCloud = o3dTriMesh->SamplePointsUniformly(o3dTriMesh->vertices_.size() * 4, true);
-		auto o3dTetraMeshTuple = open3d::geometry::TetraMesh::CreateFromPointCloud(*o3dPointCloud);
-		auto o3dTetraMesh = std::get<0>(o3dTetraMeshTuple);
-		o3dTetraMesh->RemoveDegenerateTetras();
-		o3dTetraMesh->RemoveDuplicatedTetras();
-		o3dTetraMesh->RemoveDuplicatedVertices();
-		o3dTetraMesh->RemoveUnreferencedVertices();
-		auto&& o3dTetraIndices = std::get<1>(o3dTetraMeshTuple);
-
-		auto alphaShapedTetraMesh = std::make_shared<open3d::geometry::TetraMesh>();
-		alphaShapedTetraMesh->vertices_ = o3dTetraMesh->vertices_;
-
-		double alphaValue = 0.1;
-
-		std::vector<double> vsqn(o3dTetraMesh->vertices_.size());
-		for (size_t vidx = 0; vidx < vsqn.size(); ++vidx)
+        auto psbMy = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, normalsMy, 0.4, true);
+		auto o3dTriMeshDeleteme = std::make_shared<open3d::geometry::TriangleMesh>();
+		for (auto tri = 0; tri < psbMy.first.size() / 3; ++tri)
 		{
-			vsqn[vidx] = o3dTetraMesh->vertices_[vidx].squaredNorm();
+			o3dTriMeshDeleteme->triangles_.push_back(Eigen::Vector3i(psbMy.first[tri * 3], psbMy.first[tri * 3 + 1], psbMy.first[tri * 3 + 2]));
 		}
-
-		const auto& verts = o3dTetraMesh->vertices_;
-		for (size_t tidx = 0; tidx < o3dTetraMesh->tetras_.size(); ++tidx)
+		for (auto vec = 0; vec < psbMy.second.size(); ++vec)
 		{
-			const auto& tetra = o3dTetraMesh->tetras_[tidx];
-			// clang-format off
-        Eigen::Matrix4d tmp;
-        tmp << verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2), 1,
-                verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2), 1,
-                verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2), 1,
-                verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2), 1;
-        double a = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2),
-                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2),
-                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2),
-                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2);
-        double c = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](1), verts[tetra(0)](2), 1,
-                vsqn[tetra(1)], verts[tetra(1)](1), verts[tetra(1)](2), 1,
-                vsqn[tetra(2)], verts[tetra(2)](1), verts[tetra(2)](2), 1,
-                vsqn[tetra(3)], verts[tetra(3)](1), verts[tetra(3)](2), 1;
-        double dx = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](2), 1,
-                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](2), 1,
-                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](2), 1,
-                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](2), 1;
-        double dy = tmp.determinant();
-        tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), 1,
-                vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), 1,
-                vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), 1,
-                vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), 1;
-        double dz = tmp.determinant();
-			// clang-format on
-			if (a == 0)
-			{
-				printf("[CreateFromPointCloudAlphaShape] invalid tetra in TetraMesh\n");
-			}
-			else
-			{
-				double r = std::sqrt(dx * dx + dy * dy + dz * dz - 4 * a * c) /
-						   (2 * std::abs(a));
-
-				if (r <= alphaValue)
-				{
-					alphaShapedTetraMesh->tetras_.push_back(tetra);
-				}
-			}
+			o3dTriMeshDeleteme->vertices_.push_back(Eigen::Vector3d(psbMy.second[vec].x(), psbMy.second[vec].y(), psbMy.second[vec].z()));
 		}
+		open3d::io::WriteTriangleMeshToOBJ("../../../data/tube/tube_alpha_my.OBJ", *o3dTriMeshDeleteme, true, false, true, false, false, false);
 
-		o3dTetraMesh = alphaShapedTetraMesh;
+		open3d::utility::random::Seed(0);
+		auto o3dPointCloud = o3dTriMesh->SamplePointsUniformly(o3dTriMesh->vertices_.size() * 4, false);
+		//auto o3dTetraMeshTuple = open3d::geometry::TetraMesh::CreateFromPointCloud(*o3dPointCloud);
+		//auto o3dTetraMesh = std::get<0>(o3dTetraMeshTuple);
+		//o3dTetraMesh->RemoveDegenerateTetras();
+		//o3dTetraMesh->RemoveDuplicatedTetras();
+		//o3dTetraMesh->RemoveDuplicatedVertices();
+		//o3dTetraMesh->RemoveUnreferencedVertices();
+		//auto&& o3dTetraIndices = std::get<1>(o3dTetraMeshTuple);
 
-		auto alphaTriMesh = open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape(*o3dPointCloud, 0.1, o3dTetraMesh, &o3dTetraIndices);
-		open3d::io::WriteTriangleMeshToOBJ("../../../data/tube/tube_alpha.OBJ", *alphaTriMesh, true, false, true, false, false, false);
+		//auto alphaShapedTetraMesh = std::make_shared<open3d::geometry::TetraMesh>();
+		//alphaShapedTetraMesh->vertices_ = o3dTetraMesh->vertices_;
+
+		//double alphaValue = 0.1;
+
+		//std::vector<double> vsqn(o3dTetraMesh->vertices_.size());
+		//for (size_t vidx = 0; vidx < vsqn.size(); ++vidx)
+		//{
+		//	vsqn[vidx] = o3dTetraMesh->vertices_[vidx].squaredNorm();
+		//}
+
+		//const auto& verts = o3dTetraMesh->vertices_;
+		//for (size_t tidx = 0; tidx < o3dTetraMesh->tetras_.size(); ++tidx)
+		//{
+		//	const auto& tetra = o3dTetraMesh->tetras_[tidx];
+		//	// clang-format off
+  //      Eigen::Matrix4d tmp;
+  //      tmp << verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2), 1,
+  //              verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2), 1,
+  //              verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2), 1,
+  //              verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2), 1;
+  //      double a = tmp.determinant();
+  //      tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), verts[tetra(0)](2),
+  //              vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), verts[tetra(1)](2),
+  //              vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), verts[tetra(2)](2),
+  //              vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), verts[tetra(3)](2);
+  //      double c = tmp.determinant();
+  //      tmp << vsqn[tetra(0)], verts[tetra(0)](1), verts[tetra(0)](2), 1,
+  //              vsqn[tetra(1)], verts[tetra(1)](1), verts[tetra(1)](2), 1,
+  //              vsqn[tetra(2)], verts[tetra(2)](1), verts[tetra(2)](2), 1,
+  //              vsqn[tetra(3)], verts[tetra(3)](1), verts[tetra(3)](2), 1;
+  //      double dx = tmp.determinant();
+  //      tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](2), 1,
+  //              vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](2), 1,
+  //              vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](2), 1,
+  //              vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](2), 1;
+  //      double dy = tmp.determinant();
+  //      tmp << vsqn[tetra(0)], verts[tetra(0)](0), verts[tetra(0)](1), 1,
+  //              vsqn[tetra(1)], verts[tetra(1)](0), verts[tetra(1)](1), 1,
+  //              vsqn[tetra(2)], verts[tetra(2)](0), verts[tetra(2)](1), 1,
+  //              vsqn[tetra(3)], verts[tetra(3)](0), verts[tetra(3)](1), 1;
+  //      double dz = tmp.determinant();
+		//	// clang-format on
+		//	if (a == 0)
+		//	{
+		//		printf("[CreateFromPointCloudAlphaShape] invalid tetra in TetraMesh\n");
+		//	}
+		//	else
+		//	{
+		//		double r = std::sqrt(dx * dx + dy * dy + dz * dz - 4 * a * c) /
+		//				   (2 * std::abs(a));
+
+		//		if (r <= alphaValue)
+		//		{
+		//			alphaShapedTetraMesh->tetras_.push_back(tetra);
+		//		}
+		//	}
+		//}
+
+		//o3dTetraMesh = alphaShapedTetraMesh;
+
+		auto alphaTriMesh = open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape(*o3dPointCloud, 0.4);
+		open3d::io::WriteTriangleMeshToOBJ("../../../data/tube/tube_alpha_theirs.OBJ", *alphaTriMesh, true, false, false, false, false, false);
         //open3d::geometry::TriangleMesh::CreateFromPointCloudAlphaShape();
 		//open3d::visualization::Visualizer v;
 		//v.CreateVisualizerWindow();
 		//v.AddGeometry(o3dTetraMesh);
 		
-        std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
+        /*std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
 		ofs.imbue(std::locale::classic());
 		ofs << "# vtk DataFile Version 2.0" << '\n';
 		ofs << "tube_dbg.obj_, Created by Gmsh 4.12.2 " << '\n';
@@ -269,7 +284,7 @@ void Collide::initPhysics()
 		{
 			ofs << "10" << '\n';
 		}
-		ofs.close();
+		ofs.close();*/
 
         std::string filepath("../../../data/tube/");
 		std::string filename = filepath + "tube_dbg.vtk";

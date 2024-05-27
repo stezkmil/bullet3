@@ -1277,7 +1277,7 @@ static inline btVector3 CenterOf(const btSoftBody::Face& f)
 	return ((f.m_n[0]->m_x + f.m_n[1]->m_x + f.m_n[2]->m_x) / 3);
 }
 
-//
+// WARNING: The return value has to be divided by 2.0 to obtain true area value. The division is probably omitted as an optimization.
 static inline btScalar AreaOf(const btVector3& x0,
 							  const btVector3& x1,
 							  const btVector3& x2)

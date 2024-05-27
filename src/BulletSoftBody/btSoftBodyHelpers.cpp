@@ -1136,13 +1136,14 @@ btSoftBody* btSoftBodyHelpers::CreateFromConvexHull(btSoftBodyWorldInfo& worldIn
 	return (psb);
 }
 
-std::vector<btVector3> btSoftBodyHelpers::SamplePointsUniformly(int numberOfPoints, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices)
+std::tuple<std::vector<btVector3>, std::vector<btVector3>> btSoftBodyHelpers::SamplePointsUniformly(int numberOfPoints, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices,
+																const std::vector<btVector3>& normals)
 {
 	std::vector<btScalar> areas(triangleIndices.size() / 3);
-	std::vector<btVector3> pointCloud(numberOfPoints);
+	std::vector<btVector3> pointCloud(numberOfPoints), normalCloud(numberOfPoints);
 	for (auto ti = 0; ti < triangleIndices.size(); ti += 3)
 	{
-		areas[ti / 3] = AreaOf(vertices[triangleIndices[ti]], vertices[triangleIndices[ti + 1]], vertices[triangleIndices[ti + 2]]);
+		areas[ti / 3] = AreaOf(vertices[triangleIndices[ti]], vertices[triangleIndices[ti + 1]], vertices[triangleIndices[ti + 2]]) / 2.0;
 	}
 
 	std::discrete_distribution<int> distributionDiscrete(areas.begin(), areas.end());
@@ -1161,20 +1162,24 @@ std::vector<btVector3> btSoftBodyHelpers::SamplePointsUniformly(int numberOfPoin
 		int tb = triangleIndices[tidx * 3 + 1];
 		int tc = triangleIndices[tidx * 3 + 2];
 		pointCloud[pointIndex] = a * vertices[ta] + b * vertices[tb] + c * vertices[tc];
+		normalCloud[pointIndex] = (a * normals[ta] + b * normals[tb] + c * normals[tc]).normalized();
 	}
 
-	return pointCloud;
+	return {pointCloud, normalCloud};
 }
 
-btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices, btScalar alpha, bool createLinks)
+std::pair<std::vector<int>, std::vector<btVector3>> btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices,
+	const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals, btScalar alpha, bool createLinks)
 {
-	auto pointCloud = SamplePointsUniformly(vertices.size() * 4, triangleIndices, vertices);
+	auto sampleTuple = SamplePointsUniformly(vertices.size() * 4, triangleIndices, vertices, normals);
+	auto& pointCloud = std::get<0>(sampleTuple);
+	auto& normalCloud = std::get<1>(sampleTuple);
 	btSoftBody* psb = nullptr;
-	if (pointCloud.size() < 4)
-		return psb;
+	//if (pointCloud.size() < 4)
+	//	return psb;
 
 	// qhull cannot deal with this case
-	if (pointCloud.size() == 4)
+	/*if (pointCloud.size() == 4)
 	{
 		psb = new btSoftBody(&worldInfo, pointCloud.size(), pointCloud.data(), nullptr);
 		std::vector<int> ni = {0, 1, 2, 3};
@@ -1189,7 +1194,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 			psb->appendLink(ni[2], ni[3], 0, true);
 		}
 		return psb;
-	}
+	}*/
 
 	auto GetOrderedTriangle = [](int vidx0, int vidx1, int vidx2) -> std::array<int, 3>
 	{
@@ -1308,6 +1313,38 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 		}
 	};
 
+	auto UnifyNormals = [](const std::vector<btVector3>& normalCloud, const std::vector<btVector3>& vertexVector, const std::unordered_map<int, int>& vertMap, std::vector<int>& alphaShapeTriMeshIndices)
+	{
+		for (auto i = 0; i < alphaShapeTriMeshIndices.size() / 3; ++i)
+		{
+			auto ia = i * 3;
+			auto ib = i * 3 + 1;
+			auto ic = i * 3 + 2;
+			auto& v0 = vertexVector[alphaShapeTriMeshIndices[ia]];
+			auto& v1 = vertexVector[alphaShapeTriMeshIndices[ib]];
+			auto& v2 = vertexVector[alphaShapeTriMeshIndices[ic]];
+			auto triNormalFromNewMesh = (v1 - v0).cross(v2 - v0);
+			triNormalFromNewMesh.safeNormalize();
+			auto i0Iter = vertMap.find(alphaShapeTriMeshIndices[ia]);
+			auto i1Iter = vertMap.find(alphaShapeTriMeshIndices[ib]);
+			auto i2Iter = vertMap.find(alphaShapeTriMeshIndices[ic]);
+			if (i0Iter == vertMap.end() || i1Iter == vertMap.end() || i2Iter == vertMap.end())
+				continue;
+			auto i0 = i0Iter->second;
+			auto i1 = i1Iter->second;
+			auto i2 = i2Iter->second;
+			auto& n0 = normalCloud[i0];
+			auto& n1 = normalCloud[i1];
+			auto& n2 = normalCloud[i2];
+			auto triNormalFromOldMesh = (n0 + n1 + n2).safeNormalize();
+			constexpr btScalar flippedNormalThreshold = -0.5;
+			if (triNormalFromNewMesh.dot(triNormalFromOldMesh) < flippedNormalThreshold)
+			{
+				std::swap(alphaShapeTriMeshIndices[ia], alphaShapeTriMeshIndices[ic]);
+			}
+		}
+	};
+
 	std::vector<btScalar> qhullPointsData(pointCloud.size() * 3);
 	for (size_t pidx = 0; pidx < pointCloud.size(); ++pidx)
 	{
@@ -1331,9 +1368,9 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	std::vector<std::array<size_t, 4>> tetraVector(facets.count());
 	std::vector<btVector3> vertexVector;
 
+	std::unordered_map<int, int> vertMap, vertMapReverse;
 	{
-		std::unordered_map<int, int> vert_map;
-		std::unordered_set<int> inserted_vertices;
+		std::unordered_set<int> insertedVertices;
 		int tidx = 0;
 		for (orgQhull::QhullFacetList::iterator it = facets.begin();
 			 it != facets.end(); ++it)
@@ -1342,7 +1379,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 
 			orgQhull::QhullFacet f = *it;
 			orgQhull::QhullVertexSet vSet = f.vertices();
-			int tetra_subscript = 0;
+			int tetraSubscript = 0;
 			for (orgQhull::QhullVertexSet::iterator vIt = vSet.begin();
 				 vIt != vSet.end(); ++vIt)
 			{
@@ -1350,13 +1387,14 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 				orgQhull::QhullPoint p = v.point();
 
 				int vidx = p.id();
-				tetraVector[tidx][tetra_subscript] = vidx;
-				tetra_subscript++;
+				tetraVector[tidx][tetraSubscript] = vidx;
+				tetraSubscript++;
 
-				if (inserted_vertices.count(vidx) == 0)
+				if (insertedVertices.count(vidx) == 0)
 				{
-					inserted_vertices.insert(vidx);
-					vert_map[vidx] = static_cast<int>(vertexVector.size());
+					insertedVertices.insert(vidx);
+					vertMap[vidx] = static_cast<int>(vertexVector.size());
+					vertMapReverse[vertexVector.size()] = vidx;
 					double* coords = p.coordinates();
 					vertexVector.push_back(btVector3(coords[0], coords[1], coords[2]));
 				}
@@ -1366,10 +1404,10 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 
 		for (auto& tetra : tetraVector)
 		{
-			tetra[0] = vert_map[tetra[0]];
-			tetra[1] = vert_map[tetra[1]];
-			tetra[2] = vert_map[tetra[2]];
-			tetra[3] = vert_map[tetra[3]];
+			tetra[0] = vertMap[tetra[0]];
+			tetra[1] = vertMap[tetra[1]];
+			tetra[2] = vertMap[tetra[2]];
+			tetra[3] = vertMap[tetra[3]];
 		}
 	}
 
@@ -1534,9 +1572,6 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 				orderedIndices = GetOrderedTriangle(tetra[0], tetra[2], tetra[3]);
 				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
 
-				orderedIndices = GetOrderedTriangle(tetra[0], tetra[2], tetra[3]);
-				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
-
 				orderedIndices = GetOrderedTriangle(tetra[1], tetra[2], tetra[3]);
 				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
 			}
@@ -1550,9 +1585,9 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	for (size_t tidx = 0; tidx < alphaShapeTriMeshIndices.size() / 3; ++tidx)
 	{
 		std::array<int, indicesCount> triangle = {
-			alphaShapeTriMeshIndices[tidx] * 3,
-			alphaShapeTriMeshIndices[tidx] * 3 + 1,
-			alphaShapeTriMeshIndices[tidx] * 3 + 2,
+			alphaShapeTriMeshIndices[tidx * 3],
+			alphaShapeTriMeshIndices[tidx * 3 + 1],
+			alphaShapeTriMeshIndices[tidx * 3 + 2],
 		};
 
 		if (triangleCount.count(triangle) == 0)
@@ -1569,9 +1604,9 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	for (size_t tidx = 0; tidx < alphaShapeTriMeshIndices.size() / 3; ++tidx)
 	{
 		std::array<int, indicesCount> triangle = {
-			alphaShapeTriMeshIndices[tidx] * 3,
-			alphaShapeTriMeshIndices[tidx] * 3 + 1,
-			alphaShapeTriMeshIndices[tidx] * 3 + 2,
+			alphaShapeTriMeshIndices[tidx * 3],
+			alphaShapeTriMeshIndices[tidx * 3 + 1],
+			alphaShapeTriMeshIndices[tidx * 3 + 2],
 		};
 
 		if (triangleCount[triangle] == 1)
@@ -1585,6 +1620,9 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	alphaShapeTriMeshIndices.resize(to_idx * 3);
 
 	RemoveDuplicatedTriangles(alphaShapeTriMeshIndices);
+
+	UnifyNormals(normalCloud, vertexVector, vertMapReverse, alphaShapeTriMeshIndices);
+
 	RemoveUnreferencedVertices(alphaShapeTriMeshIndices, vertexVector);
 
 	//psb = new btSoftBody(&worldInfo, vertexVector.size(), vertexVector.data(), nullptr);
@@ -1593,7 +1631,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	//	psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
 	//}
 
-	return psb;
+	return {alphaShapeTriMeshIndices, vertexVector};
 }
 
 static int nextLine(const char* buffer)
