@@ -130,7 +130,7 @@ struct btSoftBodyHelpers
 											bool randomizeConstraints = true);
 
 	static std::tuple<std::vector<btVector3>, std::vector<btVector3>> SamplePointsUniformly(int numberOfPoints, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals);
-	static std::pair<std::vector<int>, std::vector<btVector3>> CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangles, const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals, btScalar alpha, bool createLinks);
+	static btSoftBody* CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangles, const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals, btScalar alpha, bool createLinks);
 
 	/* Export TetGen compatible .smesh file									*/
 	//	static void				ExportAsSMeshFile(	btSoftBody* psb,

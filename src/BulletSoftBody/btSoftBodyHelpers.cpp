@@ -1168,7 +1168,7 @@ std::tuple<std::vector<btVector3>, std::vector<btVector3>> btSoftBodyHelpers::Sa
 	return {pointCloud, normalCloud};
 }
 
-std::pair<std::vector<int>, std::vector<btVector3>> btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices,
+btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices,
 	const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals, btScalar alpha, bool createLinks)
 {
 	auto sampleTuple = SamplePointsUniformly(vertices.size() * 4, triangleIndices, vertices, normals);
@@ -1631,7 +1631,7 @@ std::pair<std::vector<int>, std::vector<btVector3>> btSoftBodyHelpers::CreateFro
 	//	psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
 	//}
 
-	return {alphaShapeTriMeshIndices, vertexVector};
+	return /*{alphaShapeTriMeshIndices, vertexVector}*/nullptr;
 }
 
 static int nextLine(const char* buffer)
