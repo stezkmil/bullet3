@@ -1175,11 +1175,11 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	auto& pointCloud = std::get<0>(sampleTuple);
 	auto& normalCloud = std::get<1>(sampleTuple);
 	btSoftBody* psb = nullptr;
-	//if (pointCloud.size() < 4)
-	//	return psb;
+	if (pointCloud.size() < 4)
+		return psb;
 
 	// qhull cannot deal with this case
-	/*if (pointCloud.size() == 4)
+	if (pointCloud.size() == 4)
 	{
 		psb = new btSoftBody(&worldInfo, pointCloud.size(), pointCloud.data(), nullptr);
 		std::vector<int> ni = {0, 1, 2, 3};
@@ -1194,7 +1194,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 			psb->appendLink(ni[2], ni[3], 0, true);
 		}
 		return psb;
-	}*/
+	}
 
 	auto GetOrderedTriangle = [](int vidx0, int vidx1, int vidx2) -> std::array<int, 3>
 	{
