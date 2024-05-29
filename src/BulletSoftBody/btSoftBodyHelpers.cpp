@@ -42,6 +42,19 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "libqhullcpp/QhullFacetList.h"
 #include "libqhullcpp/QhullVertexSet.h"
 
+#include <floattetwild/AABBWrapper.h>
+#include <floattetwild/FloatTetDelaunay.h>
+#include <floattetwild/LocalOperations.h>
+#include <floattetwild/MeshImprovement.h>
+#include <floattetwild/Simplification.h>
+#include <floattetwild/Statistics.h>
+#include <floattetwild/TriangleInsertion.h>
+#include <floattetwild/CSGTreeParser.hpp>
+#include <floattetwild/Mesh.hpp>
+#include <floattetwild/MeshIO.hpp>
+
+#include <geogram/mesh/mesh.h>
+
 #include <map>
 #include <vector>
 
@@ -1562,6 +1575,9 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 
 			if (r <= alpha)
 			{
+				// It is tempting to just use the tetras which pass this condition and not do the fTetWild tetrahedralization at all.
+				// The problem is that hyperelasticity solvers tend to explode when supplied with highly deformed tetrahedrons - which QHull does generate.
+				// In case QHull could be reconfigured to generate nice tetrahedrons, then the fTetWild step could indeed be skipped.
 				std::array<int, indicesCount> orderedIndices;
 				orderedIndices = GetOrderedTriangle(tetra[0], tetra[1], tetra[2]);
 				alphaShapeTriMeshIndices.insert(alphaShapeTriMeshIndices.end(), orderedIndices.begin(), orderedIndices.end());
@@ -1630,6 +1646,48 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	//{
 	//	psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
 	//}
+
+	GEO::initialize();
+	floatTetWild::Mesh mesh;
+	floatTetWild::Parameters& params = mesh.params;
+	GEO::Mesh geoMesh;
+
+	std::vector<floatTetWild::Vector3> floatTetWildInputVetices(vertexVector.size());
+	std::vector<floatTetWild::Vector3i> floatTetWildInputFaces(alphaShapeTriMeshIndices.size() / 3);
+	std::vector<int> floatTetWildInputTags;
+	for (auto i = 0; i < vertexVector.size(); ++i)
+	{
+		floatTetWildInputVetices[i] = floatTetWild::Vector3(vertexVector[i].x(), vertexVector[i].y(), vertexVector[i].z());
+	}
+	for (auto i = 0; i < alphaShapeTriMeshIndices.size(); i += 3)
+	{
+		floatTetWildInputFaces[i / 3] = floatTetWild::Vector3i(alphaShapeTriMeshIndices[i], alphaShapeTriMeshIndices[i + 1], alphaShapeTriMeshIndices[i + 2]);
+	}
+	floatTetWild::MeshIO::load_mesh(floatTetWildInputVetices, floatTetWildInputFaces, geoMesh, floatTetWildInputTags);
+
+	if (floatTetWildInputTags.size() != floatTetWildInputFaces.size())
+	{
+		floatTetWildInputTags.resize(floatTetWildInputFaces.size());
+		std::fill(floatTetWildInputTags.begin(), floatTetWildInputTags.end(), 0);
+	}
+
+	floatTetWild::AABBWrapper tree(geoMesh);
+	if (!params.init(tree.get_sf_diag()))
+	{
+		return nullptr;
+	}
+
+	simplify(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, tree, params, false);
+	tree.init_b_mesh_and_tree(floatTetWildInputVetices, floatTetWildInputFaces, mesh);
+	std::vector<bool> is_face_inserted(floatTetWildInputFaces.size(), false);
+	floatTetWild::FloatTetDelaunay::tetrahedralize(floatTetWildInputVetices, floatTetWildInputFaces, tree, mesh, is_face_inserted);
+	insert_triangles(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, mesh, is_face_inserted, tree, false);
+	optimization(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, is_face_inserted, mesh, tree, {{1, 1, 1, 1}});
+	correct_tracked_surface_orientation(mesh, tree);
+	filter_outside(mesh);
+	Eigen::MatrixXd V_sf;
+	Eigen::MatrixXi F_sf;
+	get_surface(mesh, V_sf, F_sf);
 
 	return /*{alphaShapeTriMeshIndices, vertexVector}*/nullptr;
 }

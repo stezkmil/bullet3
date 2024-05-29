@@ -135,7 +135,66 @@ void Collide::initPhysics()
 
         //auto convexHullTetraBody = btSoftBodyHelpers::CreateFromConvexHull(getDeformableDynamicsWorld()->getWorldInfo(), pointCloud.data(), pointCloud.size(), false);
 
-        //auto psbMy = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, normalsMy, 0.4, true);
+        std::vector<btVector3> verticesMy = {
+			// Front face
+			btVector3(-1.0, -1.0, 1.0),  // Vertex 0
+			btVector3(1.0, -1.0, 1.0),   // Vertex 1
+			btVector3(1.0, 1.0, 1.0),    // Vertex 2
+			btVector3(-1.0, 1.0, 1.0),   // Vertex 3
+			// Back face
+			btVector3(-1.0, -1.0, -1.0),  // Vertex 4
+			btVector3(1.0, -1.0, -1.0),   // Vertex 5
+			btVector3(1.0, 1.0, -1.0),    // Vertex 6
+			btVector3(-1.0, 1.0, -1.0),   // Vertex 7
+		};
+
+        std::vector<int> trianglesMy = {
+			// Front face
+			0, 1, 2, 0, 2, 3,
+			// Back face
+			4, 5, 6, 4, 6, 7,
+			// Left face
+			0, 3, 7, 0, 7, 4,
+			// Right face
+			1, 5, 6, 1, 6, 2,
+			// Top face
+			3, 2, 6, 3, 6, 7,
+			// Bottom face
+			0, 1, 5, 0, 5, 4};
+
+        std::vector<btVector3> normalsMy = {
+			// Front face
+			btVector3(0.0, 0.0, 1.0),  // Normals for vertices 0, 1, 2, 3
+			btVector3(0.0, 0.0, 1.0),
+			btVector3(0.0, 0.0, 1.0),
+			btVector3(0.0, 0.0, 1.0),
+			// Back face
+			btVector3(0.0, 0.0, -1.0),  // Normals for vertices 4, 5, 6, 7
+			btVector3(0.0, 0.0, -1.0),
+			btVector3(0.0, 0.0, -1.0),
+			btVector3(0.0, 0.0, -1.0),
+			// Left face
+			btVector3(-1.0, 0.0, 0.0),  // Normals for vertices 0, 3, 7, 4
+			btVector3(-1.0, 0.0, 0.0),
+			btVector3(-1.0, 0.0, 0.0),
+			btVector3(-1.0, 0.0, 0.0),
+			// Right face
+			btVector3(1.0, 0.0, 0.0),  // Normals for vertices 1, 5, 6, 2
+			btVector3(1.0, 0.0, 0.0),
+			btVector3(1.0, 0.0, 0.0),
+			btVector3(1.0, 0.0, 0.0),
+			// Top face
+			btVector3(0.0, 1.0, 0.0),  // Normals for vertices 3, 2, 6, 7
+			btVector3(0.0, 1.0, 0.0),
+			btVector3(0.0, 1.0, 0.0),
+			btVector3(0.0, 1.0, 0.0),
+			// Bottom face
+			btVector3(0.0, -1.0, 0.0),  // Normals for vertices 0, 1, 5, 4
+			btVector3(0.0, -1.0, 0.0),
+			btVector3(0.0, -1.0, 0.0),
+			btVector3(0.0, -1.0, 0.0)};
+
+        auto psbMy = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, normalsMy, 1.0, true);
 		
         /*std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
 		ofs.imbue(std::locale::classic());
