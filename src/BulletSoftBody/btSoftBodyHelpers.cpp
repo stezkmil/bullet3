@@ -38,7 +38,6 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 
 #include "libqhullcpp/PointCoordinates.h"
 #include "libqhullcpp/Qhull.h"
-//#include "libqhullcpp/QhullFacet.h"
 #include "libqhullcpp/QhullFacetList.h"
 #include "libqhullcpp/QhullVertexSet.h"
 
@@ -1206,6 +1205,12 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 			psb->appendLink(ni[1], ni[3], 0, true);
 			psb->appendLink(ni[2], ni[3], 0, true);
 		}
+
+		generateBoundaryFaces(psb);
+		psb->initializeDmInverse();
+		psb->m_tetraScratches.resize(psb->m_tetras.size());
+		psb->m_tetraScratchesTn.resize(psb->m_tetras.size());
+
 		return psb;
 	}
 
@@ -1641,12 +1646,6 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 
 	RemoveUnreferencedVertices(alphaShapeTriMeshIndices, vertexVector);
 
-	//psb = new btSoftBody(&worldInfo, vertexVector.size(), vertexVector.data(), nullptr);
-	//for (auto& tetra : alphaShapeTetraVector)
-	//{
-	//	psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
-	//}
-
 	GEO::initialize();
 	floatTetWild::Mesh mesh;
 	floatTetWild::Parameters& params = mesh.params;
@@ -1685,11 +1684,98 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	optimization(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, is_face_inserted, mesh, tree, {{1, 1, 1, 1}});
 	correct_tracked_surface_orientation(mesh, tree);
 	filter_outside(mesh);
-	Eigen::MatrixXd V_sf;
-	Eigen::MatrixXi F_sf;
-	get_surface(mesh, V_sf, F_sf);
+	
+	// TODO getting this will be important for rendering
+	//Eigen::MatrixXd V_sf;
+	//Eigen::MatrixXi F_sf;
+	//get_surface(mesh, V_sf, F_sf);
 
-	return /*{alphaShapeTriMeshIndices, vertexVector}*/nullptr;
+	const auto skip_tet = [&mesh](const int i)
+	{ return mesh.tets[i].is_removed; };
+	const auto skip_vertex = [&mesh](const int i)
+	{ return mesh.tet_vertices[i].is_removed; };
+
+	std::vector<int> t_ids(mesh.tets.size());
+	std::iota(std::begin(t_ids), std::end(t_ids), 0);  // Fill with 0, 1, ..., n.
+
+	std::map<int, int> old_2_new;
+	int cnt_v = 0;
+	for (int i = 0; i < mesh.tet_vertices.size(); i++)
+	{
+		if (!skip_vertex(i))
+		{
+			old_2_new[i] = cnt_v;
+			cnt_v++;
+		}
+	}
+	int cnt_t = 0;
+	for (const int i : t_ids)
+	{
+		if (!skip_tet(i))
+			cnt_t++;
+	}
+
+	std::vector<btScalar> V_flat(cnt_v * 3);
+	std::vector<int> T_flat(cnt_t * 4);
+
+	size_t index = 0;
+	for (size_t i = 0; i < mesh.tet_vertices.size(); ++i)
+	{
+		if (skip_vertex(i))
+			continue;
+		for (int j = 0; j < 3; j++)
+			V_flat[index * 3 + j] = mesh.tet_vertices[i][j];
+		index++;
+	}
+
+	index = 0;
+	for (const int i : t_ids)
+	{
+		if (skip_tet(i))
+			continue;
+		T_flat[index * 4 + 0] = old_2_new[mesh.tets[i][0]];
+		T_flat[index * 4 + 1] = old_2_new[mesh.tets[i][1]];
+		T_flat[index * 4 + 2] = old_2_new[mesh.tets[i][3]];
+		T_flat[index * 4 + 3] = old_2_new[mesh.tets[i][2]];
+
+		index++;
+	}
+
+	// TODO modify V_flat and T_flat to directly use them
+	std::vector<btVector3> vertexFinal(V_flat.size() / 3);
+	std::vector<std::array<int, 4>> tetraFinal(T_flat.size() / 4);
+
+	for (auto i = 0; i < V_flat.size(); i += 3)
+	{
+		vertexFinal[i / 3] = btVector3(V_flat[i], V_flat[i + 1], V_flat[i + 2]);
+	}
+
+	for (auto i = 0; i < T_flat.size(); i += 4)
+	{
+		tetraFinal[i / 4] = {T_flat[i], T_flat[i + 1], T_flat[i + 2], T_flat[i + 3]};
+	}
+
+	psb = new btSoftBody(&worldInfo, vertexFinal.size(), vertexFinal.data(), nullptr);
+	for (auto& tetra : tetraFinal)
+	{
+		psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
+		if (createLinks)
+		{
+			psb->appendLink(tetra[0], tetra[1], 0, true);
+			psb->appendLink(tetra[1], tetra[2], 0, true);
+			psb->appendLink(tetra[2], tetra[0], 0, true);
+			psb->appendLink(tetra[0], tetra[3], 0, true);
+			psb->appendLink(tetra[1], tetra[3], 0, true);
+			psb->appendLink(tetra[2], tetra[3], 0, true);
+		}
+	}
+
+	generateBoundaryFaces(psb);
+	psb->initializeDmInverse();
+	psb->m_tetraScratches.resize(psb->m_tetras.size());
+	psb->m_tetraScratchesTn.resize(psb->m_tetras.size());
+
+	return psb;
 }
 
 static int nextLine(const char* buffer)

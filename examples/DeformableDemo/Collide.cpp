@@ -194,7 +194,7 @@ void Collide::initPhysics()
 			btVector3(0.0, -1.0, 0.0),
 			btVector3(0.0, -1.0, 0.0)};
 
-        auto psbMy = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, normalsMy, 1.0, true);
+        auto psb = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, normalsMy, 1.0, true);
 		
         /*std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
 		ofs.imbue(std::locale::classic());
@@ -228,9 +228,9 @@ void Collide::initPhysics()
 		}
 		ofs.close();*/
 
-        std::string filepath("../../../data/tube/");
+        /*std::string filepath("../../../data/tube/");
 		std::string filename = filepath + "tube_dbg.vtk";
-		btSoftBody* psb = btSoftBodyHelpers::CreateFromVtkFile(getDeformableDynamicsWorld()->getWorldInfo(), filename.c_str());
+		btSoftBody* psb = btSoftBodyHelpers::CreateFromVtkFile(getDeformableDynamicsWorld()->getWorldInfo(), filename.c_str());*/
 
         getDeformableDynamicsWorld()->addSoftBody(psb);
         psb->scale(btVector3(2, 2, 2));
