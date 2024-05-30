@@ -26,6 +26,10 @@
 
 #include "../CommonInterfaces/CommonDeformableBodyBase.h"
 #include "../Utils/b3ResourcePath.h"
+#include "../Importers/ImportMeshUtility/b3ImportMeshUtility.h"
+#include "../Utils/b3BulletDefaultFileIO.h"
+
+#include "../../ThirdPartyLibs/Wavefront/tiny_obj_loader.h"
 
 ///The Collide shows the contact between volumetric deformable objects and rigid objects.
 static btScalar E = 1000000;
@@ -135,66 +139,24 @@ void Collide::initPhysics()
 
         //auto convexHullTetraBody = btSoftBodyHelpers::CreateFromConvexHull(getDeformableDynamicsWorld()->getWorldInfo(), pointCloud.data(), pointCloud.size(), false);
 
-        std::vector<btVector3> verticesMy = {
-			// Front face
-			btVector3(-1.0, -1.0, 1.0),  // Vertex 0
-			btVector3(1.0, -1.0, 1.0),   // Vertex 1
-			btVector3(1.0, 1.0, 1.0),    // Vertex 2
-			btVector3(-1.0, 1.0, 1.0),   // Vertex 3
-			// Back face
-			btVector3(-1.0, -1.0, -1.0),  // Vertex 4
-			btVector3(1.0, -1.0, -1.0),   // Vertex 5
-			btVector3(1.0, 1.0, -1.0),    // Vertex 6
-			btVector3(-1.0, 1.0, -1.0),   // Vertex 7
-		};
+        b3BulletDefaultFileIO fileIO;
+        std::vector<bt_tinyobj::shape_t> shapes;
+		bt_tinyobj::attrib_t attribute;
+		std::string err = bt_tinyobj::LoadObj(attribute, shapes, "../../../data/tube/tube.OBJ", "../../../data/tube/", &fileIO);
+		std::vector<btVector3> verticesMy(attribute.vertices.size() / 3), normalsMy(attribute.vertices.size() / 3);
+		std::vector<int> indicesMy(shapes.front().mesh.indices.size());
 
-        std::vector<int> trianglesMy = {
-			// Front face
-			0, 1, 2, 0, 2, 3,
-			// Back face
-			4, 5, 6, 4, 6, 7,
-			// Left face
-			0, 3, 7, 0, 7, 4,
-			// Right face
-			1, 5, 6, 1, 6, 2,
-			// Top face
-			3, 2, 6, 3, 6, 7,
-			// Bottom face
-			0, 1, 5, 0, 5, 4};
+        for (int i = 0; i < attribute.vertices.size(); i += 3)
+        {
+			verticesMy[i / 3] = btVector3(attribute.vertices[i], attribute.vertices[i + 1], attribute.vertices[i + 2]);
+			normalsMy[i / 3] = btVector3(attribute.normals[i], attribute.normals[i + 1], attribute.normals[i + 2]);
+        }
+		for (int i = 0; i < shapes.front().mesh.indices.size(); ++i)
+		{
+			indicesMy[i] = shapes.front().mesh.indices[i].vertex_index;
+		}
 
-        std::vector<btVector3> normalsMy = {
-			// Front face
-			btVector3(0.0, 0.0, 1.0),  // Normals for vertices 0, 1, 2, 3
-			btVector3(0.0, 0.0, 1.0),
-			btVector3(0.0, 0.0, 1.0),
-			btVector3(0.0, 0.0, 1.0),
-			// Back face
-			btVector3(0.0, 0.0, -1.0),  // Normals for vertices 4, 5, 6, 7
-			btVector3(0.0, 0.0, -1.0),
-			btVector3(0.0, 0.0, -1.0),
-			btVector3(0.0, 0.0, -1.0),
-			// Left face
-			btVector3(-1.0, 0.0, 0.0),  // Normals for vertices 0, 3, 7, 4
-			btVector3(-1.0, 0.0, 0.0),
-			btVector3(-1.0, 0.0, 0.0),
-			btVector3(-1.0, 0.0, 0.0),
-			// Right face
-			btVector3(1.0, 0.0, 0.0),  // Normals for vertices 1, 5, 6, 2
-			btVector3(1.0, 0.0, 0.0),
-			btVector3(1.0, 0.0, 0.0),
-			btVector3(1.0, 0.0, 0.0),
-			// Top face
-			btVector3(0.0, 1.0, 0.0),  // Normals for vertices 3, 2, 6, 7
-			btVector3(0.0, 1.0, 0.0),
-			btVector3(0.0, 1.0, 0.0),
-			btVector3(0.0, 1.0, 0.0),
-			// Bottom face
-			btVector3(0.0, -1.0, 0.0),  // Normals for vertices 0, 1, 5, 4
-			btVector3(0.0, -1.0, 0.0),
-			btVector3(0.0, -1.0, 0.0),
-			btVector3(0.0, -1.0, 0.0)};
-
-        auto psb = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), trianglesMy, verticesMy, normalsMy, 1.0, true);
+        auto psb = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), indicesMy, verticesMy, normalsMy, 0.1, 0.7, 4, true, true, true, true, true);
 		
         /*std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
 		ofs.imbue(std::locale::classic());
