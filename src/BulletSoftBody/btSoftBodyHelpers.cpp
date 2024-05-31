@@ -1152,7 +1152,7 @@ std::tuple<std::vector<btVector3>, std::vector<btVector3>> btSoftBodyHelpers::Sa
 																const std::vector<btVector3>& normals)
 {
 	std::vector<btScalar> areas(triangleIndices.size() / 3);
-	std::vector<btVector3> pointCloud(numberOfPoints), normalCloud(numberOfPoints);
+	std::vector<btVector3> pointCloud(vertices.size() + numberOfPoints), normalCloud(vertices.size() + numberOfPoints);
 	for (auto ti = 0; ti < triangleIndices.size(); ti += 3)
 	{
 		areas[ti / 3] = AreaOf(vertices[triangleIndices[ti]], vertices[triangleIndices[ti + 1]], vertices[triangleIndices[ti + 2]]) / 2.0;
@@ -1162,7 +1162,14 @@ std::tuple<std::vector<btVector3>, std::vector<btVector3>> btSoftBodyHelpers::Sa
 	std::uniform_real_distribution<btScalar> distributionUniformReal(0.0, 1.0);
 	RandomStd::mt19937Engine.seed(0);
 
-	for (auto pointIndex = 0; pointIndex < numberOfPoints; ++pointIndex)
+	auto pointIndex = 0;
+	for (; pointIndex < vertices.size(); ++pointIndex)
+	{
+		pointCloud[pointIndex] = vertices[pointIndex];
+		normalCloud[pointIndex] = normals[pointIndex];
+	}
+
+	for (; pointIndex < vertices.size() + numberOfPoints; ++pointIndex)
 	{
 		btScalar r1 = distributionUniformReal(RandomStd::mt19937Engine);
 		btScalar r2 = distributionUniformReal(RandomStd::mt19937Engine);
@@ -1701,8 +1708,8 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	floatTetWild::Parameters& params = mesh.params;
 	GEO::Mesh geoMesh;
 
-	params.eps_rel = 0.001 * tetrahedralizationQuality + 0.1 * (1.0 - tetrahedralizationQuality);
-	params.ideal_edge_length_rel = 0.05 * tetrahedralizationQuality + 1.0 * (1.0 - tetrahedralizationQuality);
+	params.eps_rel = 0.001 * tetrahedralizationQuality + 0.01 * (1.0 - tetrahedralizationQuality);
+	//params.ideal_edge_length_rel = 0.05 * tetrahedralizationQuality + 0.2 * (1.0 - tetrahedralizationQuality);
 
 	const auto& verticesForTetrahedralization = doAlphaShapePhase ? vertexVector : vertices;
 	const auto& indicesForTetrahedralization = doAlphaShapePhase ? alphaShapeTriMeshIndices : triangleIndices;
@@ -1732,7 +1739,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 		return nullptr;
 	}
 
-	simplify(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, tree, params, false);
+	simplify(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, tree, params, true); // skip set to true because it crashes sometimes in Release. TODO fix.
 	tree.init_b_mesh_and_tree(floatTetWildInputVetices, floatTetWildInputFaces, mesh);
 	std::vector<bool> is_face_inserted(floatTetWildInputFaces.size(), false);
 	floatTetWild::FloatTetDelaunay::tetrahedralize(floatTetWildInputVetices, floatTetWildInputFaces, tree, mesh, is_face_inserted);
