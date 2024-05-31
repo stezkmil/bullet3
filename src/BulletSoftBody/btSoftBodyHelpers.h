@@ -24,6 +24,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "btSoftBody.h"
 #include <fstream>
 #include <string>
+#include <vector>
 //
 // Helpers
 //
@@ -127,6 +128,11 @@ struct btSoftBodyHelpers
 											const btVector3* vertices,
 											int nvertices,
 											bool randomizeConstraints = true);
+
+	static std::tuple<std::vector<btVector3>, std::vector<btVector3>> SamplePointsUniformly(int numberOfPoints, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals);
+	static btSoftBody* CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangles, const std::vector<btVector3>& vertices,
+												 const std::vector<btVector3>& normals, btScalar alpha, btScalar tetrahedralizationQuality, btScalar subsamplingForAlphaShapeFactor, bool subsamplingForAlphaShape,
+		bool doAlphaShapePhase, bool createLinks, bool writeDebugAlphaShapeOutputToFile, bool writeDebugTetrahedralizationOutputToFile);
 
 	/* Export TetGen compatible .smesh file									*/
 	//	static void				ExportAsSMeshFile(	btSoftBody* psb,
