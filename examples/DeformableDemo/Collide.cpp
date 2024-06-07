@@ -213,7 +213,7 @@ void Collide::initPhysics()
         psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
         psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
-        btSoftBodyHelpers::generateBoundaryFaces(psb);
+        //btSoftBodyHelpers::generateBoundaryFaces(psb);
         
         //psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
         
