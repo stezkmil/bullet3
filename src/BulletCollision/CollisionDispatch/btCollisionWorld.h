@@ -108,6 +108,8 @@ protected:
 
 	void serializeContactManifolds(btSerializer* serializer);
 
+	void processLastSafeTransforms(btCollisionObject** bodies, int numBodies);
+
 public:
 	//this constructor doesn't own the dispatcher and paircache/broadphase
 	btCollisionWorld(btDispatcher* dispatcher, btBroadphaseInterface* broadphasePairCache, btCollisionConfiguration* collisionConfiguration);

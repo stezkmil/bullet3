@@ -52,9 +52,6 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 
 #include "LinearMath/btSerializer.h"
 
-#include <vector>
-#include <stack>
-
 #if 0
 btAlignedObjectArray<btVector3> debugContacts;
 btAlignedObjectArray<btVector3> debugNormals;
@@ -964,135 +961,6 @@ void btDiscreteDynamicsWorld::createPredictiveContacts(btScalar timeStep)
 	}
 }
 
-void btDiscreteDynamicsWorld::processLastSafeTransforms(btRigidBody** bodies, int numBodies)
-{
-	int numManifolds = getDispatcher()->getNumManifolds();
-	std::map<const btCollisionObject*, const btCollisionObject*> penetratingColliders;
-	for (int i = 0; i < numManifolds; i++)
-	{
-		btPersistentManifold* contactManifold = getDispatcher()->getManifoldByIndexInternal(i);
-
-		int numContacts = contactManifold->getNumContacts();
-		for (int j = 0; j < numContacts; ++j)
-		{
-			auto cp = contactManifold->getContactPoint(j);
-			bool penetration = cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING;
-			bool phaseThrough = (contactManifold->getBody0()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
-								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE);
-			if (penetration && !phaseThrough)
-			{
-				penetratingColliders.insert({contactManifold->getBody0(), contactManifold->getBody1()});
-				penetratingColliders.insert({contactManifold->getBody1(), contactManifold->getBody0()});
-			}
-		}
-	}
-
-	std::vector<bool> bodyAlreadyUnstuck(numBodies, false);
-
-	struct StackElem
-	{
-		btRigidBody* body;
-		const btCollisionObject* opposingBody;
-		bool original;
-	};
-
-	std::stack<StackElem> bodyStack;
-	bool nothingStuck = true;
-
-	for (int i = 0; i < numBodies; i++)
-	{
-		btRigidBody* body = bodies[i];
-		if (body->isStaticObject())
-			continue;
-		auto penColIter = penetratingColliders.find(body);
-		if (penColIter != penetratingColliders.end() && (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK))
-		{
-			// We got into the penetration which I consider to be an invalid state. In this case, top priority for me is unstuck.
-			// For now I zero the velocities which seems to work fine for meshes of normal size. For smaller
-			// meshes, there seems to be some momentum accumulation somewhere because it takes a while
-			// before they start rotating in opposite direction. Will look into that later. Probably has something to do
-			// with the hand constraint being weaker on small meshes.
-			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
-			bodyStack.push({body, penColIter->second, true});
-			nothingStuck = false;
-		}
-		else
-		{
-			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
-			auto stuckTestCounter = body->getUserIndex2();
-			if (stuckTestCounter > 0)
-			{
-				body->setUserIndex2(stuckTestCounter - 1);
-			}
-		}
-	}
-
-	while (!bodyStack.empty())
-	{
-		auto elem = bodyStack.top();
-		auto body = elem.body;
-		auto opposingBody = elem.opposingBody;
-		bool original = elem.original;
-		bodyStack.pop();
-		if (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK)
-		{
-			for (int i = 0; i < numBodies; i++)
-			{
-				btRigidBody* surroundingBody = bodies[i];
-				if (surroundingBody->isStaticObject() || surroundingBody->getLastSafeWorldTransform() == btTransform::getIdentity() ||
-					bodyAlreadyUnstuck[i])
-					continue;
-				btAABB bodyAabb, surroundingBodyAabb;
-				body->getAabb(bodyAabb.m_min, bodyAabb.m_max);
-				surroundingBody->getAabb(surroundingBodyAabb.m_min, surroundingBodyAabb.m_max);
-				// This is a rough culling of bodies affected by the body from the stack being stuck
-				if (!bodyAabb.has_collision(surroundingBodyAabb))
-					continue;
-				// Experimental disable of the velocity resets. Was causing bad stoppages in traditional dynamics scenes (bowling etc.)
-				//btVector3 zeroVec(0.0, 0.0, 0.0);
-				//surroundingBody->setLinearVelocity(zeroVec);
-				//surroundingBody->setAngularVelocity(zeroVec);
-				btTransform dst = surroundingBody->getLastSafeWorldTransform();
-				btTransform src = surroundingBody->getWorldTransform();
-				// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
-				// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
-				constexpr btScalar speedOfConvergenceToSafe = 0.1;
-				btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), speedOfConvergenceToSafe);
-				btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), speedOfConvergenceToSafe);
-				btTransform interp(interpRot, interpOrigin);
-				surroundingBody->setWorldTransform(interp);
-				if (!m_forceUpdateAllAabbs)
-					updateSingleAabb(surroundingBody);
-				bodyAlreadyUnstuck[i] = true;
-
-				if (original && body == surroundingBody && opposingBody && body->getUserIndex2() > 0)
-				{
-					// Body is having difficulties staying unstuck with that opposing body, tolerate the opposing body otherwise some severe slowdowns could be
-					// experienced - these are a TODO too, they should not cause such gradual performance deterioration.
-					surroundingBody->setUserIndex2(0);
-					surroundingBody->setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL, opposingBody);
-				}
-				// If a stuck situation happens, we play it safe and propagate the unstucking even based on rough aabb tests. Let's see if it is
-				// acceptable for our use case
-				bodyStack.push({surroundingBody, nullptr, false});
-			}
-		}
-		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_IS_PENETRATING);
-	}
-
-	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state
-	if (nothingStuck)
-	{
-		for (int i = 0; i < numBodies; i++)
-		{
-			btRigidBody* body = bodies[i];
-			if (body->isStaticObject())
-				continue;
-			body->updateLastSafeWorldTransform();
-		}
-	}
-}
-
 void btDiscreteDynamicsWorld::integrateTransformsInternal(btRigidBody** bodies, int numBodies, btScalar timeStep)
 {
 	btTransform predictedTrans;
@@ -1194,7 +1062,7 @@ void btDiscreteDynamicsWorld::updateLastSafeTransforms()
 		BT_PROFILE("savePreviousTransforms");
 		if (m_nonStaticRigidBodies.size() > 0)
 		{
-			processLastSafeTransforms(&m_nonStaticRigidBodies[0], m_nonStaticRigidBodies.size());
+			processLastSafeTransforms(reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size());
 		}
 }
 
