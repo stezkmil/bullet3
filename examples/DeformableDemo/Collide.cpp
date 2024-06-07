@@ -138,7 +138,7 @@ void Collide::initPhysics()
                                                                   false, true, true);*/
 
         //auto convexHullTetraBody = btSoftBodyHelpers::CreateFromConvexHull(getDeformableDynamicsWorld()->getWorldInfo(), pointCloud.data(), pointCloud.size(), false);
-
+        //
         b3BulletDefaultFileIO fileIO;
         std::vector<bt_tinyobj::shape_t> shapes;
 		bt_tinyobj::attrib_t attribute;
