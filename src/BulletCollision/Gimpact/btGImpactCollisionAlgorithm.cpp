@@ -665,7 +665,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	{
 		bool check0 = body0Wrap->getCollisionObject()->checkIsTolerated(body1Wrap->getCollisionObject());
 		bool check1 = body1Wrap->getCollisionObject()->checkIsTolerated(body0Wrap->getCollisionObject());
-		findOnlyFirstPenetratingPair = (check0 || check1);
+		findOnlyFirstPenetratingPair |= (check0 || check1);
 	}
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstPenetratingPair |= generateManifoldForGhost;

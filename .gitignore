@@ -17,6 +17,7 @@ pip-selfcheck.json
 
 # Setuptools
 /build
+/build_arm64
 /dist
 *.eggs
 

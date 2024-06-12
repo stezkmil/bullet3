@@ -90,7 +90,14 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 	///perform collision detection that involves rigid/multi bodies
 	btMultiBodyDynamicsWorld::performDiscreteCollisionDetection();
 
+	if (0 != m_internalPostDiscreteCollisionDetectionTickCallback)
+	{
+		(*m_internalPostDiscreteCollisionDetectionTickCallback)(this, timeStep);
+	}
+
 	btMultiBodyDynamicsWorld::calculateSimulationIslands();
+
+	updateLastSafeTransforms();
 
 	beforeSolverCallbacks(timeStep);
 
