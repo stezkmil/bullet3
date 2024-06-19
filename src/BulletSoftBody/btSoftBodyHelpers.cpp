@@ -1187,14 +1187,35 @@ std::tuple<std::vector<btVector3>, std::vector<btVector3>> btSoftBodyHelpers::Sa
 	return {pointCloud, normalCloud};
 }
 
-btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices,
+void btSoftBodyHelpers::PopulateTetras(btSoftBody* psb, const std::vector<std::array<int, 4>>& tetras, bool createLinks)
+{
+	for (auto& tetra : tetras)
+	{
+		psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
+		if (createLinks)
+		{
+			psb->appendLink(tetra[0], tetra[1], 0, true);
+			psb->appendLink(tetra[1], tetra[2], 0, true);
+			psb->appendLink(tetra[2], tetra[0], 0, true);
+			psb->appendLink(tetra[0], tetra[3], 0, true);
+			psb->appendLink(tetra[1], tetra[3], 0, true);
+			psb->appendLink(tetra[2], tetra[3], 0, true);
+		}
+	}
+
+	btSoftBodyHelpers::generateBoundaryFaces(psb);
+	psb->initializeDmInverse();
+	psb->m_tetraScratches.resize(psb->m_tetras.size());
+	psb->m_tetraScratchesTn.resize(psb->m_tetras.size());
+}
+
+bool btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangleIndices,
 														 const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals, btScalar alpha, btScalar tetrahedralizationQuality,
 														 btScalar subsamplingForAlphaShapeFactor, bool subsamplingForAlphaShape, bool doAlphaShapePhase, bool createLinks,
-	bool writeDebugAlphaShapeOutputToFile, bool writeDebugTetrahedralizationOutputToFile)
+														   bool writeDebugAlphaShapeOutputToFile, bool writeDebugTetrahedralizationOutputToFile, std::vector<btVector3>& verticesRetVal, std::vector<std::array<int, 4>>& tetrasRetVal)
 {
 	std::vector<btVector3> vertexVector;
 	std::vector<int> alphaShapeTriMeshIndices;
-	btSoftBody* psb = nullptr;
 
 	/////////////////////////////
 	// Alpha Shape Phase Start
@@ -1224,30 +1245,15 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 		auto& pointCloud = subsamplingForAlphaShape ? std::get<0>(sampleTuple) : vertices;
 		auto& normalCloud = subsamplingForAlphaShape ? std::get<1>(sampleTuple) : normals;
 		if (pointCloud.size() < 4)
-			return psb;
+			return false;
 
 		// qhull cannot deal with this case
 		if (pointCloud.size() == 4)
 		{
-			psb = new btSoftBody(&worldInfo, pointCloud.size(), pointCloud.data(), nullptr);
-			std::vector<int> ni = {0, 1, 2, 3};
-			psb->appendTetra(ni[0], ni[1], ni[2], ni[3]);
-			if (createLinks)
-			{
-				psb->appendLink(ni[0], ni[1], 0, true);
-				psb->appendLink(ni[1], ni[2], 0, true);
-				psb->appendLink(ni[2], ni[0], 0, true);
-				psb->appendLink(ni[0], ni[3], 0, true);
-				psb->appendLink(ni[1], ni[3], 0, true);
-				psb->appendLink(ni[2], ni[3], 0, true);
-			}
-
-			generateBoundaryFaces(psb);
-			psb->initializeDmInverse();
-			psb->m_tetraScratches.resize(psb->m_tetras.size());
-			psb->m_tetraScratchesTn.resize(psb->m_tetras.size());
-
-			return psb;
+			
+			verticesRetVal = pointCloud;
+			tetrasRetVal.push_back({0, 1, 2, 3});
+			return true;
 		}
 
 		auto GetOrderedTriangle = [](int vidx0, int vidx1, int vidx2) -> std::array<int, 3>
@@ -1736,7 +1742,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	floatTetWild::AABBWrapper tree(geoMesh);
 	if (!params.init(tree.get_sf_diag()))
 	{
-		return nullptr;
+		return false;
 	}
 
 	simplify(floatTetWildInputVetices, floatTetWildInputFaces, floatTetWildInputTags, tree, params, true); // skip set to true because it crashes sometimes in Release. TODO fix.
@@ -1825,27 +1831,9 @@ btSoftBody* btSoftBodyHelpers::CreateFromQHullAlphaShape(btSoftBodyWorldInfo& wo
 	// High Quality Tetrahedralization Phase End
 	///////////////////////////////////////////////////
 
-	psb = new btSoftBody(&worldInfo, vertexFinal.size(), vertexFinal.data(), nullptr);
-	for (auto& tetra : tetraFinal)
-	{
-		psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
-		if (createLinks)
-		{
-			psb->appendLink(tetra[0], tetra[1], 0, true);
-			psb->appendLink(tetra[1], tetra[2], 0, true);
-			psb->appendLink(tetra[2], tetra[0], 0, true);
-			psb->appendLink(tetra[0], tetra[3], 0, true);
-			psb->appendLink(tetra[1], tetra[3], 0, true);
-			psb->appendLink(tetra[2], tetra[3], 0, true);
-		}
-	}
-
-	generateBoundaryFaces(psb);
-	psb->initializeDmInverse();
-	psb->m_tetraScratches.resize(psb->m_tetras.size());
-	psb->m_tetraScratchesTn.resize(psb->m_tetras.size());
-
-	return psb;
+	verticesRetVal = vertexFinal;
+	tetrasRetVal = tetraFinal;
+	return true;
 }
 
 static int nextLine(const char* buffer)

@@ -23,6 +23,7 @@
 #include "../CommonInterfaces/CommonParameterInterface.h"
 #include <stdio.h>  //printf debugging
 #include <iomanip>
+#include <array>
 
 #include "../CommonInterfaces/CommonDeformableBodyBase.h"
 #include "../Utils/b3ResourcePath.h"
@@ -156,7 +157,11 @@ void Collide::initPhysics()
 			indicesMy[i] = shapes.front().mesh.indices[i].vertex_index;
 		}
 
-        auto psb = btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), indicesMy, verticesMy, normalsMy, 0.1, 0.0, 3, true, true, true, false, false);
+        std::vector<btVector3> softBodyVerts;
+        std::vector<std::array<int, 4>> softBodyTetrtas;
+		btSoftBodyHelpers::CreateFromQHullAlphaShape(getDeformableDynamicsWorld()->getWorldInfo(), indicesMy, verticesMy, normalsMy, 0.1, 0.0, 3, true, true, true, false, false, softBodyVerts, softBodyTetrtas);
+		auto psb = new btSoftBody(&getDeformableDynamicsWorld()->getWorldInfo(), softBodyVerts.size(), softBodyVerts.data(), nullptr);
+		btSoftBodyHelpers::PopulateTetras(psb, softBodyTetrtas, true);
 		
         /*std::ofstream ofs("../../../data/tube/tube_dbg.vtk");
 		ofs.imbue(std::locale::classic());
