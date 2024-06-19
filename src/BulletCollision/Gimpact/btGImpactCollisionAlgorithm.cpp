@@ -670,20 +670,22 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstPenetratingPair |= generateManifoldForGhost;
 
-	if (findOnlyFirstPenetratingPair && (lowDetail0 || lowDetail1))
-	{
-		const btCollisionObject* checked = nullptr;
-		if (isTol0)
-			checked = body0Wrap->getCollisionObject();
-		else if (isTol1)
-			checked = body1Wrap->getCollisionObject();
-		auto& participants = isTol0 ? m_dispatcher->getInitialCollisionParticipants0() : m_dispatcher->getInitialCollisionParticipants1();
-		if (checked && participants.find(checked) != participants.end())
-		{
-			// There already was some collision with some other body and the details are low. No need to waste time checking with this and the remaining bodies
-			return;
-		}
-	}
+	// Unfortunately it was found that this optimization is not possible anymore, ever since the whole controller grab is an option. With this option on,
+	// all the remaining bodies have to be checked in case one of them is a controller.
+	//if (findOnlyFirstPenetratingPair && (lowDetail0 || lowDetail1))
+	//{
+	//	const btCollisionObject* checked = nullptr;
+	//	if (isTol0)
+	//		checked = body0Wrap->getCollisionObject();
+	//	else if (isTol1)
+	//		checked = body1Wrap->getCollisionObject();
+	//	auto& participants = isTol0 ? m_dispatcher->getInitialCollisionParticipants0() : m_dispatcher->getInitialCollisionParticipants1();
+	//	if (checked && participants.find(checked) != participants.end())
+	//	{
+	//		// There already was some collision with some other body and the details are low. No need to waste time checking with this and the remaining bodies
+	//		return;
+	//	}
+	//}
 
 	auxPairSet.clear();
 	perThreadIntermediateResults.clear();
