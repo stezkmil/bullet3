@@ -571,6 +571,23 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body)
 void btSoftBody::removeAnchor(int node)
 {
 	const btSoftBody::Node& n = m_nodes[node];
+	for (int i = 0; i < m_anchors.size();)
+	{
+		const Anchor& c = m_anchors[i];
+		if (c.m_node == &n)
+		{
+			m_anchors.removeAtIndex(i);
+		}
+		else
+		{
+			i++;
+		}
+	}
+}
+
+void btSoftBody::removeDeformableAnchor(int node)
+{
+	const btSoftBody::Node& n = m_nodes[node];
 	for (int i = 0; i < m_deformableAnchors.size();)
 	{
 		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];

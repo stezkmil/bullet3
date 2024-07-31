@@ -13510,7 +13510,7 @@ bool PhysicsServerCommandProcessor::processCreateUserConstraintCommand(const str
 						}
 						else
 						{
-							sbodyHandle->m_softBody->removeAnchor(userConstraintPtr->m_sbNodeIndex);
+							sbodyHandle->m_softBody->removeDeformableAnchor(userConstraintPtr->m_sbNodeIndex);
 						}
 					}
 				}
