@@ -56,6 +56,7 @@ SET(BulletSoftBody_HDRS
 	btDeformableNeoHookeanForce.h
 	btDeformableLinearElasticityForce.h
 	btDeformableLagrangianForce.h
+	btDeformableMousePickingForce.h
 	btPreconditioner.h
 
 	btDeformableBackwardEulerObjective.h
