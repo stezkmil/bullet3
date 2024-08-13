@@ -27,9 +27,27 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 ///This callback is called by processAllTriangles for all btConcaveShape derived class, such as  btBvhTriangleMeshShape, btStaticPlaneShape and btHeightfieldTerrainShape.
 class btTriangleCallback
 {
+	bool m_useProcessTriangleEx = false;
+
 public:
+	btTriangleCallback()
+	{
+
+	}
+	btTriangleCallback(bool useProcessTriangleEx) : m_useProcessTriangleEx(useProcessTriangleEx)
+	{
+
+	}
 	virtual ~btTriangleCallback();
+	bool usesProcessTriangleEx() const
+	{
+		return m_useProcessTriangleEx;
+	}
 	virtual void processTriangle(btVector3* triangle, int partId, int triangleIndex) = 0;
+	virtual void processTriangleEx(btVector3* triangle, int* triangleVertexIndex, int partId, int triangleIndex)
+	{
+		processTriangle(triangle, partId, triangleIndex);
+	}
 };
 
 class btInternalTriangleIndexCallback

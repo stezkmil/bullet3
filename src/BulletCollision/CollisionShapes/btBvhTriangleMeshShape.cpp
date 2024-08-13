@@ -255,6 +255,7 @@ void btBvhTriangleMeshShape::processAllTriangles(btTriangleCallback* callback, c
 		btStridingMeshInterface* m_meshInterface;
 		btTriangleCallback* m_callback;
 		btVector3 m_triangle[3];
+		int m_triangleIndices[3];
 		int m_numOverlap;
 
 		MyNodeOverlapCallback(btTriangleCallback* callback, btStridingMeshInterface* meshInterface)
@@ -316,12 +317,16 @@ void btBvhTriangleMeshShape::processAllTriangles(btTriangleCallback* callback, c
 						btScalar(graphicsbase[1]) * meshScaling.getY(),
 						btScalar(graphicsbase[2]) * meshScaling.getZ());
 				}
+				m_triangleIndices[j] = graphicsindex;
 #ifdef DEBUG_TRIANGLE_MESH
 				printf("triangle vertices:%f,%f,%f\n", triangle[j].x(), triangle[j].y(), triangle[j].z());
 #endif  //DEBUG_TRIANGLE_MESH
 			}
 
-			m_callback->processTriangle(m_triangle, nodeSubPart, nodeTriangleIndex);
+			if (m_callback->usesProcessTriangleEx())
+				m_callback->processTriangleEx(m_triangle, m_triangleIndices, nodeSubPart, nodeTriangleIndex);
+			else
+				m_callback->processTriangle(m_triangle, nodeSubPart, nodeTriangleIndex);
 			m_meshInterface->unLockReadOnlyVertexBase(nodeSubPart);
 		}
 	};
