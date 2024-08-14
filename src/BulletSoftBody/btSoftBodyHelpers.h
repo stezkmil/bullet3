@@ -130,10 +130,6 @@ struct btSoftBodyHelpers
 											bool randomizeConstraints = true);
 
 	static void PopulateTetras(btSoftBody* psb, const std::vector<std::array<int, 4>>& tetras, bool createLinks);
-	static std::tuple<std::vector<btVector3>, std::vector<btVector3>> SamplePointsUniformly(int numberOfPoints, const std::vector<int>& triangleIndices, const std::vector<btVector3>& vertices, const std::vector<btVector3>& normals);
-	static bool CreateFromQHullAlphaShape(btSoftBodyWorldInfo& worldInfo, const std::vector<int>& triangles, const std::vector<btVector3>& vertices,
-												 const std::vector<btVector3>& normals, btScalar alpha, btScalar tetrahedralizationQuality, btScalar subsamplingForAlphaShapeFactor, bool subsamplingForAlphaShape,
-										  bool doAlphaShapePhase, bool createLinks, bool writeDebugAlphaShapeOutputToFile, bool writeDebugTetrahedralizationOutputToFile, std::vector<btVector3>& verticesRetVal, std::vector<std::array<int, 4>>& tetrasRetVal);
 
 	/* Export TetGen compatible .smesh file									*/
 	//	static void				ExportAsSMeshFile(	btSoftBody* psb,

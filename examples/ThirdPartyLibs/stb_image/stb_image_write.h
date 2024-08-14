@@ -69,7 +69,6 @@ extern "C"
 
 #endif  //INCLUDE_STB_IMAGE_WRITE_H
 
-#undef STB_IMAGE_WRITE_IMPLEMENTATION
 #ifdef STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include <stdarg.h>
