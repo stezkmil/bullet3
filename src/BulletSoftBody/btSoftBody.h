@@ -34,6 +34,10 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletCollision/BroadphaseCollision/btDbvt.h"
 #include "BulletDynamics/Featherstone/btMultiBodyLinkCollider.h"
 #include "BulletDynamics/Featherstone/btMultiBodyConstraint.h"
+
+#include <memory>
+#include <vector>
+
 //#ifdef BT_USE_DOUBLE_PRECISION
 //#define btRigidBodyData	btRigidBodyDoubleData
 //#define btRigidBodyDataName	"btRigidBodyDoubleData"
@@ -1412,6 +1416,65 @@ public:
 
 	///fills the dataBuffer and returns the struct name (and 0 on failure)
 	virtual const char* serialize(void* dataBuffer, class btSerializer* serializer) const;
+};
+
+class btSoftBodyWithCollisionShape : public btSoftBody
+{
+public:
+	struct btVertexToTetraMapping
+	{
+		unsigned vertexToTetra;               // Index of first tetra index to which the collision mesh vertex is attached
+		btVector4 baryCoordInTetra;           // Barycentric coordiante of collision shape vertex in that tetra
+		btVector4 baryCoordNormalEndInTetra;  // Barycentric coordiante of collision shape vertex normal end in that tetra
+	};
+
+private:
+	// Uses technique described here https://nvidia-omniverse.github.io/PhysX/physx/5.4.0/docs/SoftBodies.html?highlight=soft%20bodies#
+	// (both simulation shape and collision shape are used in a soft body)
+	bool hasCollisionShape = false;
+	std::vector<btVector3> verticesCollisionShape;
+	std::vector<btVector3> normalsCollisionShape;
+	std::vector<unsigned int> indicesCollisionShape;
+	std::vector<btVertexToTetraMapping> collisionShapeVertexToSimTetra;
+public:
+
+	btSoftBodyWithCollisionShape(btSoftBodyWorldInfo* worldInfo, int node_count, const btVector3* simulationShapeCoordinates, const btScalar* m,
+		const std::vector<std::array<int, 4>>& simulationShapeTetras, bool createLinks, bool hasCollisionShape, std::vector<unsigned int>& indicesCollisionShape,
+		std::vector<btVector3>& verticesCollisionShape, std::vector<btVector3>& normalsCollisionShape,
+		const std::vector<btVertexToTetraMapping>& collisionShapeVertexToSimTetra) :
+		hasCollisionShape(hasCollisionShape), indicesCollisionShape(indicesCollisionShape), verticesCollisionShape(verticesCollisionShape),
+		normalsCollisionShape(normalsCollisionShape), collisionShapeVertexToSimTetra(collisionShapeVertexToSimTetra),
+		btSoftBody(worldInfo, node_count, simulationShapeCoordinates, m)
+	{
+
+	}
+
+	virtual ~btSoftBodyWithCollisionShape() {}
+
+	bool HasCollisionShape() const
+	{
+		return hasCollisionShape;
+	}
+
+	const std::vector<unsigned int>& GetCollisionShapeIndices() const
+	{
+		return indicesCollisionShape;
+	}
+
+	const std::vector<btVector3>& GetCollisionShapeVertices() const
+	{
+		return verticesCollisionShape;
+	}
+
+	const std::vector<btVector3>& GetCollisionShapeNormals() const
+	{
+		return normalsCollisionShape;
+	}
+
+	const std::vector<btVertexToTetraMapping>& GetCollisionShapeVertexToSimTetra() const
+	{
+		return collisionShapeVertexToSimTetra;
+	}
 };
 
 #endif  //_BT_SOFT_BODY_H
