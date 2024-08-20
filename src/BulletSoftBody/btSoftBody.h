@@ -1432,15 +1432,15 @@ private:
 	// Uses technique described here https://nvidia-omniverse.github.io/PhysX/physx/5.4.0/docs/SoftBodies.html?highlight=soft%20bodies#
 	// (both simulation shape and collision shape are used in a soft body)
 	bool hasCollisionShape = false;
-	std::vector<btVector3> verticesCollisionShape;
-	std::vector<btVector3> normalsCollisionShape;
-	std::vector<unsigned int> indicesCollisionShape;
+	std::vector<btVector3> verticesCollisionShape; // TODO shared pointers to avoid a vector copy
+	std::vector<btVector3> normalsCollisionShape; // TODO shared pointers to avoid a vector copy
+	std::vector<unsigned int> indicesCollisionShape; // TODO shared pointers to avoid a vector copy
 	std::vector<btVertexToTetraMapping> collisionShapeVertexToSimTetra;
 public:
 
 	btSoftBodyWithCollisionShape(btSoftBodyWorldInfo* worldInfo, int node_count, const btVector3* simulationShapeCoordinates, const btScalar* m,
-		const std::vector<std::array<int, 4>>& simulationShapeTetras, bool createLinks, bool hasCollisionShape, std::vector<unsigned int>& indicesCollisionShape,
-		std::vector<btVector3>& verticesCollisionShape, std::vector<btVector3>& normalsCollisionShape,
+		const std::vector<std::array<int, 4>>& simulationShapeTetras, bool createLinks, bool hasCollisionShape, const std::vector<unsigned int>& indicesCollisionShape,
+		const std::vector<btVector3>& verticesCollisionShape, const std::vector<btVector3>& normalsCollisionShape,
 		const std::vector<btVertexToTetraMapping>& collisionShapeVertexToSimTetra) :
 		hasCollisionShape(hasCollisionShape), indicesCollisionShape(indicesCollisionShape), verticesCollisionShape(verticesCollisionShape),
 		normalsCollisionShape(normalsCollisionShape), collisionShapeVertexToSimTetra(collisionShapeVertexToSimTetra),
