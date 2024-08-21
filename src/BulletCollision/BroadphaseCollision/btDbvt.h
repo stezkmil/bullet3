@@ -1169,13 +1169,10 @@ inline void btDbvt::collideTV(const btDbvtNode* root,
 #endif  //BT_DISABLE_STACK_TEMP_MEMORY
 
 		stack.push_back(root);
-		printf("start\n");
 		do
 		{
 			const btDbvtNode* n = stack[stack.size() - 1];
 			stack.pop_back();
-			printf("createBoxFromAABB \"l\" [%f, %f, %f] [%f, %f, %f]\n", n->volume.Mins().x(), n->volume.Mins().y(), n->volume.Mins().z(), n->volume.Maxs().x(), n->volume.Maxs().y(), n->volume.Maxs().z());
-			printf("createBoxFromAABB \"r\" [%f, %f, %f] [%f, %f, %f]\n", volume.Mins().x(), volume.Mins().y(), volume.Mins().z(), volume.Maxs().x(), volume.Maxs().y(), volume.Maxs().z());
 			if (Intersect(n->volume, volume))
 			{
 				if (n->isinternal())
@@ -1189,7 +1186,6 @@ inline void btDbvt::collideTV(const btDbvtNode* root,
 				}
 			}
 		} while (stack.size() > 0);
-		printf("end\n");
 	}
 }
 

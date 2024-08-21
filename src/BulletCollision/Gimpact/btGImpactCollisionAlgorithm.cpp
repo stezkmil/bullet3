@@ -804,7 +804,6 @@ void btGImpactCollisionAlgorithm::gimpact_vs_shape(const btCollisionObjectWrappe
 	btAlignedObjectArray<int> collided_results;
 
 	gimpact_vs_shape_find_pairs(orgtrans0, orgtrans1, shape0, shape1, collided_results);
-	printf("collided_results %d\n", collided_results.size());
 
 	if (collided_results.size() == 0) return;
 

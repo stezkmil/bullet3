@@ -2814,7 +2814,6 @@ bool btSoftBody::checkDeformableContact(const btCollisionObjectWrapper* colObjWr
 			shp,
 			nrm,
 			margin);
-	printf("dst %f\n", dst);
 
 	if (!predict)
 	{

@@ -123,7 +123,6 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		}
 
 		// set Deformable Node vs. Rigid constraint
-		printf("m_nodeRigidContacts %d\n", psb->m_nodeRigidContacts.size());
 		for (int j = 0; j < psb->m_nodeRigidContacts.size(); ++j)
 		{
 			const btSoftBody::DeformableNodeRigidContact& contact = psb->m_nodeRigidContacts[j];
