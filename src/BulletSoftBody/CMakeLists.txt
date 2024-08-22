@@ -8,7 +8,6 @@ ${BULLET_PHYSICS_SOURCE_DIR}/src
 
 SET(BulletSoftBody_SRCS
 	btSoftBody.cpp
-	btSoftBodyWithCollisionShape.cpp
 	btSoftBodyConcaveCollisionAlgorithm.cpp
 	btSoftBodyHelpers.cpp
 	btSoftBodyRigidBodyCollisionConfiguration.cpp
@@ -35,7 +34,6 @@ SET(BulletSoftBody_SRCS
 
 SET(BulletSoftBody_HDRS
 	btSoftBody.h
-	btSoftBodyWithCollisionShape.h
 	btSoftBodyData.h
 	btSoftBodyConcaveCollisionAlgorithm.h
 	btSoftBodyHelpers.h

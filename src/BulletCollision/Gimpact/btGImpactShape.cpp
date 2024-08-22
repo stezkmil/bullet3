@@ -26,14 +26,20 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "btGImpactShape.h"
 #include "btGImpactMassUtil.h"
 
-btGImpactMeshShapePart::btGImpactMeshShapePart(btStridingMeshInterface* meshInterface, int part)
+btGImpactMeshShapePart::btGImpactMeshShapePart(btStridingMeshInterface* meshInterface, int part, TrimeshPrimitiveManager* primitive_manager)
 {
 	// moved from .h to .cpp because of conditional compilation
 	// (The setting of BT_THREADSAFE may differ between various cpp files, so it is best to
 	// avoid using it in h files)
-	m_primitive_manager.m_meshInterface = meshInterface;
-	m_primitive_manager.m_part = part;
-	m_box_set.setPrimitiveManager(&m_primitive_manager);
+
+	if (!primitive_manager)
+		m_primitive_manager = new TrimeshPrimitiveManager;
+	else
+		m_primitive_manager = primitive_manager;
+
+	m_primitive_manager->m_meshInterface = meshInterface;
+	m_primitive_manager->m_part = part;
+	m_box_set.setPrimitiveManager(m_primitive_manager);
 #if BT_THREADSAFE
 	// If threadsafe is requested, this object uses a different lock/unlock
 	//  model with the btStridingMeshInterface -- lock once when the object is constructed
@@ -50,6 +56,8 @@ btGImpactMeshShapePart::btGImpactMeshShapePart(btStridingMeshInterface* meshInte
 
 btGImpactMeshShapePart::~btGImpactMeshShapePart()
 {
+	if (m_primitive_manager)
+		delete m_primitive_manager;
 	// moved from .h to .cpp because of conditional compilation
 #if BT_THREADSAFE
 	m_primitive_manager.unlock();

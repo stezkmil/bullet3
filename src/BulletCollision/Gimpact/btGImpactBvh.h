@@ -160,6 +160,7 @@ class btPrimitiveManagerBase
 {
 public:
 	virtual ~btPrimitiveManagerBase() {}
+	virtual btPrimitiveManagerBase* clone() const = 0;
 
 	//! determines if this manager consist on only triangles, which special case will be optimized
 	virtual bool is_trimesh() const = 0;

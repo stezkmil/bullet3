@@ -132,11 +132,11 @@ static inline btDbvtNode* buildTreeBottomUp(btAlignedObjectArray<btDbvtNode*>& l
 }
 
 //
-btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btVector3* x, const btScalar* m)
+btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btVector3* x, const btScalar* m, btCollisionShape* collisionShape)
 	: m_softBodySolver(0), m_worldInfo(worldInfo)
 {
 	/* Init		*/
-	initDefaults();
+	initDefaults(collisionShape);
 
 	/* Default material	*/
 	Material* pm = appendMaterial();
@@ -169,10 +169,10 @@ btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btV
 btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo)
 	: m_worldInfo(worldInfo)
 {
-	initDefaults();
+	initDefaults(nullptr);
 }
 
-void btSoftBody::initDefaults()
+void btSoftBody::initDefaults(btCollisionShape* collisionShape)
 {
 	m_internalType = CO_SOFT_BODY;
 	m_cfg.aeromodel = eAeroModel::V_Point;
@@ -219,8 +219,13 @@ void btSoftBody::initDefaults()
 
 	/* Collision shape	*/
 	///for now, create a collision shape internally
-	m_collisionShape = new btSoftBodyCollisionShape(this);
-	m_collisionShape->setMargin(0.25f);
+	if (collisionShape)
+		m_collisionShape = collisionShape;
+	else
+	{
+		m_collisionShape = new btSoftBodyCollisionShape(this);
+		m_collisionShape->setMargin(0.25f);
+	}
 
 	m_worldTransform.setIdentity();
 

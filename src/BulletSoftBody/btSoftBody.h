@@ -876,12 +876,12 @@ public:
 	//
 
 	/* ctor																	*/
-	btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btVector3* x, const btScalar* m);
+	btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btVector3* x, const btScalar* m, btCollisionShape* collisionShape = nullptr);
 
 	/* ctor																	*/
 	btSoftBody(btSoftBodyWorldInfo* worldInfo);
 
-	void initDefaults();
+	void initDefaults(btCollisionShape* collisionShape);
 
 	/* dtor																	*/
 	virtual ~btSoftBody();
@@ -899,9 +899,9 @@ public:
 		m_dampingCoefficient = damping_coeff;
 	}
 
-	///@todo: avoid internal softbody shape hack and move collision code to collision library
 	virtual void setCollisionShape(btCollisionShape* collisionShape)
 	{
+		m_collisionShape = collisionShape;
 	}
 
 	bool checkLink(int node0,

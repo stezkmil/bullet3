@@ -325,6 +325,11 @@ public:
 			m_compoundShape = NULL;
 		}
 
+		btPrimitiveManagerBase* clone() const override
+		{
+			return new CompoundPrimitiveManager(*this);
+		}
+
 		virtual bool is_trimesh() const
 		{
 			return false;
@@ -580,6 +585,11 @@ public:
 
 		virtual ~TrimeshPrimitiveManager() {}
 
+		virtual btPrimitiveManagerBase* clone() const override
+		{
+			return new TrimeshPrimitiveManager(*this);
+		}
+
 		void lock()
 		{
 			if (m_lock_count > 0)
@@ -648,7 +658,7 @@ public:
 			}
 		}
 
-		SIMD_FORCE_INLINE void get_vertex(unsigned int vertex_index, btVector3& vertex) const
+		virtual void get_vertex(unsigned int vertex_index, btVector3& vertex) const
 		{
 			if (type == PHY_DOUBLE)
 			{
@@ -697,15 +707,19 @@ public:
 	};
 
 protected:
-	TrimeshPrimitiveManager m_primitive_manager;
+	TrimeshPrimitiveManager* m_primitive_manager;
 
 public:
-	btGImpactMeshShapePart()
+	btGImpactMeshShapePart(TrimeshPrimitiveManager* primitive_manager = nullptr)
 	{
-		m_box_set.setPrimitiveManager(&m_primitive_manager);
+		if (!primitive_manager)
+			m_primitive_manager = new TrimeshPrimitiveManager;
+		else
+			m_primitive_manager = primitive_manager;
+		m_box_set.setPrimitiveManager(m_primitive_manager);
 	}
 
-	btGImpactMeshShapePart(btStridingMeshInterface* meshInterface, int part);
+	btGImpactMeshShapePart(btStridingMeshInterface* meshInterface, int part, TrimeshPrimitiveManager* primitive_manager = nullptr);
 	virtual ~btGImpactMeshShapePart();
 
 	//! if true, then its children must get transforms.
@@ -721,7 +735,7 @@ public:
 	//! Gets the number of children
 	virtual int getNumChildShapes() const
 	{
-		return m_primitive_manager.get_primitive_count();
+		return m_primitive_manager->get_primitive_count();
 	}
 
 	//! Gets the children
@@ -762,12 +776,12 @@ public:
 	//! Obtains the primitive manager
 	virtual const btPrimitiveManagerBase* getPrimitiveManager() const
 	{
-		return &m_primitive_manager;
+		return m_primitive_manager;
 	}
 
 	SIMD_FORCE_INLINE TrimeshPrimitiveManager* getTrimeshPrimitiveManager()
 	{
-		return &m_primitive_manager;
+		return m_primitive_manager;
 	}
 
 	virtual void calculateLocalInertia(btScalar mass, btVector3& inertia) const;
@@ -796,7 +810,7 @@ public:
 
 	virtual void getBulletTriangle(int prim_index, btTriangleShapeEx& triangle) const
 	{
-		m_primitive_manager.get_bullet_triangle(prim_index, triangle);
+		m_primitive_manager->get_bullet_triangle(prim_index, triangle);
 	}
 
 	virtual void getBulletTetrahedron(int prim_index, btTetrahedronShapeEx& tetrahedron) const
@@ -808,29 +822,29 @@ public:
 
 	SIMD_FORCE_INLINE int getVertexCount() const
 	{
-		return m_primitive_manager.get_vertex_count();
+		return m_primitive_manager->get_vertex_count();
 	}
 
 	SIMD_FORCE_INLINE void getVertex(int vertex_index, btVector3& vertex) const
 	{
-		m_primitive_manager.get_vertex(vertex_index, vertex);
+		m_primitive_manager->get_vertex(vertex_index, vertex);
 	}
 
 	SIMD_FORCE_INLINE void setMargin(btScalar margin)
 	{
-		m_primitive_manager.m_margin = margin;
+		m_primitive_manager->m_margin = margin;
 		postUpdate();
 		m_box_set.clearNodes();
 	}
 
 	SIMD_FORCE_INLINE btScalar getMargin() const
 	{
-		return m_primitive_manager.m_margin;
+		return m_primitive_manager->m_margin;
 	}
 
 	virtual void setLocalScaling(const btVector3& scaling)
 	{
-		m_primitive_manager.m_scale = scaling;
+		m_primitive_manager->m_scale = scaling;
 		postUpdate();
 		// This forces rebuild instead of refit. Because scaling changes the global bounding box used for quantization and this global bounding box was
 		// not updated in refit. Naturally this is not needed if a non-quantized bvh is used.
@@ -839,12 +853,12 @@ public:
 
 	virtual const btVector3& getLocalScaling() const
 	{
-		return m_primitive_manager.m_scale;
+		return m_primitive_manager->m_scale;
 	}
 
 	SIMD_FORCE_INLINE int getPart() const
 	{
-		return (int)m_primitive_manager.m_part;
+		return (int)m_primitive_manager->m_part;
 	}
 
 	virtual void processAllTriangles(btTriangleCallback* callback, const btVector3& aabbMin, const btVector3& aabbMax) const;
@@ -865,11 +879,16 @@ class btGImpactMeshShape : public btGImpactShapeInterface
 
 protected:
 	btAlignedObjectArray<btGImpactMeshShapePart*> m_mesh_parts;
-	void buildMeshParts(btStridingMeshInterface* meshInterface)
+	void buildMeshParts(btStridingMeshInterface* meshInterface, btGImpactMeshShapePart::TrimeshPrimitiveManager* primitive_manager = nullptr)
 	{
 		for (int i = 0; i < meshInterface->getNumSubParts(); ++i)
 		{
-			btGImpactMeshShapePart* newpart = new btGImpactMeshShapePart(meshInterface, i);
+			if (primitive_manager)
+			{
+				if (i > 0)
+					primitive_manager = static_cast<btGImpactMeshShapePart::TrimeshPrimitiveManager*>(primitive_manager->clone());
+			}
+			btGImpactMeshShapePart* newpart = new btGImpactMeshShapePart(meshInterface, i, primitive_manager);
 			m_mesh_parts.push_back(newpart);
 		}
 	}
@@ -887,10 +906,10 @@ protected:
 	}
 
 public:
-	btGImpactMeshShape(btStridingMeshInterface* meshInterface)
+	btGImpactMeshShape(btStridingMeshInterface* meshInterface, btGImpactMeshShapePart::TrimeshPrimitiveManager* primitive_manager = nullptr)
 	{
 		m_meshInterface = meshInterface;
-		buildMeshParts(meshInterface);
+		buildMeshParts(meshInterface, primitive_manager);
 	}
 
 	virtual ~btGImpactMeshShape()
