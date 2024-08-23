@@ -510,3 +510,52 @@ IF (INSTALL_CMAKE_FILES)
 		DESTINATION ${BULLET_CONFIG_CMAKE_PATH}
 	)
 ENDIF (INSTALL_CMAKE_FILES)
+
+# Define the target project directory
+IF (TARGET_COPY_DIR)
+	set(HEADERS_DESTINATION "${TARGET_COPY_DIR}/include")
+	set(LIBS_DESTINATION_DEBUG "${TARGET_COPY_DIR}/lib/x64/debug")
+	set(LIBS_DESTINATION_RELEASE "${TARGET_COPY_DIR}/lib/x64/release")
+
+	# Glob all header files in the source directory
+	file(GLOB_RECURSE COPY_HEADER_FILES "${CMAKE_SOURCE_DIR}/src/*.h")
+
+	# Generate a CMake script to copy the headers with directory structure
+	file(WRITE ${CMAKE_BINARY_DIR}/copy_headers.cmake "")
+	foreach(header_file ${COPY_HEADER_FILES})
+		# Get the relative path of the header file
+		file(RELATIVE_PATH relative_path "${CMAKE_SOURCE_DIR}/src" ${header_file})
+    
+		# Extract the directory path from the relative path
+		get_filename_component(relative_dir "${relative_path}" DIRECTORY)
+    
+		# Write commands to create the necessary directories and copy the file
+		file(APPEND ${CMAKE_BINARY_DIR}/copy_headers.cmake
+			"file(MAKE_DIRECTORY \"${HEADERS_DESTINATION}/${relative_dir}\")\n"
+			"file(COPY \"${header_file}\" DESTINATION \"${HEADERS_DESTINATION}/${relative_dir}\")\n"
+		)
+	endforeach()
+
+	add_custom_target(post_build ALL
+		COMMAND ${CMAKE_COMMAND} -E echo "Copying DLLs and PDBs..."
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+		$<IF:$<CONFIG:Debug>,${CMAKE_BINARY_DIR}/lib/Debug,${CMAKE_BINARY_DIR}/lib/RelWithDebInfo>
+		$<IF:$<CONFIG:Debug>,${LIBS_DESTINATION_DEBUG},${LIBS_DESTINATION_RELEASE}>
+	
+		COMMAND ${CMAKE_COMMAND} -E echo "Copying header files with directory structure..."
+		# Iterate over each header file
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${HEADERS_DESTINATION}
+		COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Processing header files..."
+		COMMAND ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/copy_headers.cmake
+
+
+		VERBATIM
+	)
+ENDIF (TARGET_COPY_DIR)
+
+# Collect all targets and add them as dependencies
+get_property(ALL_TARGETS DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS)
+
+foreach(target ${ALL_TARGETS})
+    add_dependencies(post_build ${target})
+endforeach()
