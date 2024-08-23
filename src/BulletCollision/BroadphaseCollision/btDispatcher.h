@@ -91,6 +91,7 @@ public:
 	virtual ~btDispatcher();
 
 	virtual btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, btPersistentManifold* sharedManifold, ebtDispatcherQueryType queryType) = 0;
+	virtual btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const int body0ShapeType, const int body1ShapeType, btPersistentManifold* sharedManifold, ebtDispatcherQueryType queryType) = 0;
 
 	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1) = 0;
 

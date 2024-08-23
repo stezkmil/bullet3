@@ -115,7 +115,10 @@ public:
 	// process collision between deformable and rigid
 	virtual void processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap)
 	{
-		softBody->defaultCollisionHandler(collisionObjectWrap);
+		if (softBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE)
+			softBody->defaultCollisionHandler(collisionObjectWrap);
+		else
+			softBody->skinCollisionHandler(collisionObjectWrap);
 	}
 
 	// process collision between deformable and deformable

@@ -744,10 +744,57 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet);
 #endif
 
+		if (body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY && shape0->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+		{
+			if (shape1->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+			{
+				gimpact_soft_vs_gimpact(body0Wrap, body1Wrap, shape0, shape1, false);
+			}
+		}
+		else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY &&
+				 body1Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+		{
+			if (body0Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+			{
+				gimpact_soft_vs_gimpact(body1Wrap, body0Wrap, shape1, shape0, true);
+			}
+		}
+
 		return;
 	}
 
 	btAssert(false); // Removed some code here not relevant to my use case.
+}
+
+void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjectWrapper* softWrap,
+														  const btCollisionObjectWrapper* rigidWrap,
+														  const btGImpactShapeInterface* softShape,
+														  const btGImpactShapeInterface* rigidShape, bool swapped)
+{
+	if (rigidShape->isCompound())
+	{
+		// TODO
+		return;
+	}
+
+	btTransform transSoft = softWrap->getWorldTransform();
+	btTransform transRigid = rigidWrap->getWorldTransform();
+
+	if (m_resultOut->getPersistentManifold()->getNumContacts() == 0) return;
+
+	btCollisionAlgorithm* algor = newAlgorithm(softWrap, rigidWrap, SOFTBODY_SHAPE_PROXYTYPE, TRIANGLE_SHAPE_PROXYTYPE);
+
+	//m_resultOut->setShapeIdentifiersA(m_part0, m_triface0);
+	//m_resultOut->setShapeIdentifiersB(m_part1, m_triface1);
+
+	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
+	{
+		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
+		algor->processCollision(softWrap, rigidWrap, *m_dispatchInfo, m_resultOut);
+	}
+
+	algor->~btCollisionAlgorithm();
+	m_dispatcher->freeCollisionAlgorithm(algor);
 }
 
 void btGImpactCollisionAlgorithm::gimpact_vs_shape(const btCollisionObjectWrapper* body0Wrap,

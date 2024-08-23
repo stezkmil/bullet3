@@ -137,6 +137,15 @@ protected:
 	}
 
 	// Call before process collision
+	SIMD_FORCE_INLINE btCollisionAlgorithm* newAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const int body0ShapeType, const int body1ShapeType)
+	{
+		checkManifold(body0Wrap, body1Wrap);
+
+		btCollisionAlgorithm* convex_algorithm = m_dispatcher->findAlgorithm(body0Wrap, body1Wrap, body0ShapeType, body1ShapeType, getLastManifold(), BT_CONTACT_POINT_ALGORITHMS);
+		return convex_algorithm;
+	}
+
+	// Call before process collision
 	SIMD_FORCE_INLINE void checkConvexAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap)
 	{
 		if (m_convex_algorithm) return;
@@ -259,6 +268,11 @@ public:
 							const btCollisionObjectWrapper* body1Wrap,
 							const btGImpactShapeInterface* shape0,
 							const btGImpactShapeInterface* shape1);
+
+	void gimpact_soft_vs_gimpact(const btCollisionObjectWrapper* softWrap,
+						  const btCollisionObjectWrapper* rigidWrap,
+						  const btGImpactShapeInterface* softShape,
+						  const btGImpactShapeInterface* rigidShape, bool swapped);
 
 	void gimpact_vs_shape(const btCollisionObjectWrapper* body0Wrap,
 						  const btCollisionObjectWrapper* body1Wrap,

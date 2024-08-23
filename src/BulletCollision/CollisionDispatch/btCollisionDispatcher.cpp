@@ -149,6 +149,25 @@ btCollisionAlgorithm* btCollisionDispatcher::findAlgorithm(const btCollisionObje
 	return algo;
 }
 
+btCollisionAlgorithm* btCollisionDispatcher::findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const int body0ShapeType, const int body1ShapeType, btPersistentManifold* sharedManifold, ebtDispatcherQueryType algoType)
+{
+	btCollisionAlgorithmConstructionInfo ci;
+
+	ci.m_dispatcher1 = this;
+	ci.m_manifold = sharedManifold;
+	btCollisionAlgorithm* algo = 0;
+	if (algoType == BT_CONTACT_POINT_ALGORITHMS)
+	{
+		algo = m_doubleDispatchContactPoints[body0ShapeType][body1ShapeType]->CreateCollisionAlgorithm(ci, body0Wrap, body1Wrap);
+	}
+	else
+	{
+		algo = m_doubleDispatchClosestPoints[body0ShapeType][body1ShapeType]->CreateCollisionAlgorithm(ci, body0Wrap, body1Wrap);
+	}
+
+	return algo;
+}
+
 bool btCollisionDispatcher::needsResponse(const btCollisionObject* body0, const btCollisionObject* body1)
 {
 	//here you can do filtering

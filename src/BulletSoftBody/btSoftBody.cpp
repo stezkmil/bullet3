@@ -4291,6 +4291,10 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
+void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap)
+{
+}
+
 void btSoftBody::geometricCollisionHandler(btSoftBody* psb)
 {
 	if (psb->isActive() || this->isActive())
