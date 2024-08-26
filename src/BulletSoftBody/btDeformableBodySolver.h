@@ -113,13 +113,7 @@ public:
 	virtual void copySoftBodyToVertexBuffer(const btSoftBody* const softBody, btVertexBufferDescriptor* vertexBuffer) {}
 
 	// process collision between deformable and rigid
-	virtual void processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap)
-	{
-		if (softBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE)
-			softBody->defaultCollisionHandler(collisionObjectWrap);
-		else
-			softBody->skinCollisionHandler(collisionObjectWrap);
-	}
+	virtual void processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, const btManifoldResultForSkin* resultOut);
 
 	// process collision between deformable and deformable
 	virtual void processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody)

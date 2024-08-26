@@ -336,6 +336,7 @@ public:
 		btMatrix3x3 m_F;
 		btScalar m_element_measure;
 		btVector4 m_P_inv[3];  // first three columns of P_inv matrix
+		int m_boundaryFaces[4];
 	};
 
 	/*  TetraScratch  */
@@ -789,6 +790,13 @@ public:
 													 btScalar maxt = SIMD_INFINITY);
 	};
 
+	struct btVertexToTetraMapping
+	{
+		unsigned vertexToTetra;               // Index of first tetra index to which the collision mesh vertex is attached
+		btVector4 baryCoordInTetra;           // Barycentric coordiante of collision shape vertex in that tetra
+		btVector4 baryCoordNormalEndInTetra;  // Barycentric coordiante of collision shape vertex normal end in that tetra
+	};
+
 	//
 	// Typedefs
 	//
@@ -1110,7 +1118,7 @@ public:
 	/* defaultCollisionHandlers												*/
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
-	void skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
+	void skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap, int vertexIndex, const btVector3& contactPoint, const btVector3& contactNormal, const float distance);
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
@@ -1417,6 +1425,11 @@ public:
 
 	///fills the dataBuffer and returns the struct name (and 0 on failure)
 	virtual const char* serialize(void* dataBuffer, class btSerializer* serializer) const;
+
+	virtual const std::vector<btVertexToTetraMapping>* getCollisionShapeVertexToSimTetra() const
+	{
+		return nullptr;
+	}
 };
 
 #endif  //_BT_SOFT_BODY_H

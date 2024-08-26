@@ -154,6 +154,26 @@ public:
 		return m_body1Wrap->getCollisionObject();
 	}
 
+	int getPartId0() const
+	{
+		return m_partId0;
+	}
+
+	int getPartId1() const
+	{
+		return m_partId1;
+	}
+
+	int getIndex0() const
+	{
+		return m_index0;
+	}
+
+	int getIndex1() const
+	{
+		return m_index1;
+	}
+
 	btScalar m_closestPointDistanceThreshold;
 
 	/// in the future we can let the user override the methods to combine restitution and friction
@@ -163,6 +183,13 @@ public:
 	static btScalar calculateCombinedSpinningFriction(const btCollisionObject* body0, const btCollisionObject* body1);
 	static btScalar calculateCombinedContactDamping(const btCollisionObject* body0, const btCollisionObject* body1);
 	static btScalar calculateCombinedContactStiffness(const btCollisionObject* body0, const btCollisionObject* body1);
+};
+
+class btManifoldResultForSkin : public btManifoldResult
+{
+public:
+	int vertexIndex;
+	int contactIndex;
 };
 
 #endif  //BT_MANIFOLD_RESULT_H

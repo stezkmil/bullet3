@@ -58,7 +58,6 @@ void btSoftRigidCollisionAlgorithm::processCollision(const btCollisionObjectWrap
 {
 	BT_PROFILE("btSoftRigidCollisionAlgorithm::processCollision");
 	(void)dispatchInfo;
-	(void)resultOut;
 	//printf("btSoftRigidCollisionAlgorithm\n");
 	//	const btCollisionObjectWrapper* softWrap = m_isSwapped?body1Wrap:body0Wrap;
 	//	const btCollisionObjectWrapper* rigidWrap = m_isSwapped?body0Wrap:body1Wrap;
@@ -67,7 +66,7 @@ void btSoftRigidCollisionAlgorithm::processCollision(const btCollisionObjectWrap
 
 	if (softBody->m_collisionDisabledObjects.findLinearSearch(rigidCollisionObjectWrap->getCollisionObject()) == softBody->m_collisionDisabledObjects.size())
 	{
-		softBody->getSoftBodySolver()->processCollision(softBody, rigidCollisionObjectWrap);
+		softBody->getSoftBodySolver()->processCollision(softBody, rigidCollisionObjectWrap, static_cast<const btManifoldResultForSkin*>(resultOut));
 	}
 }
 

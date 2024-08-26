@@ -591,3 +591,14 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 		psb->interpolateRenderMesh();
 	}
 }
+
+void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, const btManifoldResultForSkin* resultOut)
+{
+	if (softBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE)
+		softBody->defaultCollisionHandler(collisionObjectWrap);
+	else
+	{
+		const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
+		softBody->skinCollisionHandler(collisionObjectWrap, resultOut->vertexIndex, cp.getPositionWorldOnA(), cp.m_normalWorldOnB, cp.getDistance());
+	}
+}

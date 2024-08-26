@@ -355,6 +355,15 @@ public:
 			shape->getAabb(prim_trans, primbox.m_min, primbox.m_max);
 		}
 
+		virtual void get_primitive_indices(int prim_index, unsigned int& A, unsigned int& B, unsigned int& C) const
+		{
+			btAssert(0);
+			(void)prim_index;
+			(void)A;
+			(void)B;
+			(void)C;
+		}
+
 		virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle) const
 		{
 			btAssert(0);
@@ -683,6 +692,11 @@ public:
 			primbox.calc_from_triangle_margin(
 				triangle.m_vertices[0],
 				triangle.m_vertices[1], triangle.m_vertices[2], triangle.m_margin);
+		}
+
+		virtual void get_primitive_indices(int prim_index, unsigned int& A, unsigned int& B, unsigned int& C) const
+		{
+			get_indices(prim_index, A, B, C);
 		}
 
 		virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle) const

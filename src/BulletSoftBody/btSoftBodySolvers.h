@@ -29,6 +29,9 @@ class btSoftBodyVertexData;
 class btVertexBufferDescriptor;
 class btCollisionObject;
 class btSoftBody;
+struct btDispatcherInfo;
+class btManifoldResult;
+class btManifoldResultForSkin;
 
 class btSoftBodySolver
 {
@@ -87,7 +90,7 @@ public:
 	virtual void updateSoftBodies() = 0;
 
 	/** Process a collision between one of the world's soft bodies and another collision object */
-	virtual void processCollision(btSoftBody *, const struct btCollisionObjectWrapper *) = 0;
+	virtual void processCollision(btSoftBody *, const struct btCollisionObjectWrapper *, const btManifoldResultForSkin *) = 0;
 
 	/** Process a collision between two soft bodies */
 	virtual void processCollision(btSoftBody *, btSoftBody *) = 0;

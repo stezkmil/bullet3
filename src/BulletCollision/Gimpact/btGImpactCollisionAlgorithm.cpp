@@ -783,14 +783,22 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	if (m_resultOut->getPersistentManifold()->getNumContacts() == 0) return;
 
 	btCollisionAlgorithm* algor = newAlgorithm(softWrap, rigidWrap, SOFTBODY_SHAPE_PROXYTYPE, TRIANGLE_SHAPE_PROXYTYPE);
-
-	//m_resultOut->setShapeIdentifiersA(m_part0, m_triface0);
-	//m_resultOut->setShapeIdentifiersB(m_part1, m_triface1);
+	btManifoldResultForSkin manifoldResultForSkin;
+	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
+	manifoldResultForSkin.setBody0Wrap(softWrap);
+	manifoldResultForSkin.setBody1Wrap(rigidWrap);
+	manifoldResultForSkin.setShapeIdentifiersA(m_resultOut->getPartId0(), m_resultOut->getIndex0());
+	manifoldResultForSkin.setShapeIdentifiersB(m_resultOut->getPartId1(), m_resultOut->getIndex1());
 
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
-		algor->processCollision(softWrap, rigidWrap, *m_dispatchInfo, m_resultOut);
+		unsigned int softFace[3];
+		softShape->getPrimitiveManager()->get_primitive_indices(contactPoint.m_index0, softFace[0], softFace[1], softFace[2]);
+		// TODO pick the closest vertex to the contact point
+		manifoldResultForSkin.vertexIndex = softFace[0];
+		manifoldResultForSkin.contactIndex = i;
+		algor->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
 
 	algor->~btCollisionAlgorithm();

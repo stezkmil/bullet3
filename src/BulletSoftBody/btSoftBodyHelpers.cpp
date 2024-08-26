@@ -1406,7 +1406,7 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 		indices[i] = index;
 	}
 
-	std::map<std::vector<int>, std::vector<int> > dict;
+	std::map<std::vector<int>, std::pair<std::vector<int>, int> > dict;
 	for (int i = 0; i < indices.size(); ++i)
 	{
 		for (int j = 0; j < 4; ++j)
@@ -1444,15 +1444,19 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 			}
 			else
 			{
-				dict.insert(std::make_pair(f_sorted, f));
+				dict.insert(std::make_pair(f_sorted, std::make_pair(f, i)));
 			}
 		}
 	}
 
-	for (std::map<std::vector<int>, std::vector<int> >::iterator it = dict.begin(); it != dict.end(); ++it)
+	for (std::map<std::vector<int>, std::pair<std::vector<int>, int> >::iterator it = dict.begin(); it != dict.end(); ++it)
 	{
-		std::vector<int> f = it->second;
+		std::vector<int> f = it->second.first;
 		psb->appendFace(f[0], f[1], f[2]);
+		int boundaryFaceArrayIndex = 0;
+		while (psb->m_tetras[it->second.second].m_boundaryFaces[boundaryFaceArrayIndex] != -1)
+			++boundaryFaceArrayIndex;
+		psb->m_tetras[it->second.second].m_boundaryFaces[boundaryFaceArrayIndex] = psb->m_faces.size() - 1;
 		//printf("f %d %d %d\n", f[0] + 1, f[1] + 1, f[2] + 1);
 	}
 }
