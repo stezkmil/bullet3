@@ -599,6 +599,6 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 	else
 	{
 		const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
-		softBody->skinCollisionHandler(collisionObjectWrap, resultOut->vertexIndex, cp.getPositionWorldOnA(), cp.m_normalWorldOnB, cp.getDistance());
+		softBody->skinCollisionHandler(collisionObjectWrap, cp.getPositionWorldOnA(), cp.m_normalWorldOnB, cp.getDistance());
 	}
 }

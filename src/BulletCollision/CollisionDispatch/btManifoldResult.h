@@ -188,7 +188,6 @@ public:
 class btManifoldResultForSkin : public btManifoldResult
 {
 public:
-	int vertexIndex;
 	int contactIndex;
 };
 

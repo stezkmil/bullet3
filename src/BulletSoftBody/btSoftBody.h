@@ -1118,7 +1118,7 @@ public:
 	/* defaultCollisionHandlers												*/
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
-	void skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap, int vertexIndex, const btVector3& contactPoint, const btVector3& contactNormal, const float distance);
+	void skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoft, const btVector3& contactNormal, const float distance);
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);

@@ -43,6 +43,7 @@ Concave-Concave Collision
 #include <map>
 #include <array>
 #include <span>
+#include <fstream>
 
 //! Class for accessing the plane equation
 class btPlaneShape : public btStaticPlaneShape
@@ -552,6 +553,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 	grpParams.shape0 = shape0;
 	grpParams.shape1 = shape1;
 	grpParams.doUnstuck = (isStatic0 ? body1Wrap : body0Wrap)->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK;
+	grpParams.modifiedDepth = body0Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY && body1Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY;
 	grpParams.lastSafeTrans0 = isStatic0 ? grpParams.orgtrans0 : body0Wrap->getCollisionObject()->getLastSafeWorldTransform();
 	grpParams.lastSafeTrans1 = isStatic1 ? grpParams.orgtrans1 : body1Wrap->getCollisionObject()->getLastSafeWorldTransform();
 	
@@ -787,16 +789,29 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
 	manifoldResultForSkin.setBody0Wrap(softWrap);
 	manifoldResultForSkin.setBody1Wrap(rigidWrap);
-	manifoldResultForSkin.setShapeIdentifiersA(m_resultOut->getPartId0(), m_resultOut->getIndex0());
-	manifoldResultForSkin.setShapeIdentifiersB(m_resultOut->getPartId1(), m_resultOut->getIndex1());
+	manifoldResultForSkin.setShapeIdentifiersA(swapped ? m_resultOut->getPartId1() : m_resultOut->getPartId0(), swapped ? m_resultOut->getIndex1() : m_resultOut->getIndex0());
+	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
 
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
-		unsigned int softFace[3];
-		softShape->getPrimitiveManager()->get_primitive_indices(contactPoint.m_index0, softFace[0], softFace[1], softFace[2]);
-		// TODO pick the closest vertex to the contact point
-		manifoldResultForSkin.vertexIndex = softFace[0];
+		
+		/*{
+			std::ofstream ofs("debug_contact" + std::to_string(i) + ".obj");
+			ofs.imbue(std::locale::classic());
+			{
+				ofs << std::fixed << "v " << contactPoint.getPositionWorldOnA().x() << " " << contactPoint.getPositionWorldOnA().y() << " " << contactPoint.getPositionWorldOnA().z() << '\n';
+				ofs << std::fixed << "v " << contactPoint.getPositionWorldOnB().x() << " " << contactPoint.getPositionWorldOnB().y() << " " << contactPoint.getPositionWorldOnB().z() << '\n';
+				btPrimitiveTriangle tri;
+				softShape->getPrimitiveManager()->get_primitive_triangle(swapped ? contactPoint.m_index1 : contactPoint.m_index0, tri);
+				ofs << std::fixed << "v " << tri.m_vertices[0].x() << " " << tri.m_vertices[0].y() << " " << tri.m_vertices[0].z() << '\n';
+				ofs << std::fixed << "v " << tri.m_vertices[1].x() << " " << tri.m_vertices[1].y() << " " << tri.m_vertices[1].z() << '\n';
+				ofs << std::fixed << "v " << tri.m_vertices[2].x() << " " << tri.m_vertices[2].y() << " " << tri.m_vertices[2].z() << '\n';
+				ofs << std::fixed << "f 3 4 5" << '\n';
+			}
+			ofs.close();
+		}*/
+
 		manifoldResultForSkin.contactIndex = i;
 		algor->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}

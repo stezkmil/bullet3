@@ -280,8 +280,9 @@ bool btCollisionDispatcher::defaultNearCallback(btBroadphasePair& collisionPair,
 			if (dispatchInfo.m_dispatchFunc == btDispatcherInfo::DISPATCH_DISCRETE)
 			{
 				//discrete collision detection query
-
+				printf("start\n");
 				collisionPair.m_algorithm->processCollision(&obj0Wrap, &obj1Wrap, dispatchInfo, &contactPointResult);
+				printf("end\n");
 			}
 			else
 			{

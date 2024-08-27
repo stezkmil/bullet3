@@ -56,6 +56,7 @@ struct btGimpactVsGimpactGroupedParams
 	btTransform lastSafeTrans0;
 	btTransform lastSafeTrans1;
 	bool doUnstuck;
+	bool modifiedDepth;
 	int &triface0;
 	int &triface1;
 	int previouslyConsumedTime;

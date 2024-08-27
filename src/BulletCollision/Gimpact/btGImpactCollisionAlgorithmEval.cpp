@@ -31,7 +31,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 		if (ptri0.overlap_test(ptri1))
 		{
 			if (ptri0.find_triangle_collision_alt_method_outer(ptri1, contact_data, gMarginZoneRecoveryStrengthFactor, grpParams.lastSafeTrans0,
-															   grpParams.lastSafeTrans1, ptri0Backup, ptri1Backup, grpParams.doUnstuck))
+															   grpParams.lastSafeTrans1, ptri0Backup, ptri1Backup, grpParams.doUnstuck, grpParams.modifiedDepth))
 			{
 				if (contact_data.m_point_count >= 1)
 				{
