@@ -41,6 +41,7 @@ struct btGImpactIntermediateResult
 	btVector3 point;
 	btVector3 normal;
 	btScalar depth;
+	int index0, index1;
 };
 
 typedef tbb::enumerable_thread_specific<std::list<btGImpactIntermediateResult>> ThreadLocalGImpactResult;
@@ -57,10 +58,8 @@ struct btGimpactVsGimpactGroupedParams
 	btTransform lastSafeTrans1;
 	bool doUnstuck;
 	bool modifiedDepth;
-	int &triface0;
-	int &triface1;
 	int previouslyConsumedTime;
-	btGimpactVsGimpactGroupedParams(int& triface0, int& triface1) : triface0(triface0), triface1(triface1) {}
+	btGimpactVsGimpactGroupedParams() {}
 };
 
 struct btGImpactPairEval

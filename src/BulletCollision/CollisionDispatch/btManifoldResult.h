@@ -33,6 +33,8 @@ class btManifoldPoint;
 #include "BulletCollision/CollisionDispatch/btCollisionObjectWrapper.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObject.h"
 
+#include <array>
+
 typedef bool (*ContactAddedCallback)(btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0, const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1);
 extern ContactAddedCallback gContactAddedCallback;
 
@@ -189,6 +191,7 @@ class btManifoldResultForSkin : public btManifoldResult
 {
 public:
 	int contactIndex;
+	std::array<btVector3, 3> triSoft, triRigid;
 };
 
 #endif  //BT_MANIFOLD_RESULT_H

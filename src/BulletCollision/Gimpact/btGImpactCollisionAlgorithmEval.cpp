@@ -10,11 +10,8 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 	btPrimitiveTriangle ptri1;
 	GIM_TRIANGLE_CONTACT contact_data;
 
-	grpParams.triface0 = pair.m_index1;
-	grpParams.triface1 = pair.m_index2;
-
-	grpParams.shape0->getPrimitiveTriangle(grpParams.triface0, ptri0);
-	grpParams.shape1->getPrimitiveTriangle(grpParams.triface1, ptri1);
+	grpParams.shape0->getPrimitiveTriangle(pair.m_index1, ptri0);
+	grpParams.shape1->getPrimitiveTriangle(pair.m_index2, ptri1);
 
 	btPrimitiveTriangle ptri0Backup = ptri0;
 	btPrimitiveTriangle ptri1Backup = ptri1;
@@ -41,9 +38,9 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 					if (insert)
 					{
 						if (perThreadIntermediateResults)
-							perThreadIntermediateResults->local().push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth});
+							perThreadIntermediateResults->local().push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth, pair.m_index1, pair.m_index2});
 						if (intermediateResults)
-							intermediateResults->push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth});
+							intermediateResults->push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth, pair.m_index1, pair.m_index2});
 					}
 					return contact_data.m_penetration_depth < 0.0;
 				}

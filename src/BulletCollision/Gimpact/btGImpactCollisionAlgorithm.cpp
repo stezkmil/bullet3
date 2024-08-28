@@ -585,6 +585,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 		{
 			for (const auto& ir : perThreadIntermediateResult)
 			{
+				m_triface0 = ir.index0;
+				m_triface1 = ir.index1;
 				addContactPoint(body0Wrap, body1Wrap,
 								ir.point,
 								ir.normal,
@@ -596,6 +598,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 	{
 		for (const auto& ir : *intermediateResults)
 		{
+			m_triface0 = ir.index0;
+			m_triface1 = ir.index1;
 			addContactPoint(body0Wrap, body1Wrap,
 							ir.point,
 							ir.normal,
@@ -613,7 +617,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 														const btGImpactMeshShapePart* shape1,
 														const btPairSet& auxPairSet)
 {
-	btGimpactVsGimpactGroupedParams grpParams(m_triface0, m_triface1);
+	btGimpactVsGimpactGroupedParams grpParams;
 	collide_sat_triangles_pre(body0Wrap, body1Wrap, shape0, shape1, grpParams);
 
 	std::list<btGImpactIntermediateResult> intermediateResults;
@@ -692,7 +696,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	auxPairSet.clear();
 	perThreadIntermediateResults.clear();
 
-	btGimpactVsGimpactGroupedParams grpParams(m_triface0, m_triface1);
+	btGimpactVsGimpactGroupedParams grpParams;
 
 	if (shape0->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART &&
 		shape1->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART)
@@ -813,6 +817,15 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 		}*/
 
 		manifoldResultForSkin.contactIndex = i;
+		btPrimitiveTriangle tri;
+		softShape->getPrimitiveManager()->get_primitive_triangle(swapped ? contactPoint.m_index1 : contactPoint.m_index0, tri);
+		manifoldResultForSkin.triSoft[0] = transSoft(tri.m_vertices[0]);
+		manifoldResultForSkin.triSoft[1] = transSoft(tri.m_vertices[1]);
+		manifoldResultForSkin.triSoft[2] = transSoft(tri.m_vertices[2]);
+		rigidShape->getPrimitiveManager()->get_primitive_triangle(swapped ? contactPoint.m_index0 : contactPoint.m_index1, tri);
+		manifoldResultForSkin.triRigid[0] = transRigid(tri.m_vertices[0]);
+		manifoldResultForSkin.triRigid[1] = transRigid(tri.m_vertices[1]);
+		manifoldResultForSkin.triRigid[2] = transRigid(tri.m_vertices[2]);
 		algor->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
 
