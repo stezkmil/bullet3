@@ -191,7 +191,6 @@ class btManifoldResultForSkin : public btManifoldResult
 {
 public:
 	int contactIndex;
-	std::array<btVector3, 3> triSoft, triRigid;
 };
 
 #endif  //BT_MANIFOLD_RESULT_H

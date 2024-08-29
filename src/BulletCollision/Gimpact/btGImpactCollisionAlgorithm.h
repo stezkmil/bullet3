@@ -74,6 +74,7 @@ protected:
 	int m_part1;
 	btPairSet auxPairSet;
 	ThreadLocalGImpactResult perThreadIntermediateResults;
+	btCollisionAlgorithm* m_algorithmForSofts;
 
 	//! Creates a new contact point
 	SIMD_FORCE_INLINE btPersistentManifold* newContactManifold(const btCollisionObject* body0, const btCollisionObject* body1)
@@ -92,6 +93,16 @@ protected:
 		}
 	}
 
+	SIMD_FORCE_INLINE void destroyAlgorithmForSofts()
+	{
+		if (m_algorithmForSofts)
+		{
+			m_algorithmForSofts->~btCollisionAlgorithm();
+			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSofts);
+			m_algorithmForSofts = NULL;
+		}
+	}
+
 	SIMD_FORCE_INLINE void destroyContactManifolds()
 	{
 		if (m_manifoldPtr == NULL) return;
@@ -103,6 +114,7 @@ protected:
 	{
 		destroyContactManifolds();
 		destroyConvexAlgorithm();
+		destroyAlgorithmForSofts();
 
 		m_triface0 = -1;
 		m_part0 = -1;

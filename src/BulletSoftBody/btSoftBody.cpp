@@ -4306,25 +4306,12 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 }
 
 void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormal,
-									  float distance, const bool penetrating, const std::array<btVector3, 3>& triangleSoft, const std::array<btVector3, 3>& triangleRigid)
+									  float distance, const bool penetrating)
 {
-	if (penetrating)
-	{
-		/*btTransform tr = btTransform::getIdentity();
-		btVector3 guess(0.0, 0.0, 0.0);
-		btGjkEpaSolver2::sResults results;
-		btTriangleShape triangleSoftShape(triangleSoft[0], triangleSoft[1], triangleSoft[2]), triangleRigidShape(triangleRigid[0], triangleRigid[1], triangleRigid[2]);
-		btGjkEpaSolver2::SignedDistance(&triangleSoftShape, tr, &triangleRigidShape, tr, guess, results);
-		contactNormal = results.normal;*/
-		//distance = -2.01;
-	}
-	//else
-	//	distance = -2;
-	// TODO improve the distance calculation. 0 distance seems to work really well for skinned softs. Larger distances do not generate enough impulse power. Most likely because
-	// penetrations are present because simulation meshes are not closely wrapping the collision meshes.
-	// If other depths become needed and penetrating contacts are causing problems,
-	// because they have opposite or nonsense contact normals, then one experiment to try is to use time coherence and when regular contact is replaced with penetrating one in 
-	// btPersistentManifold::replaceContactPoint, try to preserve the normal from the old non-penetrating one.
+	// TODO warning - it is not 100% verified if penetrating contacts are handled correctly, but so far this pen. contact handling proved to be working sufficiently well.
+	// If penetrating contacts are causing problems, because they have opposite or nonsense contact normals, then one experiment to try
+	// is to use time coherence and when regular contact is replaced with penetrating one in btPersistentManifold::replaceContactPoint, try to preserve
+	// the normal from the old non-penetrating one. This should help as a guide on what the correct unstuck direction truly is.
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 	auto diagonalLength = (m_bounds[1] - m_bounds[0]).length();
 	auto rayDirectionProlonged = contactNormal * diagonalLength;
@@ -4341,47 +4328,6 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 	{
 		btVector3 contactPointOnSoftSimMesh = contactPointOnSoftCollisionMesh + rayDirectionProlonged * faceTestResult.fraction;
 
-	//	{
-	//	std::ofstream ofs("debug.obj");
-	//	ofs.imbue(std::locale::classic());
-	//	for (auto fi = 0; fi < m_faces.size(); ++fi)
-	//	{
-	//		ofs << std::fixed << "v " << m_faces[fi].m_n[0]->m_x.x() << " " << m_faces[fi].m_n[0]->m_x.y() << " " << m_faces[fi].m_n[0]->m_x.z() << '\n';
-	//		ofs << std::fixed << "v " << m_faces[fi].m_n[1]->m_x.x() << " " << m_faces[fi].m_n[1]->m_x.y() << " " << m_faces[fi].m_n[1]->m_x.z() << '\n';
-	//		ofs << std::fixed << "v " << m_faces[fi].m_n[2]->m_x.x() << " " << m_faces[fi].m_n[2]->m_x.y() << " " << m_faces[fi].m_n[2]->m_x.z() << '\n';
-	//	}
-	//	for (int fv = 0; fv < m_faces.size() * 3; fv += 3)
-	//	{
-	//		ofs << "f " << (fv + 1) << " " << (fv + 2) << " " << (fv + 3) << '\n';
-	//	}
-	//	ofs.close();
-	//}
-
-	//	{
-	//		std::ofstream ofs("debug_over.obj");
-	//		ofs.imbue(std::locale::classic());
-	//		//for (auto fi = 0; fi < m_faces.size(); ++fi)
-	//		{
-	//			ofs << std::fixed << "v " << m_faces[faceTestResult.index].m_n[0]->m_x.x() << " " << m_faces[faceTestResult.index].m_n[0]->m_x.y() << " " << m_faces[faceTestResult.index].m_n[0]->m_x.z() << '\n';
-	//			ofs << std::fixed << "v " << m_faces[faceTestResult.index].m_n[1]->m_x.x() << " " << m_faces[faceTestResult.index].m_n[1]->m_x.y() << " " << m_faces[faceTestResult.index].m_n[1]->m_x.z() << '\n';
-	//			ofs << std::fixed << "v " << m_faces[faceTestResult.index].m_n[2]->m_x.x() << " " << m_faces[faceTestResult.index].m_n[2]->m_x.y() << " " << m_faces[faceTestResult.index].m_n[2]->m_x.z() << '\n';
-	//		}
-	//		ofs << "f " << 1 << " " << 2 << " " << 3 << '\n';
-	//		ofs.close();
-	//	}
-
-	//	{
-	//		std::ofstream ofs("debug_line.obj");
-	//		ofs.imbue(std::locale::classic());
-	//		//for (auto fi = 0; fi < m_faces.size(); ++fi)
-	//		{
-	//			ofs << std::fixed << "v " << contactPointOnSoftCollisionMesh.x() << " " << contactPointOnSoftCollisionMesh.y() << " " << contactPointOnSoftCollisionMesh.z() << '\n';
-	//			ofs << std::fixed << "v " << contactPointOnSoftSimMesh.x() << " " << contactPointOnSoftSimMesh.y() << " " << contactPointOnSoftSimMesh.z() << '\n';
-	//			ofs << "l " << 1 << " " << 2 << '\n';
-	//		}
-	//		ofs.close();
-	//	}
-
 		auto pickedBoundaryFace = faceTestResult.index;
 		btSoftBody::Face& f = m_faces[pickedBoundaryFace];
 
@@ -4392,17 +4338,21 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 		btVector3 bary;
 		getBarycentric(contactPointOnSoftSimMesh, f.m_n[0]->m_x, f.m_n[1]->m_x, f.m_n[2]->m_x, bary);
 
-		const btScalar basemargin = getCollisionShape()->getMargin();
+		const btScalar softMargin = getCollisionShape()->getMargin();
 		const btScalar timemargin = 0.0;
-		const btScalar stamargin = basemargin;
-		const btScalar dynmargin = basemargin + timemargin;
+		const btScalar stamargin = softMargin;
+		const btScalar dynmargin = softMargin + timemargin;
 		const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
 		
-		// TODO check if distance doesn't have to be flipped
-		if (distance - 2.0 * rigidWrap->getCollisionObject()->getCollisionShape()->getMargin() - m >= 0) // margin padding so that the distance = the actual distance between face and rigid - margin of rigid - margin of deformable
-			return;
-		
-		distance += m + rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
+		const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
+
+		if (penetrating)
+		{
+			distance = -distance;
+			distance -= m + rigidMargin;
+		}
+		else
+			distance += m + rigidMargin;
 
 		c.m_cti.m_colObj = rigidBody;
 		c.m_cti.m_normal = -contactNormal;
@@ -4478,7 +4428,7 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 				}
 			}
 			m_faceRigidContacts.push_back(c);
-			printf("cti imp %f %f %f norm %f %f %f off %f\n", cti.m_impulse.x(), cti.m_impulse.y(), cti.m_impulse.z(), cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset);
+			//printf("cti imp %f %f %f norm %f %f %f off %f\n", cti.m_impulse.x(), cti.m_impulse.y(), cti.m_impulse.z(), cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset);
 		}
 	}
 }

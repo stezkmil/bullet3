@@ -199,6 +199,7 @@ btGImpactCollisionAlgorithm::btGImpactCollisionAlgorithm(const btCollisionAlgori
 {
 	m_manifoldPtr = NULL;
 	m_convex_algorithm = NULL;
+	m_algorithmForSofts = NULL;
 }
 
 btGImpactCollisionAlgorithm::~btGImpactCollisionAlgorithm()
@@ -783,12 +784,10 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 		return;
 	}
 
-	btTransform transSoft = softWrap->getWorldTransform();
-	btTransform transRigid = rigidWrap->getWorldTransform();
-
 	if (m_resultOut->getPersistentManifold()->getNumContacts() == 0) return;
 
-	btCollisionAlgorithm* algor = newAlgorithm(softWrap, rigidWrap, SOFTBODY_SHAPE_PROXYTYPE, TRIANGLE_SHAPE_PROXYTYPE);
+	if (!m_algorithmForSofts)
+		m_algorithmForSofts = newAlgorithm(softWrap, rigidWrap, SOFTBODY_SHAPE_PROXYTYPE, TRIANGLE_SHAPE_PROXYTYPE);
 	btManifoldResultForSkin manifoldResultForSkin;
 	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
 	manifoldResultForSkin.setBody0Wrap(softWrap);
@@ -799,38 +798,10 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
-		
-		/*{
-			std::ofstream ofs("debug_contact" + std::to_string(i) + ".obj");
-			ofs.imbue(std::locale::classic());
-			{
-				ofs << std::fixed << "v " << contactPoint.getPositionWorldOnA().x() << " " << contactPoint.getPositionWorldOnA().y() << " " << contactPoint.getPositionWorldOnA().z() << '\n';
-				ofs << std::fixed << "v " << contactPoint.getPositionWorldOnB().x() << " " << contactPoint.getPositionWorldOnB().y() << " " << contactPoint.getPositionWorldOnB().z() << '\n';
-				btPrimitiveTriangle tri;
-				softShape->getPrimitiveManager()->get_primitive_triangle(swapped ? contactPoint.m_index1 : contactPoint.m_index0, tri);
-				ofs << std::fixed << "v " << tri.m_vertices[0].x() << " " << tri.m_vertices[0].y() << " " << tri.m_vertices[0].z() << '\n';
-				ofs << std::fixed << "v " << tri.m_vertices[1].x() << " " << tri.m_vertices[1].y() << " " << tri.m_vertices[1].z() << '\n';
-				ofs << std::fixed << "v " << tri.m_vertices[2].x() << " " << tri.m_vertices[2].y() << " " << tri.m_vertices[2].z() << '\n';
-				ofs << std::fixed << "f 3 4 5" << '\n';
-			}
-			ofs.close();
-		}*/
 
 		manifoldResultForSkin.contactIndex = i;
-		btPrimitiveTriangle tri;
-		softShape->getPrimitiveManager()->get_primitive_triangle(swapped ? contactPoint.m_index1 : contactPoint.m_index0, tri);
-		manifoldResultForSkin.triSoft[0] = transSoft(tri.m_vertices[0]);
-		manifoldResultForSkin.triSoft[1] = transSoft(tri.m_vertices[1]);
-		manifoldResultForSkin.triSoft[2] = transSoft(tri.m_vertices[2]);
-		rigidShape->getPrimitiveManager()->get_primitive_triangle(swapped ? contactPoint.m_index0 : contactPoint.m_index1, tri);
-		manifoldResultForSkin.triRigid[0] = transRigid(tri.m_vertices[0]);
-		manifoldResultForSkin.triRigid[1] = transRigid(tri.m_vertices[1]);
-		manifoldResultForSkin.triRigid[2] = transRigid(tri.m_vertices[2]);
-		algor->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
+		m_algorithmForSofts->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
-
-	algor->~btCollisionAlgorithm();
-	m_dispatcher->freeCollisionAlgorithm(algor);
 }
 
 void btGImpactCollisionAlgorithm::gimpact_vs_shape(const btCollisionObjectWrapper* body0Wrap,
