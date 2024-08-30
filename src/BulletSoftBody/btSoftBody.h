@@ -378,6 +378,7 @@ public:
 		btScalar m_c3;     // Friction
 		btScalar m_c4;     // Hardness
 		btMatrix3x3 m_c5;  // inverse effective mass
+		btScalar m_c6;     // Impulse factor
 
 		// jacobians and unit impulse responses for multibody
 		btMultiBodyJacobianData jacobianData_normal;
@@ -732,6 +733,7 @@ public:
 		btScalar kKHR;              // Kinetic contacts hardness [0,1]
 		btScalar kSHR;              // Soft contacts hardness [0,1]
 		btScalar kAHR;              // Anchors hardness [0,1]
+		btScalar kIMP;              // Impulse coefficient [0,+inf]
 		btScalar kSRHR_CL;          // Soft vs rigid hardness [0,1] (cluster only)
 		btScalar kSKHR_CL;          // Soft vs kinetic hardness [0,1] (cluster only)
 		btScalar kSSHR_CL;          // Soft vs soft hardness [0,1] (cluster only)
@@ -1118,7 +1120,7 @@ public:
 	/* defaultCollisionHandlers												*/
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
-	void skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, float distance, const bool penetrating);
+	void skinCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);

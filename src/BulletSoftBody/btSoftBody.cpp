@@ -4306,7 +4306,7 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 }
 
 void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-									  float distance, const bool penetrating)
+									  btScalar distance, const bool penetrating)
 {
 	// TODO warning - it is not 100% verified if penetrating contacts are handled correctly, but so far this pen. contact handling proved to be working sufficiently well.
 	// If penetrating contacts are causing problems, because they have opposite or nonsense contact normals, then one experiment to try
@@ -4345,18 +4345,21 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 		const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
 		
 		const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
+		const btScalar sumMargin = m + rigidMargin;
 
 		//if (!penetrating)
 		//{
 			//distance = -distance;
 			//distance = std::max(distance - (m + rigidMargin), 0.0);
 		//contactNormalOnSoftCollisionMesh = btVector3(1,0,0);
-		distance = 0.0;
+		//distance = 0.0;
 		//}
 
 		c.m_cti.m_colObj = rigidBody;
 		c.m_cti.m_normal = -contactNormalOnSoftCollisionMesh;
-		c.m_cti.m_offset = distance;
+		c.m_cti.m_offset = 0.0;
+		const btScalar maxImpulseFactor;
+		c.m_c6 = sumMargin - std::max(distance, 0.0);
 
 		btScalar ima = n0->m_im + n1->m_im + n2->m_im;
 		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
