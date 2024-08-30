@@ -319,7 +319,9 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 		}
 	}
 	impulse = impulse_normal + impulse_tangent;
+	//impulse *= 2.0;
 	// apply impulse to deformable nodes involved and change their velocities
+	//printf("impulse %f %f %f\n", impulse.x(), impulse.y(), impulse.z());
 	applyImpulse(impulse);
 	// apply impulse to the rigid/multibodies involved and change their velocities
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)

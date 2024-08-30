@@ -1851,7 +1851,7 @@ struct btSoftColliders
 							c.t2 = t2;
 						}
 					}
-					//printf("norm %f %f %f off %f\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset);
+					printf("norm %f %f %f off %f\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset);
 					psb->m_faceRigidContacts.push_back(c);
 				}
 			}

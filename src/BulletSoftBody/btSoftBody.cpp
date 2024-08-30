@@ -4350,7 +4350,8 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 		//{
 			//distance = -distance;
 			//distance = std::max(distance - (m + rigidMargin), 0.0);
-			distance = 0.0;
+		//contactNormalOnSoftCollisionMesh = btVector3(1,0,0);
+		distance = 0.0;
 		//}
 
 		c.m_cti.m_colObj = rigidBody;
