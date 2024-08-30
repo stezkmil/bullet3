@@ -191,6 +191,7 @@ class btManifoldResultForSkin : public btManifoldResult
 {
 public:
 	int contactIndex;
+	bool swapped;
 };
 
 #endif  //BT_MANIFOLD_RESULT_H

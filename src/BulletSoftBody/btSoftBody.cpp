@@ -4305,7 +4305,7 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
-void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormal,
+void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 									  float distance, const bool penetrating)
 {
 	// TODO warning - it is not 100% verified if penetrating contacts are handled correctly, but so far this pen. contact handling proved to be working sufficiently well.
@@ -4314,7 +4314,7 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 	// the normal from the old non-penetrating one. This should help as a guide on what the correct unstuck direction truly is.
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 	auto diagonalLength = (m_bounds[1] - m_bounds[0]).length();
-	auto rayDirectionProlonged = contactNormal * diagonalLength;
+	auto rayDirectionProlonged = contactNormalOnSoftCollisionMesh * diagonalLength;
 	auto towardsSoftSimFace = contactPointOnSoftCollisionMesh + rayDirectionProlonged;
 	sRayCast faceTestResult;
 	rayFaceTest(contactPointOnSoftCollisionMesh, towardsSoftSimFace, faceTestResult);
@@ -4346,17 +4346,16 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 		
 		const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
 
-		if (penetrating)
-		{
-			distance = -distance;
-			distance -= m + rigidMargin;
-		}
-		else
-			distance += m + rigidMargin;
+		//if (!penetrating)
+		//{
+			//distance = -distance;
+			//distance = std::max(distance - (m + rigidMargin), 0.0);
+			distance = 0.0;
+		//}
 
 		c.m_cti.m_colObj = rigidBody;
-		c.m_cti.m_normal = -contactNormal;
-		c.m_cti.m_offset = -distance;
+		c.m_cti.m_normal = -contactNormalOnSoftCollisionMesh;
+		c.m_cti.m_offset = distance;
 
 		btScalar ima = n0->m_im + n1->m_im + n2->m_im;
 		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
@@ -4367,7 +4366,7 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 			// resolve contact at x_n
 			//                    psb->checkDeformableFaceContact(m_colObj1Wrap, f, contact_point, bary, m, c.m_cti, /*predict = */ false);
 			btSoftBody::sCti& cti = c.m_cti;
-			c.m_contactPoint = contactPointOnSoftSimMesh;
+			c.m_contactPoint = contactPointOnSoftCollisionMesh;
 			c.m_bary = bary;
 			// todo xuchenhan@: this is assuming mass of all vertices are the same. Need to modify if mass are different for distinct vertices
 			c.m_weights = btScalar(2) / (btScalar(1) + bary.length2()) * bary;
@@ -4387,7 +4386,7 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 				const btTransform& wtr = rigidBody ? rigidBody->getWorldTransform() : rigidWrap->getCollisionObject()->getWorldTransform();
 				static const btMatrix3x3 iwiStatic(0, 0, 0, 0, 0, 0, 0, 0, 0);
 				const btMatrix3x3& iwi = rigidBody ? rigidBody->getInvInertiaTensorWorld() : iwiStatic;
-				const btVector3 ra = contactPointOnSoftSimMesh - wtr.getOrigin();
+				const btVector3 ra = contactPointOnSoftCollisionMesh - wtr.getOrigin();
 
 				// we do not scale the impulse matrix by dt
 				c.m_c0 = ImpulseMatrix(1, ima, imb, iwi, ra);
@@ -4402,9 +4401,9 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 					btVector3 t1 = generateUnitOrthogonalVector(normal);
 					btVector3 t2 = btCross(normal, t1);
 					btMultiBodyJacobianData jacobianData_normal, jacobianData_t1, jacobianData_t2;
-					findJacobian(multibodyLinkCol, jacobianData_normal, contactPointOnSoftSimMesh, normal);
-					findJacobian(multibodyLinkCol, jacobianData_t1, contactPointOnSoftSimMesh, t1);
-					findJacobian(multibodyLinkCol, jacobianData_t2, contactPointOnSoftSimMesh, t2);
+					findJacobian(multibodyLinkCol, jacobianData_normal, contactPointOnSoftCollisionMesh, normal);
+					findJacobian(multibodyLinkCol, jacobianData_t1, contactPointOnSoftCollisionMesh, t1);
+					findJacobian(multibodyLinkCol, jacobianData_t2, contactPointOnSoftCollisionMesh, t2);
 
 					btScalar* J_n = &jacobianData_normal.m_jacobians[0];
 					btScalar* J_t1 = &jacobianData_t1.m_jacobians[0];
@@ -4428,7 +4427,7 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 				}
 			}
 			m_faceRigidContacts.push_back(c);
-			//printf("cti imp %f %f %f norm %f %f %f off %f\n", cti.m_impulse.x(), cti.m_impulse.y(), cti.m_impulse.z(), cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset);
+			printf("norm %f %f %f off %f pen %d\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset, (int)penetrating);
 		}
 	}
 }

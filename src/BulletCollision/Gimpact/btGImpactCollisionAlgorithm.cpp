@@ -794,6 +794,7 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	manifoldResultForSkin.setBody1Wrap(rigidWrap);
 	manifoldResultForSkin.setShapeIdentifiersA(swapped ? m_resultOut->getPartId1() : m_resultOut->getPartId0(), swapped ? m_resultOut->getIndex1() : m_resultOut->getIndex0());
 	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
+	manifoldResultForSkin.swapped = swapped;
 
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
