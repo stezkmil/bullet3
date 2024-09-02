@@ -1328,7 +1328,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto cp = contactManifold->getContactPoint(j);
 			bool penetration = cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING;
 			bool phaseThrough = (contactManifold->getBody0()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
-								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE);
+								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
+								contactManifold->getBody0()->getInternalType() == btCollisionObject::CO_SOFT_BODY ||
+								contactManifold->getBody1()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 			if (penetration && !phaseThrough)
 			{
 				penetratingColliders.insert({contactManifold->getBody0(), contactManifold->getBody1()});

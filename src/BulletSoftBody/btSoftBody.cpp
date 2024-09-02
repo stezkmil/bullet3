@@ -4305,13 +4305,9 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
-void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
+void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 									  btScalar distance, const bool penetrating)
 {
-	// TODO warning - it is not 100% verified if penetrating contacts are handled correctly, but so far this pen. contact handling proved to be working sufficiently well.
-	// If penetrating contacts are causing problems, because they have opposite or nonsense contact normals, then one experiment to try
-	// is to use time coherence and when regular contact is replaced with penetrating one in btPersistentManifold::replaceContactPoint, try to preserve
-	// the normal from the old non-penetrating one. This should help as a guide on what the correct unstuck direction truly is.
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 	auto diagonalLength = (m_bounds[1] - m_bounds[0]).length();
 	auto rayDirectionProlonged = contactNormalOnSoftCollisionMesh * diagonalLength;
@@ -4326,6 +4322,7 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 	}
 	else
 	{
+		// This branch is based on CollideSDF_RDF. TODO deduplicate common code.
 		btVector3 contactPointOnSoftSimMesh = contactPointOnSoftCollisionMesh + rayDirectionProlonged * faceTestResult.fraction;
 
 		auto pickedBoundaryFace = faceTestResult.index;
@@ -4338,28 +4335,27 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 		btVector3 bary;
 		getBarycentric(contactPointOnSoftSimMesh, f.m_n[0]->m_x, f.m_n[1]->m_x, f.m_n[2]->m_x, bary);
 
-		const btScalar softMargin = getCollisionShape()->getMargin();
-		const btScalar timemargin = 0.0;
-		const btScalar stamargin = softMargin;
-		const btScalar dynmargin = softMargin + timemargin;
-		const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
+		//const btScalar softMargin = getCollisionShape()->getMargin();
+		//const btScalar timemargin = 0.0;
+		//const btScalar stamargin = softMargin;
+		//const btScalar dynmargin = softMargin + timemargin;
+		//const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
 		
-		const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
-		const btScalar sumMargin = m + rigidMargin;
-
-		//if (!penetrating)
-		//{
-			//distance = -distance;
-			//distance = std::max(distance - (m + rigidMargin), 0.0);
-		//contactNormalOnSoftCollisionMesh = btVector3(1,0,0);
-		//distance = 0.0;
-		//}
+		//const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
+		//const btScalar sumMargin = m + rigidMargin;
 
 		c.m_cti.m_colObj = rigidBody;
 		c.m_cti.m_normal = -contactNormalOnSoftCollisionMesh;
+		// Offset set to 0 for now, because the btDeformableRigidContactConstraint::solveConstraint m_penetration handling is quite peculiar. It seems that less than 0 values
+		// are ignored and even quite small values larger than 0 can cause the contact to be completely discarded causing a free penetration.
 		c.m_cti.m_offset = 0.0;
-		const btScalar maxImpulseFactor;
-		c.m_c6 = sumMargin - std::max(distance, 0.0);
+		// Some dynamic factor calculation could be done similar to that in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
+		const btScalar maxImpulseFactor = 2.0;
+		// Impulse factor introduced because of imperfections in contactNormalOnSoftCollisionMesh. The resulting impulse was not strong enough because of those imperfections.
+		// So they have to be fixed first if this factor causes some numerical instability.
+		// One experiment to try is to use time coherence and when regular contact is replaced with penetrating one in btPersistentManifold::replaceContactPoint, try to preserve
+		// the normal from the old non-penetrating one. This should help as a guide on what the correct unstuck direction truly is.
+		c.m_c6 = maxImpulseFactor;
 
 		btScalar ima = n0->m_im + n1->m_im + n2->m_im;
 		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
@@ -4431,9 +4427,14 @@ void btSoftBody::skinCollisionHandler(const btCollisionObjectWrapper* rigidWrap,
 				}
 			}
 			m_faceRigidContacts.push_back(c);
-			printf("norm %f %f %f off %f pen %d\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset, (int)penetrating);
+			//printf("norm %f %f %f off %f pen %d\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset, (int)penetrating);
 		}
 	}
+}
+
+void btSoftBody::skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
+											   btScalar distance, const bool penetrating)
+{
 }
 
 void btSoftBody::geometricCollisionHandler(btSoftBody* psb)
