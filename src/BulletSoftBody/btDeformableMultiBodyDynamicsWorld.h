@@ -146,7 +146,7 @@ public:
 
 	void setupConstraints();
 
-	void performDeformableCollisionDetection();
+	void performDeformableSelfCollisionDetection();
 
 	void solveMultiBodyConstraints();
 

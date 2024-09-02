@@ -74,7 +74,8 @@ protected:
 	int m_part1;
 	btPairSet auxPairSet;
 	ThreadLocalGImpactResult perThreadIntermediateResults;
-	btCollisionAlgorithm* m_algorithmForSofts;
+	btCollisionAlgorithm* m_algorithmForSoftVsRigid;
+	btCollisionAlgorithm* m_algorithmForSoftVsSoft;
 
 	//! Creates a new contact point
 	SIMD_FORCE_INLINE btPersistentManifold* newContactManifold(const btCollisionObject* body0, const btCollisionObject* body1)
@@ -95,11 +96,11 @@ protected:
 
 	SIMD_FORCE_INLINE void destroyAlgorithmForSofts()
 	{
-		if (m_algorithmForSofts)
+		if (m_algorithmForSoftVsRigid)
 		{
-			m_algorithmForSofts->~btCollisionAlgorithm();
-			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSofts);
-			m_algorithmForSofts = NULL;
+			m_algorithmForSoftVsRigid->~btCollisionAlgorithm();
+			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSoftVsRigid);
+			m_algorithmForSoftVsRigid = NULL;
 		}
 	}
 
@@ -285,6 +286,11 @@ public:
 						  const btCollisionObjectWrapper* rigidWrap,
 						  const btGImpactShapeInterface* softShape,
 						  const btGImpactShapeInterface* rigidShape, bool swapped);
+
+	void gimpact_soft_vs_gimpact_soft(const btCollisionObjectWrapper* soft0Wrap,
+									  const btCollisionObjectWrapper* soft1Wrap,
+									  const btGImpactShapeInterface* soft0Shape,
+									  const btGImpactShapeInterface* soft1Shape, bool swapped);
 
 	void gimpact_vs_shape(const btCollisionObjectWrapper* body0Wrap,
 						  const btCollisionObjectWrapper* body1Wrap,

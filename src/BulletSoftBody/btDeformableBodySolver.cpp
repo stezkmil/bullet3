@@ -605,3 +605,9 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 			cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
 	}
 }
+
+void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody)
+{
+	if ((softBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE && otherSoftBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE))
+		softBody->defaultCollisionHandler(otherSoftBody);
+}

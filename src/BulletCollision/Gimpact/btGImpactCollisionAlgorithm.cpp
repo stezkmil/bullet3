@@ -199,7 +199,7 @@ btGImpactCollisionAlgorithm::btGImpactCollisionAlgorithm(const btCollisionAlgori
 {
 	m_manifoldPtr = NULL;
 	m_convex_algorithm = NULL;
-	m_algorithmForSofts = NULL;
+	m_algorithmForSoftVsRigid = NULL;
 }
 
 btGImpactCollisionAlgorithm::~btGImpactCollisionAlgorithm()
@@ -755,7 +755,14 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		{
 			if (shape1->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
 			{
-				gimpact_soft_vs_gimpact(body0Wrap, body1Wrap, shape0, shape1, false);
+				if (body1Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY)
+				{
+					gimpact_soft_vs_gimpact(body0Wrap, body1Wrap, shape0, shape1, false);
+				}
+				else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY)
+				{
+					gimpact_soft_vs_gimpact_soft(body0Wrap, body1Wrap, shape0, shape1, false);
+				}
 			}
 		}
 		else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY &&
@@ -763,7 +770,14 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		{
 			if (body0Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
 			{
-				gimpact_soft_vs_gimpact(body1Wrap, body0Wrap, shape1, shape0, true);
+				if (body0Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY)
+				{
+					gimpact_soft_vs_gimpact(body1Wrap, body0Wrap, shape1, shape0, true);
+				}
+				else if (body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY)
+				{
+					gimpact_soft_vs_gimpact_soft(body1Wrap, body0Wrap, shape1, shape0, true);
+				}
 			}
 		}
 
@@ -786,8 +800,8 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 
 	if (m_resultOut->getPersistentManifold()->getNumContacts() == 0) return;
 
-	if (!m_algorithmForSofts)
-		m_algorithmForSofts = newAlgorithm(softWrap, rigidWrap, SOFTBODY_SHAPE_PROXYTYPE, TRIANGLE_SHAPE_PROXYTYPE);
+	if (!m_algorithmForSoftVsRigid)
+		m_algorithmForSoftVsRigid = newAlgorithm(softWrap, rigidWrap, SOFTBODY_SHAPE_PROXYTYPE, TRIANGLE_SHAPE_PROXYTYPE);
 	btManifoldResultForSkin manifoldResultForSkin;
 	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
 	manifoldResultForSkin.setBody0Wrap(softWrap);
@@ -801,7 +815,39 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
 
 		manifoldResultForSkin.contactIndex = i;
-		m_algorithmForSofts->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
+		m_algorithmForSoftVsRigid->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
+	}
+}
+
+void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact_soft(const btCollisionObjectWrapper* soft0Wrap,
+														  const btCollisionObjectWrapper* soft1Wrap,
+														  const btGImpactShapeInterface* soft0Shape,
+														  const btGImpactShapeInterface* soft1Shape, bool swapped)
+{
+	if (soft0Shape->isCompound() || soft1Shape->isCompound())
+	{
+		// TODO
+		return;
+	}
+
+	if (m_resultOut->getPersistentManifold()->getNumContacts() == 0) return;
+
+	if (!m_algorithmForSoftVsSoft)
+		m_algorithmForSoftVsSoft = newAlgorithm(soft0Wrap, soft1Wrap, SOFTBODY_SHAPE_PROXYTYPE, SOFTBODY_SHAPE_PROXYTYPE);
+	btManifoldResultForSkin manifoldResultForSkin;
+	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
+	manifoldResultForSkin.setBody0Wrap(soft0Wrap);
+	manifoldResultForSkin.setBody1Wrap(soft1Wrap);
+	manifoldResultForSkin.setShapeIdentifiersA(swapped ? m_resultOut->getPartId1() : m_resultOut->getPartId0(), swapped ? m_resultOut->getIndex1() : m_resultOut->getIndex0());
+	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
+	manifoldResultForSkin.swapped = swapped;
+
+	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
+	{
+		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
+
+		manifoldResultForSkin.contactIndex = i;
+		m_algorithmForSoftVsSoft->processCollision(soft0Wrap, soft1Wrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
 }
 

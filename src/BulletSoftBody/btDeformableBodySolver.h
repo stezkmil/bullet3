@@ -116,10 +116,7 @@ public:
 	virtual void processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, const btManifoldResultForSkin* resultOut);
 
 	// process collision between deformable and deformable
-	virtual void processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody)
-	{
-		softBody->defaultCollisionHandler(otherSoftBody);
-	}
+	virtual void processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody);
 
 	// If true, implicit time stepping scheme is used.
 	// Otherwise, explicit time stepping scheme is used
