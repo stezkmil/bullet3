@@ -239,6 +239,8 @@ void btDeformableMultiBodyDynamicsWorld::performGeometricCollisions(btScalar tim
 				btSoftBody* psb2 = m_softBodies[j];
 				if (psb1->isActive() && psb2->isActive())
 				{
+					if (m_softBodies[i]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE || m_softBodies[j]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE)
+						continue;
 					m_softBodies[i]->geometricCollisionHandler(m_softBodies[j]);
 				}
 			}
