@@ -336,7 +336,6 @@ public:
 		btMatrix3x3 m_F;
 		btScalar m_element_measure;
 		btVector4 m_P_inv[3];  // first three columns of P_inv matrix
-		int m_boundaryFaces[4];
 	};
 
 	/*  TetraScratch  */

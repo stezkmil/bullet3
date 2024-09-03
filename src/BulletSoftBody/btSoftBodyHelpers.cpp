@@ -1401,57 +1401,82 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 		indices[i] = index;
 	}
 
-	std::map<std::vector<int>, std::pair<std::vector<int>, int> > dict;
+	class MyKey
+	{
+		std::array<int, 3> v;
+	public:
+		MyKey() {}
+		MyKey(const std::array<int, 3>& v) : v(v) {}
+
+		// Overload the less-than operator
+		bool operator<(const MyKey& other) const
+		{
+			return /*v[0] < other.v[0]*/;
+		}
+
+		void Add(int idx, int val)
+		{
+			v[idx] = val;
+		}
+
+		void Sort()
+		{
+			std::sort(v.begin(), v.end());
+		}
+
+		int Get(int idx) const
+		{
+			return v[idx];
+		}
+	};
+
+	std::map<MyKey, MyKey> dict;
 	for (int i = 0; i < indices.size(); ++i)
 	{
 		for (int j = 0; j < 4; ++j)
 		{
-			std::vector<int> f;
+			MyKey f;
 			if (j == 0)
 			{
-				f.push_back(indices[i][1]);
-				f.push_back(indices[i][0]);
-				f.push_back(indices[i][2]);
+				f.Add(0, indices[i][1]);
+				f.Add(1, indices[i][0]);
+				f.Add(2, indices[i][2]);
 			}
 			if (j == 1)
 			{
-				f.push_back(indices[i][3]);
-				f.push_back(indices[i][0]);
-				f.push_back(indices[i][1]);
+				f.Add(0, indices[i][3]);
+				f.Add(1, indices[i][0]);
+				f.Add(2, indices[i][1]);
 			}
 			if (j == 2)
 			{
-				f.push_back(indices[i][3]);
-				f.push_back(indices[i][1]);
-				f.push_back(indices[i][2]);
+				f.Add(0, indices[i][3]);
+				f.Add(1, indices[i][1]);
+				f.Add(2, indices[i][2]);
 			}
 			if (j == 3)
 			{
-				f.push_back(indices[i][2]);
-				f.push_back(indices[i][0]);
-				f.push_back(indices[i][3]);
+				f.Add(0, indices[i][2]);
+				f.Add(1, indices[i][0]);
+				f.Add(2, indices[i][3]);
 			}
-			std::vector<int> f_sorted = f;
-			std::sort(f_sorted.begin(), f_sorted.end());
+			MyKey f_sorted = f;
+			f_sorted.Sort();
 			if (dict.find(f_sorted) != dict.end())
 			{
 				dict.erase(f_sorted);
 			}
 			else
 			{
-				dict.insert(std::make_pair(f_sorted, std::make_pair(f, i)));
+				dict.insert(std::make_pair(f_sorted, f));
 			}
 		}
 	}
 
-	for (std::map<std::vector<int>, std::pair<std::vector<int>, int> >::iterator it = dict.begin(); it != dict.end(); ++it)
+	for (auto it = dict.begin(); it != dict.end(); ++it)
 	{
-		std::vector<int> f = it->second.first;
-		psb->appendFace(f[0], f[1], f[2]);
-		int boundaryFaceArrayIndex = 0;
-		while (psb->m_tetras[it->second.second].m_boundaryFaces[boundaryFaceArrayIndex] != -1)
-			++boundaryFaceArrayIndex;
-		psb->m_tetras[it->second.second].m_boundaryFaces[boundaryFaceArrayIndex] = psb->m_faces.size() - 1;
+		MyKey f = it->second;
+		psb->appendFace(f.Get(0), f.Get(1), f.Get(2));
 		//printf("f %d %d %d\n", f[0] + 1, f[1] + 1, f[2] + 1);
 	}
 }

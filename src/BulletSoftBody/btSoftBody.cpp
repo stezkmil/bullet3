@@ -490,10 +490,6 @@ void btSoftBody::appendTetra(int model, Material* mat)
 		ZeroInitialize(t);
 		t.m_material = mat ? mat : m_materials[0];
 	}
-	t.m_boundaryFaces[0] = -1;
-	t.m_boundaryFaces[1] = -1;
-	t.m_boundaryFaces[2] = -1;
-	t.m_boundaryFaces[3] = -1;
 	m_tetras.push_back(t);
 }
 
@@ -510,10 +506,6 @@ void btSoftBody::appendTetra(int node0,
 	t.m_n[1] = &m_nodes[node1];
 	t.m_n[2] = &m_nodes[node2];
 	t.m_n[3] = &m_nodes[node3];
-	t.m_boundaryFaces[0] = -1;
-	t.m_boundaryFaces[1] = -1;
-	t.m_boundaryFaces[2] = -1;
-	t.m_boundaryFaces[3] = -1;
 	t.m_rv = VolumeOf(t.m_n[0]->m_x, t.m_n[1]->m_x, t.m_n[2]->m_x, t.m_n[3]->m_x);
 	m_bUpdateRtCst = true;
 }
