@@ -608,6 +608,13 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 
 void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody)
 {
-	if ((softBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE && otherSoftBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE))
-		softBody->defaultCollisionHandler(otherSoftBody);
+	softBody->defaultCollisionHandler(otherSoftBody);
+}
+
+void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, const btManifoldResultForSkin* resultOut)
+{
+	const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
+	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->swapped ? cp.getPositionWorldOnB() : cp.getPositionWorldOnA(),
+											resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
+											cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
 }

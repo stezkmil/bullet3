@@ -39,11 +39,14 @@ btSoftSoftCollisionAlgorithm::~btSoftSoftCollisionAlgorithm()
 {
 }
 
-void btSoftSoftCollisionAlgorithm::processCollision(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const btDispatcherInfo& /*dispatchInfo*/, btManifoldResult* /*resultOut*/)
+void btSoftSoftCollisionAlgorithm::processCollision(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const btDispatcherInfo& /*dispatchInfo*/, btManifoldResult* resultOut)
 {
 	btSoftBody* soft0 = (btSoftBody*)body0Wrap->getCollisionObject();
 	btSoftBody* soft1 = (btSoftBody*)body1Wrap->getCollisionObject();
-	soft0->getSoftBodySolver()->processCollision(soft0, soft1);
+	if ((soft0->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE && soft1->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE))
+		soft0->getSoftBodySolver()->processCollision(soft0, soft1);
+	else
+		soft0->getSoftBodySolver()->processCollision(soft0, soft1, static_cast<const btManifoldResultForSkin*>(resultOut));
 }
 
 btScalar btSoftSoftCollisionAlgorithm::calculateTimeOfImpact(btCollisionObject* /*body0*/, btCollisionObject* /*body1*/, const btDispatcherInfo& /*dispatchInfo*/, btManifoldResult* /*resultOut*/)

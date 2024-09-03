@@ -126,7 +126,26 @@ void btDeformableMultiBodyDynamicsWorld::performDeformableSelfCollisionDetection
 {
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
-		m_softBodies[i]->defaultCollisionHandler(m_softBodies[i]);
+		m_softBodies[i]->m_softSoftCollision = true;
+	}
+
+	for (int i = 0; i < m_softBodies.size(); ++i)
+	{
+		for (int j = i; j < m_softBodies.size(); ++j)
+		{
+			if ((m_softBodies[i]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE || m_softBodies[j]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE) &&
+				i != j)
+			{
+				// If any shape is not the default soft shape, then the collision is checked elsewhere. For now, self collisions are an exception - they are handled here no matter what.
+				continue;
+			}
+			m_softBodies[i]->defaultCollisionHandler(m_softBodies[j]);
+		}
+	}
+
+	for (int i = 0; i < m_softBodies.size(); ++i)
+	{
+		m_softBodies[i]->m_softSoftCollision = false;
 	}
 }
 

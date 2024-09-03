@@ -60,6 +60,8 @@ public:
 	virtual void processCollision(btSoftBody *, const btCollisionObjectWrapper *, const btManifoldResultForSkin *);
 
 	virtual void processCollision(btSoftBody *, btSoftBody *);
+
+	virtual void processCollision(btSoftBody *, btSoftBody *, const btManifoldResultForSkin *);
 };
 
 #endif  // #ifndef BT_ACCELERATED_SOFT_BODY_CPU_SOLVER_H

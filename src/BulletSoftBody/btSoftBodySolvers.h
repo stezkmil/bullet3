@@ -95,6 +95,8 @@ public:
 	/** Process a collision between two soft bodies */
 	virtual void processCollision(btSoftBody *, btSoftBody *) = 0;
 
+	virtual void processCollision(btSoftBody *, btSoftBody *, const btManifoldResultForSkin *) = 0;
+
 	/** Set the number of velocity constraint solver iterations this solver uses. */
 	virtual void setNumberOfPositionIterations(int iterations)
 	{

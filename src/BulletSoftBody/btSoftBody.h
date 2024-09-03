@@ -378,7 +378,7 @@ public:
 		btScalar m_c3;     // Friction
 		btScalar m_c4;     // Hardness
 		btMatrix3x3 m_c5;  // inverse effective mass
-		btScalar m_c6;     // Impulse factor
+		btScalar m_c6 = 1.0;     // Impulse factor
 
 		// jacobians and unit impulse responses for multibody
 		btMultiBodyJacobianData jacobianData_normal;
