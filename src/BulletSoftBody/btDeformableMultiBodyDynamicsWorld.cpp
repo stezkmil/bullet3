@@ -106,7 +106,7 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	afterSolverCallbacks(timeStep);
 
-	performDeformableSelfCollisionDetection();
+	performDeformableCollisionDetection();
 
 	applyRepulsionForce(timeStep);
 
@@ -122,7 +122,7 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 	// ///////////////////////////////
 }
 
-void btDeformableMultiBodyDynamicsWorld::performDeformableSelfCollisionDetection()
+void btDeformableMultiBodyDynamicsWorld::performDeformableCollisionDetection()
 {
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
