@@ -24,7 +24,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "btSoftBody.h"
 #include <fstream>
 #include <string>
-#include <vector>
+
 //
 // Helpers
 //

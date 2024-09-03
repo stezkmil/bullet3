@@ -27,14 +27,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <sstream>
 #include <string.h>
 #include <algorithm>
-#include <unordered_map>
-#include <unordered_set>
-#include <array>
 #include "btSoftBodyHelpers.h"
-#include "LinearMath/btMatrixX.h"
 #include "LinearMath/btConvexHull.h"
 #include "LinearMath/btConvexHullComputer.h"
-#include "Bullet3Common/b3RandomStd.h"
 
 #include <map>
 #include <vector>
