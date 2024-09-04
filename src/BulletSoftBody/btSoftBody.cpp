@@ -539,7 +539,7 @@ void btSoftBody::appendAnchor(int node, btRigidBody* body, const btVector3& loca
 }
 
 //
-void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body)
+void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t userIndex)
 {
 	DeformableNodeRigidAnchor c;
 	btSoftBody::Node& n = m_nodes[node];
@@ -571,6 +571,7 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body)
 	c.m_c1 = ra;
 	c.m_local = body->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
+	c.userIndex = userIndex;
 	m_deformableAnchors.push_back(c);
 }
 
@@ -608,8 +609,24 @@ void btSoftBody::removeDeformableAnchor(int node)
 	}
 }
 
+void btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
+{
+	for (int i = 0; i < m_deformableAnchors.size();)
+	{
+		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
+		if (c.userIndex == userIndex)
+		{
+			m_deformableAnchors.removeAtIndex(i);
+		}
+		else
+		{
+			i++;
+		}
+	}
+}
+
 //
-void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link)
+void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex)
 {
 	DeformableNodeRigidAnchor c;
 	btSoftBody::Node& n = m_nodes[node];
@@ -662,6 +679,7 @@ void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link)
 	c.m_c1 = ra;
 	c.m_local = link->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
+	c.userIndex = userIndex;
 	m_deformableAnchors.push_back(c);
 }
 //

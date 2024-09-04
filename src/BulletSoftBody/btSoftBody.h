@@ -397,6 +397,7 @@ public:
 	{
 	public:
 		btVector3 m_local;  // Anchor position in body space
+		uint32_t userIndex;
 	};
 
 	class DeformableFaceRigidContact : public DeformableRigidContact
@@ -967,13 +968,14 @@ public:
 					 Material* mat = 0);
 
 	/* Append anchor														*/
-	void appendDeformableAnchor(int node, btRigidBody* body);
-	void appendDeformableAnchor(int node, btMultiBodyLinkCollider* link);
+	void appendDeformableAnchor(int node, btRigidBody* body, uint32_t userIndex = -1);
+	void appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex = -1);
 	void appendAnchor(int node,
 					  btRigidBody* body, bool disableCollisionBetweenLinkedBodies = false, btScalar influence = 1);
 	void appendAnchor(int node, btRigidBody* body, const btVector3& localPivot, bool disableCollisionBetweenLinkedBodies = false, btScalar influence = 1);
 	void removeAnchor(int node);
 	void removeDeformableAnchor(int node);
+	void removeDeformableAnchorByUserIndex(int userIndex);
 	/* Append linear joint													*/
 	void appendLinearJoint(const LJoint::Specs& specs, Cluster* body0, Body body1);
 	void appendLinearJoint(const LJoint::Specs& specs, Body body = Body());
