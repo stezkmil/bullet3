@@ -1401,66 +1401,78 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 		indices[i] = index;
 	}
 
-	class MyKey
+	// Originally there was simply a std::vector as the map key. I worte this for a signle reason - to dodge one MSVC linker error (caused by MSVC's operator< for comparing two arrays or vectors) when using multiple MSVC versions at once. So, this can be safely deleted over time...
+	class FaceIndices
 	{
-		std::array<int, 3> v;
+		std::array<int, 3> arr;
 	public:
-		MyKey() {}
-		MyKey(const std::array<int, 3>& v) : v(v) {}
+		FaceIndices() {}
+		FaceIndices(const std::array<int, 3>& arr) : arr(arr) {}
 
 		// Overload the less-than operator
-		bool operator<(const MyKey& other) const
+		bool operator<(const FaceIndices& other) const
 		{
-			return /*v[0] < other.v[0]*/;
+			for (int i = 0; i < 3; ++i)
+			{
+				if (arr[i] < other.arr[i])
+				{
+					return true;
+				}
+				if (arr[i] > other.arr[i])
+				{
+					return false;
+				}
+			}
+			return false;  // If all elements are equal, return false
 		}
 
-		void Add(int idx, int val)
+		void Set(int idx, int val)
 		{
-			v[idx] = val;
+			arr[idx] = val;
 		}
 
 		void Sort()
 		{
-			std::sort(v.begin(), v.end());
+			std::sort(arr.begin(), arr.end());
 		}
 
 		int Get(int idx) const
 		{
-			return v[idx];
+			return arr[idx];
 		}
 	};
 
-	std::map<MyKey, MyKey> dict;
+	std::map<FaceIndices, FaceIndices> dict;
 	for (int i = 0; i < indices.size(); ++i)
 	{
 		for (int j = 0; j < 4; ++j)
 		{
-			MyKey f;
+			FaceIndices f;
 			if (j == 0)
 			{
-				f.Add(0, indices[i][1]);
-				f.Add(1, indices[i][0]);
-				f.Add(2, indices[i][2]);
+				f.Set(0, indices[i][1]);
+				f.Set(1, indices[i][0]);
+				f.Set(2, indices[i][2]);
 			}
 			if (j == 1)
 			{
-				f.Add(0, indices[i][3]);
-				f.Add(1, indices[i][0]);
-				f.Add(2, indices[i][1]);
+				f.Set(0, indices[i][3]);
+				f.Set(1, indices[i][0]);
+				f.Set(2, indices[i][1]);
 			}
 			if (j == 2)
 			{
-				f.Add(0, indices[i][3]);
-				f.Add(1, indices[i][1]);
-				f.Add(2, indices[i][2]);
+				f.Set(0, indices[i][3]);
+				f.Set(1, indices[i][1]);
+				f.Set(2, indices[i][2]);
 			}
 			if (j == 3)
 			{
-				f.Add(0, indices[i][2]);
-				f.Add(1, indices[i][0]);
-				f.Add(2, indices[i][3]);
+				f.Set(0, indices[i][2]);
+				f.Set(1, indices[i][0]);
+				f.Set(2, indices[i][3]);
 			}
-			MyKey f_sorted = f;
+			FaceIndices f_sorted = f;
 			f_sorted.Sort();
 			if (dict.find(f_sorted) != dict.end())
 			{
@@ -1475,7 +1487,7 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 
 	for (auto it = dict.begin(); it != dict.end(); ++it)
 	{
-		MyKey f = it->second;
+		FaceIndices f = it->second;
 		psb->appendFace(f.Get(0), f.Get(1), f.Get(2));
 		//printf("f %d %d %d\n", f[0] + 1, f[1] + 1, f[2] + 1);
 	}
