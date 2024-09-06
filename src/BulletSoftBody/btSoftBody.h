@@ -975,7 +975,7 @@ public:
 	void appendAnchor(int node, btRigidBody* body, const btVector3& localPivot, bool disableCollisionBetweenLinkedBodies = false, btScalar influence = 1);
 	void removeAnchor(int node);
 	void removeDeformableAnchor(int node);
-	void removeDeformableAnchorByUserIndex(int userIndex);
+	int removeDeformableAnchorByUserIndex(int userIndex);
 	/* Append linear joint													*/
 	void appendLinearJoint(const LJoint::Specs& specs, Cluster* body0, Body body1);
 	void appendLinearJoint(const LJoint::Specs& specs, Body body = Body());

@@ -125,6 +125,8 @@ protected:
 	btAlignedObjectArray<const btCollisionObject*> m_objectsWithoutCollisionCheck;
 	btAlignedObjectArray<const btCollisionObject*> m_objectsWithToleratedCollision;
 
+	int m_connectedToDeformablesCounter;
+
 	///internal update revision number. It will be increased when the object changes. This allows some subsystems to perform lazy evaluation.
 	int m_updateRevision;
 
@@ -261,6 +263,16 @@ public:
 		return m_objectsWithToleratedCollision.size() >= 1;
 	}
 
+	void incrementConnectedToDeformablesCounter()
+	{
+		++m_connectedToDeformablesCounter;
+	}
+
+	void decrementConnectedToDeformablesCounter()
+	{
+		--m_connectedToDeformablesCounter;
+	}
+
 	btCollisionObject();
 
 	virtual ~btCollisionObject();
@@ -345,7 +357,8 @@ public:
 		constexpr auto stuckCheckCounter = 25;
 		setUserIndex2(stuckCheckCounter);
 		// When the toleration is done, this returns the activation state to normal
-		forceActivationState(ACTIVE_TAG);
+		if (m_connectedToDeformablesCounter == 0)
+			forceActivationState(ACTIVE_TAG);
 	}
 
 	void setToleratedCollisionSome(InitialCollisionTolerance tolerance, const btCollisionObject * co)

@@ -609,20 +609,23 @@ void btSoftBody::removeDeformableAnchor(int node)
 	}
 }
 
-void btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
+int btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
 {
+	int removedCount = 0;
 	for (int i = 0; i < m_deformableAnchors.size();)
 	{
 		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
 		if (c.userIndex == userIndex)
 		{
 			m_deformableAnchors.removeAtIndex(i);
+			++removedCount;
 		}
 		else
 		{
 			i++;
 		}
 	}
+	return removedCount;
 }
 
 //
