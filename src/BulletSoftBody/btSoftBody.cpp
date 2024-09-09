@@ -261,6 +261,20 @@ btSoftBody::~btSoftBody()
 		btAlignedFree(m_joints[i]);
 	if (m_fdbvnt)
 		delete m_fdbvnt;
+
+	for (int i = 0; i < m_anchors.size();)
+	{
+		const Anchor& c = m_anchors[i];
+		if (c.m_body)
+			c.m_body->removeAnchorRef(this);
+	}
+
+	for (int i = 0; i < m_deformableAnchors.size();)
+	{
+		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
+		if (c.m_body)
+			c.m_body->removeAnchorRef(this);
+	}
 }
 
 //
@@ -536,6 +550,7 @@ void btSoftBody::appendAnchor(int node, btRigidBody* body, const btVector3& loca
 	a.m_node->m_battach = 1;
 	a.m_influence = influence;
 	m_anchors.push_back(a);
+	body->addAnchorRef(this);
 }
 
 //
@@ -556,6 +571,7 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 			0);
 
 	c.m_cti.m_colObj = body;
+	c.m_body = body;
 	c.m_cti.m_normal = wtr.getBasis() * nrm;
 	c.m_cti.m_offset = dst;
 	c.m_node = &m_nodes[node];
@@ -573,6 +589,7 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 	c.m_node->m_battach = 1;
 	c.userIndex = userIndex;
 	m_deformableAnchors.push_back(c);
+	body->addAnchorRef(this);
 }
 
 void btSoftBody::removeAnchor(int node)
@@ -584,6 +601,8 @@ void btSoftBody::removeAnchor(int node)
 		if (c.m_node == &n)
 		{
 			m_anchors.removeAtIndex(i);
+			if (c.m_body)
+				c.m_body->removeAnchorRef(this);
 		}
 		else
 		{
@@ -601,6 +620,8 @@ void btSoftBody::removeDeformableAnchor(int node)
 		if (c.m_node == &n)
 		{
 			m_deformableAnchors.removeAtIndex(i);
+			if (c.m_body)
+				c.m_body->removeAnchorRef(this);
 		}
 		else
 		{

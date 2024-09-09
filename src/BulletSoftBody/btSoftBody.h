@@ -232,7 +232,7 @@ public:
 	/* sCti is Softbody contact info	*/
 	struct sCti
 	{
-		const btCollisionObject* m_colObj; /* Rigid body			        */
+		const btCollisionObject* m_colObj;       /* Rigid body			        */
 		btVector3 m_normal;                /* Outward normal		        */
 		mutable btVector3 m_impulse;	   /* Applied impulse        	    */
 		btScalar m_offset;                 /* Offset from origin	        */
@@ -398,6 +398,7 @@ public:
 	public:
 		btVector3 m_local;  // Anchor position in body space
 		uint32_t userIndex;
+		btRigidBody* m_body;  // Body
 	};
 
 	class DeformableFaceRigidContact : public DeformableRigidContact
@@ -1433,6 +1434,16 @@ public:
 	virtual const std::vector<btVertexToTetraMapping>* getCollisionShapeVertexToSimTetra() const
 	{
 		return nullptr;
+	}
+
+	const tAnchorArray& getAnchors() const
+	{
+		return m_anchors;
+	}
+
+	const btAlignedObjectArray<DeformableNodeRigidAnchor>& getDeformableAnchors() const
+	{
+		return m_deformableAnchors;
 	}
 };
 

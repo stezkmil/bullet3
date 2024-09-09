@@ -38,6 +38,8 @@ struct btCollisionShapeData;
 #include "LinearMath/btAlignedAllocator.h"
 #include "LinearMath/btAlignedObjectArray.h"
 
+#include <set>
+
 typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
 
 #ifdef BT_USE_DOUBLE_PRECISION
@@ -125,12 +127,12 @@ protected:
 	btAlignedObjectArray<const btCollisionObject*> m_objectsWithoutCollisionCheck;
 	btAlignedObjectArray<const btCollisionObject*> m_objectsWithToleratedCollision;
 
-	int m_connectedToDeformablesCounter;
-
 	///internal update revision number. It will be increased when the object changes. This allows some subsystems to perform lazy evaluation.
 	int m_updateRevision;
 
 	btVector3 m_customDebugColorRGB;
+
+	std::set<btCollisionObject*> m_anchorRefs;
 
 public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
@@ -263,16 +265,6 @@ public:
 		return m_objectsWithToleratedCollision.size() >= 1;
 	}
 
-	void incrementConnectedToDeformablesCounter()
-	{
-		++m_connectedToDeformablesCounter;
-	}
-
-	void decrementConnectedToDeformablesCounter()
-	{
-		--m_connectedToDeformablesCounter;
-	}
-
 	btCollisionObject();
 
 	virtual ~btCollisionObject();
@@ -282,6 +274,26 @@ public:
 		m_updateRevision++;
 		m_collisionShape = collisionShape;
 		m_rootCollisionShape = collisionShape;
+	}
+
+	void addAnchorRef(btCollisionObject * soft)
+	{
+		m_anchorRefs.insert(soft);
+	}
+
+	void removeAnchorRef(btCollisionObject * soft)
+	{
+		m_anchorRefs.erase(soft);
+	}
+
+	bool hasAnchorRef() const
+	{
+		return !m_anchorRefs.empty();
+	}
+
+	const std::set<btCollisionObject*>& getAnchorRefs() const
+	{
+		return m_anchorRefs;
 	}
 
 	SIMD_FORCE_INLINE const btCollisionShape* getCollisionShape() const
@@ -357,7 +369,7 @@ public:
 		constexpr auto stuckCheckCounter = 25;
 		setUserIndex2(stuckCheckCounter);
 		// When the toleration is done, this returns the activation state to normal
-		if (m_connectedToDeformablesCounter == 0)
+		if (!hasAnchorRef())
 			forceActivationState(ACTIVE_TAG);
 	}
 

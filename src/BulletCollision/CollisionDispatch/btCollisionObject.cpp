@@ -55,8 +55,7 @@ btCollisionObject::btCollisionObject()
 	  m_ccdSweptSphereRadius(btScalar(0.)),
 	  m_ccdMotionThreshold(btScalar(0.)),
 	  m_checkCollideWith(false),
-	  m_updateRevision(0),
-	  m_connectedToDeformablesCounter(0)
+	  m_updateRevision(0)
 {
 	m_worldTransform.setIdentity();
 	m_lastSafeWorldTransform.setIdentity();
