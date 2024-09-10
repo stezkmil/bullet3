@@ -751,32 +751,40 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet);
 #endif
 
-		if (body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY && shape0->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+		// TODO this section seems misplaced from the Bullet architecture viewpoint. The m_dispatcher->needsResponse call should not be replicated here, but we should
+		// rely on the original place where it is called in the broadphase and adjust the architecture accordingly (which will not be straightforward)
 		{
-			if (shape1->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+			auto needsResponse = m_dispatcher->needsResponse(body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject());
+			if (needsResponse)
 			{
-				if (body1Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY)
+				if (body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY && shape0->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
 				{
-					gimpact_soft_vs_gimpact(body0Wrap, body1Wrap, shape0, shape1, false);
+					if (shape1->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+					{
+						if (body1Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY)
+						{
+							gimpact_soft_vs_gimpact(body0Wrap, body1Wrap, shape0, shape1, false);
+						}
+						else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY)
+						{
+							gimpact_soft_vs_gimpact_soft(body0Wrap, body1Wrap, shape0, shape1, false);
+						}
+					}
 				}
-				else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY)
+				else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY &&
+						 body1Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
 				{
-					gimpact_soft_vs_gimpact_soft(body0Wrap, body1Wrap, shape0, shape1, false);
-				}
-			}
-		}
-		else if (body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY &&
-				 body1Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
-		{
-			if (body0Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
-			{
-				if (body0Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY)
-				{
-					gimpact_soft_vs_gimpact(body1Wrap, body0Wrap, shape1, shape0, true);
-				}
-				else if (body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY)
-				{
-					gimpact_soft_vs_gimpact_soft(body1Wrap, body0Wrap, shape1, shape0, true);
+					if (body0Wrap->getCollisionShape()->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+					{
+						if (body0Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY)
+						{
+							gimpact_soft_vs_gimpact(body1Wrap, body0Wrap, shape1, shape0, true);
+						}
+						else if (body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY)
+						{
+							gimpact_soft_vs_gimpact_soft(body1Wrap, body0Wrap, shape1, shape0, true);
+						}
+					}
 				}
 			}
 		}
