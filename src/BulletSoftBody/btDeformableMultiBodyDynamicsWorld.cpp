@@ -118,6 +118,12 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 	btMultiBodyDynamicsWorld::updateActions(timeStep);
 
 	updateActivationState(timeStep);
+
+	if (0 != m_internalTickCallback)
+	{
+		(*m_internalTickCallback)(this, timeStep);
+	}
+
 	// End solver-wise simulation step
 	// ///////////////////////////////
 }
@@ -606,11 +612,6 @@ void btDeformableMultiBodyDynamicsWorld::clearGravity()
 
 void btDeformableMultiBodyDynamicsWorld::beforeSolverCallbacks(btScalar timeStep)
 {
-	if (0 != m_internalTickCallback)
-	{
-		(*m_internalTickCallback)(this, timeStep);
-	}
-
 	if (0 != m_solverCallback)
 	{
 		(*m_solverCallback)(m_internalTime, this);
