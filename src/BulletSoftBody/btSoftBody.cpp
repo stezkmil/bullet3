@@ -639,6 +639,8 @@ int btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
 		if (c.userIndex == userIndex)
 		{
 			m_deformableAnchors.removeAtIndex(i);
+			if (c.m_body)
+				c.m_body->removeAnchorRef(this);
 			++removedCount;
 		}
 		else
