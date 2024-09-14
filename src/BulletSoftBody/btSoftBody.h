@@ -397,8 +397,8 @@ public:
 	{
 	public:
 		btVector3 m_local;  // Anchor position in body space
-		uint32_t userIndex;
-		btRigidBody* m_body;  // Body
+		uint32_t m_userIndex;
+		btRigidBody* m_body = nullptr;  // Body
 	};
 
 	class DeformableFaceRigidContact : public DeformableRigidContact
@@ -1444,6 +1444,17 @@ public:
 	const btAlignedObjectArray<DeformableNodeRigidAnchor>& getDeformableAnchors() const
 	{
 		return m_deformableAnchors;
+	}
+
+	virtual void resetColObjPtrsInAnchors()
+	{
+		for (auto i = 0; i < m_anchors.size(); ++i)
+			m_anchors[i].m_body = nullptr;
+		for (auto i = 0; i < m_deformableAnchors.size(); ++i)
+		{
+			m_deformableAnchors[i].m_body = nullptr;
+			m_deformableAnchors[i].m_cti.m_colObj = nullptr;
+		}
 	}
 };
 

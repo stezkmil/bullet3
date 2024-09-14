@@ -286,6 +286,10 @@ public:
 		m_anchorRefs.erase(soft);
 	}
 
+	virtual void resetColObjPtrsInAnchors()
+	{
+	}
+
 	bool hasAnchorRef() const
 	{
 		return !m_anchorRefs.empty();
