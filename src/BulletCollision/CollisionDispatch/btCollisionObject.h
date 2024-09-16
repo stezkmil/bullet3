@@ -286,7 +286,7 @@ public:
 		m_anchorRefs.erase(soft);
 	}
 
-	virtual void resetColObjPtrsInAnchors()
+	virtual void resetColObjPtrsInAnchors(btCollisionObject * co)
 	{
 	}
 

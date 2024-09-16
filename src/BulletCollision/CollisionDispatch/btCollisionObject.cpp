@@ -65,7 +65,7 @@ btCollisionObject::btCollisionObject()
 btCollisionObject::~btCollisionObject()
 {
 	for (auto ref : m_anchorRefs)
-		ref->resetColObjPtrsInAnchors();
+		ref->resetColObjPtrsInAnchors(this);
 }
 
 void btCollisionObject::setActivationState(int newState) const

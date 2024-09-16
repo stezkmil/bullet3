@@ -1446,14 +1446,17 @@ public:
 		return m_deformableAnchors;
 	}
 
-	virtual void resetColObjPtrsInAnchors()
+	virtual void resetColObjPtrsInAnchors(btCollisionObject * co)
 	{
 		for (auto i = 0; i < m_anchors.size(); ++i)
-			m_anchors[i].m_body = nullptr;
+			if (m_anchors[i].m_body == co)
+				m_anchors[i].m_body = nullptr;
 		for (auto i = 0; i < m_deformableAnchors.size(); ++i)
 		{
-			m_deformableAnchors[i].m_body = nullptr;
-			m_deformableAnchors[i].m_cti.m_colObj = nullptr;
+			if (m_deformableAnchors[i].m_body == co)
+				m_deformableAnchors[i].m_body = nullptr;
+			if (m_deformableAnchors[i].m_cti.m_colObj == co)
+				m_deformableAnchors[i].m_cti.m_colObj = nullptr;
 		}
 	}
 };
