@@ -454,6 +454,16 @@ public:
 		}
 	}
 
+	virtual btScalar getYoungsModulus() const
+	{
+		return m_E;
+	}
+
+	virtual btScalar getPoissonRatio() const
+	{
+		return m_nu;
+	}
+
 	virtual btDeformableLagrangianForceType getForceType()
 	{
 		return BT_LINEAR_ELASTICITY_FORCE;

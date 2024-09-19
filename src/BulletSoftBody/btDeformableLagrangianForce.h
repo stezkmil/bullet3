@@ -368,5 +368,15 @@ public:
 	{
 		return totalElasticEnergy(dt) + totalDampingEnergy(dt);
 	}
+
+	virtual btScalar getYoungsModulus() const
+	{
+		return -1.0;
+	}
+
+	virtual btScalar getPoissonRatio() const
+	{
+		return -1.0;
+	}
 };
 #endif /* BT_DEFORMABLE_LAGRANGIAN_FORCE */

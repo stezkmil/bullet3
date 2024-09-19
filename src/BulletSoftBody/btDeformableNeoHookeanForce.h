@@ -417,6 +417,16 @@ public:
 		M[2][2] += scale * (dF[0][0] * F[1][1] + F[0][0] * dF[1][1] - dF[1][0] * F[0][1] - F[1][0] * dF[0][1]);
 	}
 
+	virtual btScalar getYoungsModulus() const
+	{
+		return m_E;
+	}
+
+	virtual btScalar getPoissonRatio() const
+	{
+		return m_nu;
+	}
+
 	virtual btDeformableLagrangianForceType getForceType()
 	{
 		return BT_NEOHOOKEAN_FORCE;
