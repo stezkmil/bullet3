@@ -245,6 +245,8 @@ void btSoftBody::initDefaults(btCollisionShape* collisionShape)
 
 	// reduced flag
 	m_reducedModel = false;
+
+	m_averagePrincipalStress = 0.0;
 }
 
 //

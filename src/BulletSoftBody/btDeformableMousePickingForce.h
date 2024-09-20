@@ -82,9 +82,11 @@ public:
 	virtual void addScaledElasticForce(btScalar scale, TVStack& force)
 	{
 		btScalar scaled_stiffness = scale * m_elasticStiffness;
+		btVector3 dir;
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
-			btVector3 dir = (getNode(i)->m_q - m_mouse_pos);
+			if (i == 0)
+				dir = (getNode(i)->m_q - m_mouse_pos);
 			btVector3 scaled_force = scaled_stiffness * dir;
 			if (scaled_force.safeNorm() > m_maxForce)
 			{

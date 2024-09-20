@@ -219,11 +219,14 @@ public:
 				continue;
 			}
 			btScalar max_p = psb->m_cfg.m_maxStress;
+			btScalar averagePrincipalStress = 0.0;
 			for (int j = 0; j < psb->m_tetras.size(); ++j)
 			{
 				btSoftBody::Tetra& tetra = psb->m_tetras[j];
 				btMatrix3x3 P;
 				firstPiola(psb->m_tetraScratches[j], P);
+				btScalar trPTP = (P[0].length() + P[1].length() + P[2].length());
+				averagePrincipalStress += trPTP;
 #ifdef USE_SVD
 				if (max_p > 0)
 				{
@@ -270,6 +273,8 @@ public:
 				force[id2] -= scale1 * force_on_node123.getColumn(1);
 				force[id3] -= scale1 * force_on_node123.getColumn(2);
 			}
+			averagePrincipalStress /= psb->m_tetras.size();
+			psb->m_averagePrincipalStress = averagePrincipalStress;
 		}
 	}
 

@@ -879,6 +879,7 @@ public:
 	btVector3 m_windVelocity;
 
 	btScalar m_restLengthScale;
+	btScalar m_averagePrincipalStress;
 
 	bool m_reducedModel;	// Reduced deformable model flag
 	
