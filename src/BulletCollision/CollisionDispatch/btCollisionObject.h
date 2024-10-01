@@ -361,7 +361,8 @@ public:
 		// Bodies with toleration enabled have to be always active. Otherwise the toleration logic does not work correctly. If it fell asleep, it would be filtered out in
 		// broadphase, resulting in initialCollisionParticipants being empty for it, which in turn would mean that the tolerance would be terminated in tickCallback even
 		// if it was penetrating something.
-		setActivationState(DISABLE_DEACTIVATION);
+		// Update: Ever since using m_deferedcollide = true, this should not be a problem anymore
+		//setActivationState(DISABLE_DEACTIVATION);
 	}
 
 	void setToleratedCollisionNone()
@@ -373,8 +374,9 @@ public:
 		constexpr auto stuckCheckCounter = 25;
 		setUserIndex2(stuckCheckCounter);
 		// When the toleration is done, this returns the activation state to normal
-		if (!hasAnchorRef())
-			forceActivationState(ACTIVE_TAG);
+		// Update: Ever since using m_deferedcollide = true, this should not be a problem anymore
+		//if (!hasAnchorRef())
+		//	forceActivationState(ACTIVE_TAG);
 	}
 
 	void setToleratedCollisionSome(InitialCollisionTolerance tolerance, const btCollisionObject * co)
@@ -386,7 +388,8 @@ public:
 		// Bodies with toleration enabled have to be always active. Otherwise the toleration logic does not work correctly. If it fell asleep, it would be filtered out in
 		// broadphase, resulting in initialCollisionParticipants being empty for it, which in turn would mean that the tolerance would be terminated in tickCallback even
 		// if it was penetrating something.
-		setActivationState(DISABLE_DEACTIVATION);
+		// Update: Ever since using m_deferedcollide = true, this should not be a problem anymore
+		//setActivationState(DISABLE_DEACTIVATION);
 	}
 
 	bool checkIsTolerated(const btCollisionObject* co) const

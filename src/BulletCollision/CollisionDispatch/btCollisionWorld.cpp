@@ -1395,7 +1395,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					bodyAlreadyUnstuck[i])
 					continue;
 				btAABB bodyAabb, surroundingBodyAabb;
-				surroundingBody->getCollisionShape()->getAabb(body->getWorldTransform(), bodyAabb.m_min, bodyAabb.m_max);
+				body->getCollisionShape()->getAabb(body->getWorldTransform(), bodyAabb.m_min, bodyAabb.m_max);
+				surroundingBody->getCollisionShape()->getAabb(surroundingBody->getWorldTransform(), surroundingBodyAabb.m_min, surroundingBodyAabb.m_max);
 				// This is a rough culling of bodies affected by the body from the stack being stuck
 				if (!bodyAabb.has_collision(surroundingBodyAabb))
 					continue;
@@ -1422,6 +1423,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					// experienced - these are a TODO too, they should not cause such gradual performance deterioration.
 					surroundingBody->setUserIndex2(0);
 					surroundingBody->setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL, opposingBody);
+					// This is needed because of the order of calls in internalSingleStepSimulation. The cd does is not called to fill InitialCollisionParticipant between this call to processLastSafeTransforms and the m_internalTickCallback
+					getDispatcher()->addInitialCollisionParticipant({ body, opposingBody });
 				}
 				// If a stuck situation happens, we play it safe and propagate the unstucking even based on rough aabb tests. Let's see if it is
 				// acceptable for our use case
