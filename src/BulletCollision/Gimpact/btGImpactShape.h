@@ -871,6 +871,12 @@ public:
 		m_box_set.setGlobalBoundHint(global_bound);
 	}
 
+	// Optimization which allows faster parallel refit
+	void setStoreIndicesPerLevel()
+	{
+		m_box_set.setStoreIndicesPerLevel();
+	}
+
 	virtual const btVector3& getLocalScaling() const
 	{
 		return m_primitive_manager->m_scale;
@@ -1007,6 +1013,16 @@ public:
 		}
 
 		m_needs_update = true;
+	}
+
+	void setStoreIndicesPerLevel()
+	{
+		int i = m_mesh_parts.size();
+		while (i--)
+		{
+			btGImpactMeshShapePart* part = m_mesh_parts[i];
+			part->setStoreIndicesPerLevel();
+		}
 	}
 
 	virtual void calculateLocalInertia(btScalar mass, btVector3& inertia) const;

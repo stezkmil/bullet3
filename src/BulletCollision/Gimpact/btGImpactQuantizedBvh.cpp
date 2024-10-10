@@ -184,7 +184,7 @@ int btQuantizedBvhTree::_sort_and_calc_splitting_index(
 	return splitIndex;
 }
 
-void btQuantizedBvhTree::_build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex)
+void btQuantizedBvhTree::_build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex, int level)
 {
 	int curIndex = m_num_nodes;
 	m_num_nodes++;
@@ -196,6 +196,8 @@ void btQuantizedBvhTree::_build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, in
 		//We have a leaf node
 		setNodeBound(curIndex, primitive_boxes[startIndex].m_bound);
 		m_node_array[curIndex].setDataIndex(primitive_boxes[startIndex].m_data);
+		if (m_store_indices_per_level)
+			m_node_indices_per_level[level].emplace_back(curIndex);
 
 		return;
 	}
@@ -222,12 +224,16 @@ void btQuantizedBvhTree::_build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, in
 	setNodeBound(curIndex, node_bound);
 
 	//build left branch
-	_build_sub_tree(primitive_boxes, startIndex, splitIndex);
+	_build_sub_tree(primitive_boxes, startIndex, splitIndex, level + 1);
 
 	//build right branch
-	_build_sub_tree(primitive_boxes, splitIndex, endIndex);
+	_build_sub_tree(primitive_boxes, splitIndex, endIndex, level + 1);
 
-	m_node_array[curIndex].setEscapeIndex(m_num_nodes - curIndex);
+	int escapeIndex = m_num_nodes - curIndex;
+	m_node_array[curIndex].setEscapeIndex(escapeIndex);
+
+	if (m_store_indices_per_level)
+		m_node_indices_per_level[level].emplace_back(curIndex);
 }
 
 //! stackless build tree
@@ -240,7 +246,7 @@ void btQuantizedBvhTree::build_tree(
 	// allocate nodes
 	m_node_array.resize(primitive_boxes.size() * 2);
 
-	_build_sub_tree(primitive_boxes, 0, primitive_boxes.size());
+	_build_sub_tree(primitive_boxes, 0, primitive_boxes.size(), 0);
 }
 
 ////////////////////////////////////class btGImpactQuantizedBvh
@@ -250,76 +256,61 @@ void btGImpactQuantizedBvh::refit()
 	int nodecount = getNodeCount();
 	while (nodecount--)
 	{
-		if (isLeafNode(nodecount))
+		refit_core(nodecount);
+	}
+}
+
+void btGImpactQuantizedBvh::refit_core(int nodeIndex)
+{
+	if (isLeafNode(nodeIndex))
+	{
+		btAABB leafbox;
+		m_primitive_manager->get_primitive_box(getNodeData(nodeIndex), leafbox);
+		setNodeBound(nodeIndex, leafbox);
+	}
+	else
+	{
+		//const GIM_BVH_TREE_NODE * nodepointer = get_node_pointer(nodecount);
+		//get left bound
+		btAABB bound;
+		bound.invalidate();
+
+		btAABB temp_box;
+
+		int child_node = getLeftNode(nodeIndex);
+		if (child_node)
 		{
-			btAABB leafbox;
-			m_primitive_manager->get_primitive_box(getNodeData(nodecount), leafbox);
-			setNodeBound(nodecount, leafbox);
+			getNodeBound(child_node, temp_box);
+			bound.merge(temp_box);
 		}
-		else
+
+		child_node = getRightNode(nodeIndex);
+		if (child_node)
 		{
-			//const GIM_BVH_TREE_NODE * nodepointer = get_node_pointer(nodecount);
-			//get left bound
-			btAABB bound;
-			bound.invalidate();
-
-			btAABB temp_box;
-
-			int child_node = getLeftNode(nodecount);
-			if (child_node)
-			{
-				getNodeBound(child_node, temp_box);
-				bound.merge(temp_box);
-			}
-
-			child_node = getRightNode(nodecount);
-			if (child_node)
-			{
-				getNodeBound(child_node, temp_box);
-				bound.merge(temp_box);
-			}
-
-			setNodeBound(nodecount, bound);
+			getNodeBound(child_node, temp_box);
+			bound.merge(temp_box);
 		}
+
+		setNodeBound(nodeIndex, bound);
 	}
 }
 
 void btGImpactQuantizedBvh::refit_parallel()
 {
-	int nodecount = getNodeCount();
-	while (nodecount--)
+	const auto& indicesPerLevel = getStoreIndicesPerLevel();
+
+	for (auto levelIter = indicesPerLevel.rbegin(); levelIter != indicesPerLevel.rend(); ++levelIter)
 	{
-		if (isLeafNode(nodecount))
-		{
-			btAABB leafbox;
-			m_primitive_manager->get_primitive_box(getNodeData(nodecount), leafbox);
-			setNodeBound(nodecount, leafbox);
-		}
-		else
-		{
-			//const GIM_BVH_TREE_NODE * nodepointer = get_node_pointer(nodecount);
-			//get left bound
-			btAABB bound;
-			bound.invalidate();
-
-			btAABB temp_box;
-
-			int child_node = getLeftNode(nodecount);
-			if (child_node)
+		tbb::parallel_for(
+			tbb::blocked_range<size_t>(0, levelIter->second.size()),
+			[&](const tbb::blocked_range<size_t>& range)
 			{
-				getNodeBound(child_node, temp_box);
-				bound.merge(temp_box);
-			}
-
-			child_node = getRightNode(nodecount);
-			if (child_node)
-			{
-				getNodeBound(child_node, temp_box);
-				bound.merge(temp_box);
-			}
-
-			setNodeBound(nodecount, bound);
-		}
+				for (size_t i = range.begin(); i != range.end(); ++i)
+				{
+					auto nodeIndex = levelIter->second[i];
+					refit_core(nodeIndex);
+				}
+			});
 	}
 }
 

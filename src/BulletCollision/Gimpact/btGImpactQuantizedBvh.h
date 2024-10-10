@@ -35,6 +35,8 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 
 #include "ctpl_stl.h"
 #include <atomic>
+#include <map>
+#include <vector>
 #include <tbb/tbb.h>
 
 class GIM_QUANTIZED_BVH_NODE_ARRAY : public btAlignedObjectArray<BT_QUANTIZED_BVH_NODE>
@@ -49,6 +51,8 @@ protected:
 	GIM_QUANTIZED_BVH_NODE_ARRAY m_node_array;
 	btAABB m_global_bound;
 	btVector3 m_bvhQuantization;
+	std::map<int, std::vector<int>> m_node_indices_per_level;
+	bool m_store_indices_per_level;
 
 protected:
 	void calc_quantization(GIM_BVH_DATA_ARRAY& primitive_boxes, btScalar boundMargin = btScalar(1.0));
@@ -60,12 +64,13 @@ protected:
 
 	int _calc_splitting_axis(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex);
 
-	void _build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex);
+	void _build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex, int level);
 
 public:
 	btQuantizedBvhTree()
 	{
 		m_num_nodes = 0;
+		m_store_indices_per_level = false;
 	}
 
 	//! prototype functions for box tree management
@@ -89,6 +94,7 @@ public:
 	{
 		m_node_array.clear();
 		m_num_nodes = 0;
+		m_node_indices_per_level.clear();
 	}
 
 	//! node count
@@ -158,6 +164,21 @@ public:
 	void setGlobalBoundHint(const btAABB& global_bound)
 	{
 		calc_quantization(global_bound);
+	}
+
+	void setStoreIndicesPerLevel()
+	{
+		m_store_indices_per_level = true;
+	}
+
+	bool hasStoredIndicesPerLevel() const
+	{
+		return m_store_indices_per_level;
+	}
+
+	const auto& getStoreIndicesPerLevel() const
+	{
+		return m_node_indices_per_level;
 	}
 
 	//!@}
@@ -262,6 +283,7 @@ protected:
 protected:
 	//stackless refit
 	void refit();
+	void refit_core(int nodeIndex);
 	void refit_parallel();
 
 public:
@@ -300,7 +322,10 @@ public:
 	//! this attemps to refit the box set.
 	SIMD_FORCE_INLINE void update()
 	{
-		refit();
+		if (hasStoredIndicesPerLevel())
+			refit_parallel();
+		else
+			refit();
 	}
 
 	//! this rebuild the entire set
@@ -326,6 +351,21 @@ public:
 	void setGlobalBoundHint(const btAABB& global_bound)
 	{
 		m_box_tree.setGlobalBoundHint(global_bound);
+	}
+
+	void setStoreIndicesPerLevel()
+	{
+		m_box_tree.setStoreIndicesPerLevel();
+	}
+
+	bool hasStoredIndicesPerLevel() const
+	{
+		return m_box_tree.hasStoredIndicesPerLevel();
+	}
+
+	const std::map<int, std::vector<int>>& getStoreIndicesPerLevel() const
+	{
+		return m_box_tree.getStoreIndicesPerLevel();
 	}
 
 	//! tells if this set has hierarcht
