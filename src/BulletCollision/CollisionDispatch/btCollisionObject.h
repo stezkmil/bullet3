@@ -434,7 +434,8 @@ public:
 
 	SIMD_FORCE_INLINE bool isActive() const
 	{
-		return ((getActivationState() != FIXED_BASE_MULTI_BODY) && (getActivationState() != ISLAND_SLEEPING) && (getActivationState() != DISABLE_SIMULATION));
+		return ((getActivationState() != FIXED_BASE_MULTI_BODY) && (getActivationState() != ISLAND_SLEEPING) && (getActivationState() != DISABLE_SIMULATION)) ||
+				m_objectsWithToleratedCollision.size() > 0;
 	}
 
 	void setRestitution(btScalar rest)
