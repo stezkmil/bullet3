@@ -25,7 +25,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef GIMPACT_SHAPE_H
 #define GIMPACT_SHAPE_H
 
@@ -863,6 +862,13 @@ public:
 		// This forces rebuild instead of refit. Because scaling changes the global bounding box used for quantization and this global bounding box was
 		// not updated in refit. Naturally this is not needed if a non-quantized bvh is used.
 		m_box_set.clearNodes();
+	}
+
+	// There is this bug in quantized bvh, where the calculation of global aabb depends on the value of previous global aabb (the m_global_bound member)
+	// when doing a refit. This workaround sets the new global aabb before doing the refit.
+	void setGlobalBoundHint(const btAABB& global_bound)
+	{
+		m_box_set.setGlobalBoundHint(global_bound);
 	}
 
 	virtual const btVector3& getLocalScaling() const

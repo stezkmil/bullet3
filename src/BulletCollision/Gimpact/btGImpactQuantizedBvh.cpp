@@ -25,7 +25,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btGImpactQuantizedBvh.h"
 #include "LinearMath/btQuickprof.h"
 
@@ -33,7 +32,6 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <tuple>
 
 //#include "cvmarkersobj.h"
-
 
 //using namespace Concurrency;
 
@@ -87,6 +85,13 @@ void btQuantizedBvhTree::calc_quantization(
 		global_bound.merge(primitive_boxes[i].m_bound);
 	}
 
+	bt_calc_quantization_parameters(
+		m_global_bound.m_min, m_global_bound.m_max, m_bvhQuantization, global_bound.m_min, global_bound.m_max, boundMargin);
+}
+
+void btQuantizedBvhTree::calc_quantization(
+	const btAABB& global_bound, btScalar boundMargin)
+{
 	bt_calc_quantization_parameters(
 		m_global_bound.m_min, m_global_bound.m_max, m_bvhQuantization, global_bound.m_min, global_bound.m_max, boundMargin);
 }
@@ -279,6 +284,45 @@ void btGImpactQuantizedBvh::refit()
 	}
 }
 
+void btGImpactQuantizedBvh::refit_parallel()
+{
+	int nodecount = getNodeCount();
+	while (nodecount--)
+	{
+		if (isLeafNode(nodecount))
+		{
+			btAABB leafbox;
+			m_primitive_manager->get_primitive_box(getNodeData(nodecount), leafbox);
+			setNodeBound(nodecount, leafbox);
+		}
+		else
+		{
+			//const GIM_BVH_TREE_NODE * nodepointer = get_node_pointer(nodecount);
+			//get left bound
+			btAABB bound;
+			bound.invalidate();
+
+			btAABB temp_box;
+
+			int child_node = getLeftNode(nodecount);
+			if (child_node)
+			{
+				getNodeBound(child_node, temp_box);
+				bound.merge(temp_box);
+			}
+
+			child_node = getRightNode(nodecount);
+			if (child_node)
+			{
+				getNodeBound(child_node, temp_box);
+				bound.merge(temp_box);
+			}
+
+			setNodeBound(nodecount, bound);
+		}
+	}
+}
+
 //! this rebuild the entire set
 void btGImpactQuantizedBvh::buildSet()
 {
@@ -385,8 +429,8 @@ SIMD_FORCE_INLINE bool _quantized_node_collision(
 	boxset1->getNodeBound(node1, box1);
 
 	return box0.overlapping_trans_cache(box1, trans_cache_1to0, complete_primitive_tests);
-		//box1.appy_transform_trans_cache(trans_cache_1to0);
-		//return box0.has_collision(box1);
+	//box1.appy_transform_trans_cache(trans_cache_1to0);
+	//return box0.has_collision(box1);
 }
 
 // recursive collision routine
@@ -476,7 +520,7 @@ static void _find_quantized_collision_pairs_stack_ser(
 		pairStack.pop();
 		int node0 = std::get<0>(pair), node1 = std::get<1>(pair);
 		bool complete_primitive_tests_local = std::get<2>(pair);
-		
+
 		if (findOnlyFirstPenetratingPair)
 		{
 			if (collision_pairs->size() > 0)
@@ -780,7 +824,7 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 
 	//diagnostic::marker_series series0("col pairs serial");
 	//diagnostic::span span(series0, diagnostic::high_importance, 10, "serial topmost %d %d", boxset0->getNodeCount(), boxset1->getNodeCount());
-	
+
 	//series0.write_message(diagnostic::normal_importance, 0, "start ser");
 
 	//auto start = std::chrono::steady_clock::now();
@@ -799,7 +843,6 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	_find_quantized_collision_pairs_recursive_par(groupedParams, 0, 0, 0, true);
 	//auto end = std::chrono::steady_clock::now();
 
-	
 	//auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 	//size_t size = 0;
 	//for (const auto& pairs : perThreadIntermediateResults)

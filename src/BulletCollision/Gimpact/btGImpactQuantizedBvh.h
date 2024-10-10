@@ -28,7 +28,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btGImpactBvh.h"
 #include "btQuantization.h"
 #include "btGImpactQuantizedBvhStructs.h"
@@ -53,6 +52,7 @@ protected:
 
 protected:
 	void calc_quantization(GIM_BVH_DATA_ARRAY& primitive_boxes, btScalar boundMargin = btScalar(1.0));
+	void calc_quantization(const btAABB& global_bound, btScalar boundMargin = btScalar(1.0));
 
 	int _sort_and_calc_splitting_index(
 		GIM_BVH_DATA_ARRAY& primitive_boxes,
@@ -155,6 +155,11 @@ public:
 		return &m_node_array[index];
 	}
 
+	void setGlobalBoundHint(const btAABB& global_bound)
+	{
+		calc_quantization(global_bound);
+	}
+
 	//!@}
 };
 
@@ -199,12 +204,12 @@ struct spinlock
 	}
 };
 
-
 struct btThreadPoolForBvh
 {
 private:
 	std::mutex waitForTerminationMutex;
 	std::condition_variable waitForTermination;
+
 public:
 	std::atomic<uint16_t> runningThreadCount;
 	spinlock colPairsMtx;
@@ -219,8 +224,7 @@ public:
 	{
 		std::unique_lock<std::mutex> lck(waitForTerminationMutex);
 		waitForTermination.wait(lck, [this]()
-								{ return runningThreadCount == 0;
-			});
+								{ return runningThreadCount == 0; });
 	}
 
 	class ThreadEndCounter
@@ -258,9 +262,9 @@ protected:
 protected:
 	//stackless refit
 	void refit();
+	void refit_parallel();
 
 public:
-
 	//! this constructor doesn't build the tree. you must call	buildSet
 	btGImpactQuantizedBvh()
 	{
@@ -318,6 +322,11 @@ public:
 	bool rayQuery(
 		const btVector3& ray_dir, const btVector3& ray_origin,
 		btAlignedObjectArray<int>& collided_results) const;
+
+	void setGlobalBoundHint(const btAABB& global_bound)
+	{
+		m_box_tree.setGlobalBoundHint(global_bound);
+	}
 
 	//! tells if this set has hierarcht
 	SIMD_FORCE_INLINE bool hasHierarchy() const
