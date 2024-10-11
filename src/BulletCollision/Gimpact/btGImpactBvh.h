@@ -28,7 +28,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "LinearMath/btAlignedObjectArray.h"
 
 #include "btBoxCollision.h"
@@ -168,6 +167,7 @@ public:
 	virtual void get_primitive_box(int prim_index, btAABB& primbox) const = 0;
 	//! retrieves only the points of the triangle, and the collision margin
 	virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle) const = 0;
+	virtual bool get_primitive_triangle_safe(int prim_index, btPrimitiveTriangle& triangle) const = 0;
 	virtual void get_primitive_indices(int prim_index, unsigned int& A, unsigned int& B, unsigned int& C) const = 0;
 };
 

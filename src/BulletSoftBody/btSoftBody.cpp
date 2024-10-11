@@ -1439,7 +1439,7 @@ int btSoftBody::generateBendingConstraints(int distance, Material* mat)
 		const unsigned inf = (~(unsigned)0) >> 1;
 		unsigned* adj = new unsigned[n * n];
 
-#define IDX(_x_, _y_) ((_y_)*n + (_x_))
+#define IDX(_x_, _y_) ((_y_) * n + (_x_))
 		for (j = 0; j < n; ++j)
 		{
 			for (i = 0; i < n; ++i)
@@ -2891,22 +2891,17 @@ static void getBarycentric(const btVector3& p, const btVector3& a, const btVecto
 	btScalar d21 = v2.dot(v1);
 	btScalar denom = d00 * d11 - d01 * d01;
 	// In the case of a degenerate triangle, pick a vertex.
-	if (btFabs(denom) < SIMD_EPSILON) 
+	if (btFabs(denom) < SIMD_EPSILON)
 	{
 		bary.setY(btScalar(0.0));
 		bary.setZ(btScalar(0.0));
-	} 
-	else 
+	}
+	else
 	{
 		bary.setY((d11 * d20 - d01 * d21) / denom);
 		bary.setZ((d00 * d21 - d01 * d20) / denom);
-  	}
+	}
 	bary.setX(btScalar(1) - bary.getY() - bary.getZ());
-}
-
-static btVector3 applyBarycentricCoordinatesInTetra(const btVector4& baryCoord, const btVector3& a, const btVector3& b, const btVector3& c, const btVector3& d)
-{
-	return baryCoord.x() * a + baryCoord.y() * b + baryCoord.z() * c + baryCoord.w() * d;
 }
 
 //
@@ -4344,7 +4339,7 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 }
 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-									  btScalar distance, const bool penetrating)
+											   btScalar distance, const bool penetrating)
 {
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 	auto diagonalLength = (m_bounds[1] - m_bounds[0]).length();
@@ -4352,6 +4347,8 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	auto towardsSoftSimFace = contactPointOnSoftCollisionMesh + rayDirectionProlonged;
 	sRayCast faceTestResult;
 	rayFaceTest(contactPointOnSoftCollisionMesh, towardsSoftSimFace, faceTestResult);
+
+	printf("pen %d dist %f normal %f %f %f\n", (int)penetrating, distance, contactNormalOnSoftCollisionMesh.x(), contactNormalOnSoftCollisionMesh.y(), contactNormalOnSoftCollisionMesh.z());
 
 	if (faceTestResult.index == -1)
 	{
@@ -4378,7 +4375,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		//const btScalar stamargin = softMargin;
 		//const btScalar dynmargin = softMargin + timemargin;
 		//const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
-		
+
 		//const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
 		//const btScalar sumMargin = m + rigidMargin;
 
@@ -4388,7 +4385,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		// are ignored and even quite small values larger than 0 can cause the contact to be completely discarded causing a free penetration.
 		c.m_cti.m_offset = 0.0;
 		// Some dynamic factor calculation could be done similar to that in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
-		const btScalar maxImpulseFactor = 2.0;
+		const btScalar maxImpulseFactor = 1.0;
 		// Impulse factor introduced because of imperfections in contactNormalOnSoftCollisionMesh. The resulting impulse was not strong enough because of those imperfections.
 		// So they have to be fixed first if this factor causes some numerical instability.
 		// One experiment to try is to use time coherence and when regular contact is replaced with penetrating one in btPersistentManifold::replaceContactPoint, try to preserve
@@ -4471,7 +4468,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 }
 
 void btSoftBody::skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-											   btScalar distance, const bool penetrating)
+											  btScalar distance, const bool penetrating)
 {
 }
 

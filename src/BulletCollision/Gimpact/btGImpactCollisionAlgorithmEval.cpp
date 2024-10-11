@@ -3,8 +3,8 @@
 
 bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 								 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair,
-						 ThreadLocalGImpactResult* perThreadIntermediateResults,
-						 std::list<btGImpactIntermediateResult>* intermediateResults)
+								 ThreadLocalGImpactResult* perThreadIntermediateResults,
+								 std::list<btGImpactIntermediateResult>* intermediateResults)
 {
 	btPrimitiveTriangle ptri0;
 	btPrimitiveTriangle ptri1;
@@ -13,8 +13,12 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 	grpParams.shape0->getPrimitiveTriangle(pair.m_index1, ptri0);
 	grpParams.shape1->getPrimitiveTriangle(pair.m_index2, ptri1);
 
-	btPrimitiveTriangle ptri0Backup = ptri0;
-	btPrimitiveTriangle ptri1Backup = ptri1;
+	btPrimitiveTriangle ptri0Backup;
+	btPrimitiveTriangle ptri1Backup;
+	if (!grpParams.shape0->getPrimitiveTriangleSafe(pair.m_index1, ptri0Backup))
+		ptri0Backup = ptri0;
+	if (!grpParams.shape1->getPrimitiveTriangleSafe(pair.m_index2, ptri1Backup))
+		ptri1Backup = ptri1;
 
 	ptri0.applyTransform(grpParams.orgtrans0);
 	ptri1.applyTransform(grpParams.orgtrans1);
@@ -33,7 +37,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 				if (contact_data.m_point_count >= 1)
 				{
 					bool insert = true;
-					if (findOnlyFirstPenetratingPair && contact_data.m_penetration_depth >= 0.0) // Ever since there is marginEpsilon in btPrimitiveTriangle::find_triangle_collision_alt_method_outer, the equal sign in the ">= 0.0" comparison has to be there, because 0.0 is now a very common non-penetrating result even in the margin zone
+					if (findOnlyFirstPenetratingPair && contact_data.m_penetration_depth >= 0.0)  // Ever since there is marginEpsilon in btPrimitiveTriangle::find_triangle_collision_alt_method_outer, the equal sign in the ">= 0.0" comparison has to be there, because 0.0 is now a very common non-penetrating result even in the margin zone
 						insert = false;
 					if (insert)
 					{

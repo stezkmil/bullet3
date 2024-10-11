@@ -25,7 +25,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btTriangleShapeEx.h"
 
 #include <utility>
@@ -131,7 +130,6 @@ bool btPrimitiveTriangle::validity_test() const
 		return false;
 
 	return true;
-
 }
 
 int btPrimitiveTriangle::clip_triangle(btPrimitiveTriangle& other, btVector3* clipped_points)
@@ -400,7 +398,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method(const btPrimitiveTr
 }
 
 bool btPrimitiveTriangle::segmentSegmentDistance(const btVector3& p1, const btVector3& p2, const btVector3& s1, const btVector3& s2,
-							btScalar& tp_out, btScalar& ts_out, btVector3& p_closest_out, btVector3& s_closest_out, btScalar& dist_sq_out, btScalar max_distance_sq)
+												 btScalar& tp_out, btScalar& ts_out, btVector3& p_closest_out, btVector3& s_closest_out, btScalar& dist_sq_out, btScalar max_distance_sq)
 {
 	// http://geomalgorithms.com/a07-_distance.html
 
@@ -532,7 +530,7 @@ bool btPrimitiveTriangle::segmentSegmentDistance(const btVector3& p1, const btVe
 }
 
 bool btPrimitiveTriangle::pointTriangleDistance(const btVector3& q, const btVector3& p1, const btVector3& p2, const btVector3& p3,
-						   btScalar& tp_out, btScalar& ts_out, btVector3& closest_out, btScalar& dist_sq_out, btScalar max_distance_sq)
+												btScalar& tp_out, btScalar& ts_out, btVector3& closest_out, btScalar& dist_sq_out, btScalar max_distance_sq)
 {
 	// According to http://web.mit.edu/ehliu/Public/Darmofal/DistancePoint3Triangle3.pdf
 	btVector3 P = q;
@@ -718,7 +716,7 @@ bool btPrimitiveTriangle::pointTriangleDistance(const btVector3& q, const btVect
 }
 
 bool btPrimitiveTriangle::triangle_triangle_distance(const btPrimitiveTriangle& b, btScalar& dist_sq_out, btVector3& a_closest_out, btVector3& b_closest_out,
-	float max_distance_sq)
+													 float max_distance_sq)
 {
 	btVector3 a_closest, b_closest;
 	GIM_TRIANGLE_CONTACT contact;
@@ -830,7 +828,8 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	bool ret = false;
 	const btScalar maxDepth = margin * marginZoneRecoveryStrengthFactor;
 
-	auto create_contact = [&]() {
+	auto create_contact = [&]()
+	{
 		btVector3 diff = a_closest_out - b_closest_out;
 		if (dist == 0.0)
 			dist = diff.length();
@@ -843,7 +842,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		else
 		{
 			// Inversion so that smaller distance means bigger impulse, up to the maxDepth when distance is 0. Margin distance - marginEpsilon means 0 depth.
-			
+
 			// marginEpsilon helps preserving contacts in certain situations. Without it, the resulting impulse would push the body out of the margin completely,
 			// which would then result in 0 manifolds, so a much bigger impulse would be generated, which would create a noticeable jerk in motion back into the
 			// margin. This discontinuity would happen periodically. Observed on the Lemovka scene.
@@ -851,7 +850,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		}
 		//printf("contacts.m_penetration_depth %f\n", contacts.m_penetration_depth);
 	};
-	
+
 	ret = triangle_triangle_distance(other, dist_sq_out, a_closest_out, b_closest_out);
 	dist = sqrtf(dist_sq_out);
 	if (ret && dist_sq_out != 0.0 && dist < margin)
@@ -863,30 +862,28 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	else if (ret && dist_sq_out == 0.0)
 	{
 		// Triangle penetration. Use the last safe transforms.
-		if (doUnstuck)
-		{
-			auto thisLastSafe = thisBackup;
-			auto otherLastSafe = otherBackup;
-			thisLastSafe.applyTransform(thisTransformLastSafe);
-			otherLastSafe.applyTransform(otherTransformLastSafe);
-			thisLastSafe.buildTriPlane();
-			otherLastSafe.buildTriPlane();
 
-			ret = thisLastSafe.triangle_triangle_distance(otherLastSafe, dist_sq_out, a_closest_out, b_closest_out);
-			// Since we use the safe positions, nothing should be penetrating. This assert is very useful for testing if some change in code
-			// didn't mess things up, but in a more complex scenario where there is another movable which places itself into the first's safe zone,
-			// this assert should be commented out.
-			//btAssert(!(ret && dist_sq_out == 0.0));
+		// TODO WATCH OUT HERE, I HAVE DELTED THE UNSTUCK CHECK - MIGHT HARM TOUCH SENSORS - VERIFY
 
-			dist = sqrtf(dist_sq_out);
-			create_contact();
-			contacts.m_penetration_depth = -maxDepth;  // Mark it as penetration by making it negative
-		}
-		else
-		{
-			find_triangle_collision_clip_method(other, contacts);
-			contacts.m_penetration_depth = -contacts.m_penetration_depth;
-		}
+		auto thisLastSafe = thisBackup;
+		auto otherLastSafe = otherBackup;
+		thisLastSafe.applyTransform(thisTransformLastSafe);
+		otherLastSafe.applyTransform(otherTransformLastSafe);
+
+		printf("other z %f other safe z %f\n", other.m_vertices[0].z(), otherLastSafe.m_vertices[0].z());
+
+		thisLastSafe.buildTriPlane();
+		otherLastSafe.buildTriPlane();
+
+		ret = thisLastSafe.triangle_triangle_distance(otherLastSafe, dist_sq_out, a_closest_out, b_closest_out);
+		// Since we use the safe positions, nothing should be penetrating. This assert is very useful for testing if some change in code
+		// didn't mess things up, but in a more complex scenario where there is another movable which places itself into the first's safe zone,
+		// this assert should be commented out.
+		//btAssert(!(ret && dist_sq_out == 0.0));
+
+		dist = sqrtf(dist_sq_out);
+		create_contact();
+		contacts.m_penetration_depth = -maxDepth;  // Mark it as penetration by making it negative
 
 		return true;
 	}

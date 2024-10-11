@@ -235,6 +235,11 @@ public:
 		getPrimitiveManager()->get_primitive_triangle(index, triangle);
 	}
 
+	SIMD_FORCE_INLINE bool getPrimitiveTriangleSafe(int index, btPrimitiveTriangle& triangle) const
+	{
+		return getPrimitiveManager()->get_primitive_triangle_safe(index, triangle);
+	}
+
 	//! Retrieves the bound from a child
 	/*!
     */
@@ -368,6 +373,14 @@ public:
 			btAssert(0);
 			(void)prim_index;
 			(void)triangle;
+		}
+
+		virtual bool get_primitive_triangle_safe(int prim_index, btPrimitiveTriangle& triangle) const
+		{
+			btAssert(0);
+			(void)prim_index;
+			(void)triangle;
+			return false;
 		}
 	};
 
@@ -706,6 +719,11 @@ public:
 			get_vertex(indices[1], triangle.m_vertices[1]);
 			get_vertex(indices[2], triangle.m_vertices[2]);
 			triangle.m_margin = m_margin;
+		}
+
+		virtual bool get_primitive_triangle_safe(int prim_index, btPrimitiveTriangle& triangle) const
+		{
+			return false;
 		}
 
 		SIMD_FORCE_INLINE void get_bullet_triangle(int prim_index, btTriangleShapeEx& triangle) const
