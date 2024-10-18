@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btPersistentManifold.h"
 #include "LinearMath/btTransform.h"
 #include "LinearMath/btSerializer.h"
@@ -204,7 +203,8 @@ int btPersistentManifold::getCacheEntry(const btManifoldPoint& newPoint) const
 	{
 		const btManifoldPoint& mp = m_pointCache[i];
 
-		if (mp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING) // Never overwrite contact that is penetrating. The information about penetration must not be lost.
+		// Point of this is to not loose a penetrating contact if there is one. We have to preserve at least one if there was one.
+		if (!(newPoint.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING) && (mp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING))
 			continue;
 
 		btVector3 diffA = mp.m_localPointA - newPoint.m_localPointA;

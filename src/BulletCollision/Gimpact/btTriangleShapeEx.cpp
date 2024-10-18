@@ -530,7 +530,7 @@ bool btPrimitiveTriangle::segmentSegmentDistance(const btVector3& p1, const btVe
 }
 
 bool btPrimitiveTriangle::pointTriangleDistance(const btVector3& q, const btVector3& p1, const btVector3& p2, const btVector3& p3,
-												btScalar& tp_out, btScalar& ts_out, btVector3& closest_out, btScalar& dist_sq_out, btScalar max_distance_sq)
+												btScalar& tp_out, btScalar& ts_out, btVector3& closest_out, btScalar& dist_sq_out, btScalar& plane_dist, btScalar max_distance_sq)
 {
 	// According to http://web.mit.edu/ehliu/Public/Darmofal/DistancePoint3Triangle3.pdf
 	btVector3 P = q;
@@ -544,6 +544,10 @@ bool btPrimitiveTriangle::pointTriangleDistance(const btVector3& q, const btVect
 	btScalar d = E0.dot(W);
 	btScalar e = E1.dot(W);
 	//btScalar f = W.Dot(W);
+
+	btVector3 norm_dbg = E0.cross(E1);
+	btScalar d_dbg = -1.0 * (norm_dbg.dot(p1));
+	plane_dist = norm_dbg.dot(q) + d_dbg;
 
 	btScalar det = a * c - b * b;  // = |u x v| ^ 2
 	btScalar s = b * e - c * d;
@@ -709,6 +713,7 @@ bool btPrimitiveTriangle::pointTriangleDistance(const btVector3& q, const btVect
 		ts_out = ts;
 		closest_out = closest;
 		dist_sq_out = dist_sq;
+
 		return true;
 	}
 	else
@@ -716,7 +721,7 @@ bool btPrimitiveTriangle::pointTriangleDistance(const btVector3& q, const btVect
 }
 
 bool btPrimitiveTriangle::triangle_triangle_distance(const btPrimitiveTriangle& b, btScalar& dist_sq_out, btVector3& a_closest_out, btVector3& b_closest_out,
-													 float max_distance_sq)
+													 bool& aNeg, bool& bNeg, btScalar max_distance_sq)
 {
 	btVector3 a_closest, b_closest;
 	GIM_TRIANGLE_CONTACT contact;
@@ -731,7 +736,7 @@ bool btPrimitiveTriangle::triangle_triangle_distance(const btPrimitiveTriangle& 
 	}
 
 	// The triangles don't collide, the distance is the closest of 9 ExE and 6 VxF distances
-	btScalar curr_dist_sq = max_distance_sq, tp, ts;
+	btScalar curr_dist_sq = max_distance_sq, tp, ts, plane_dist[6];
 	this->m_vertices[1], b.m_vertices[0];
 	segmentSegmentDistance(this->m_vertices[0], this->m_vertices[1], b.m_vertices[0], b.m_vertices[1], tp, ts, a_closest, b_closest, curr_dist_sq, curr_dist_sq);
 	segmentSegmentDistance(this->m_vertices[1], this->m_vertices[2], b.m_vertices[0], b.m_vertices[1], tp, ts, a_closest, b_closest, curr_dist_sq, curr_dist_sq);
@@ -743,12 +748,15 @@ bool btPrimitiveTriangle::triangle_triangle_distance(const btPrimitiveTriangle& 
 	segmentSegmentDistance(this->m_vertices[1], this->m_vertices[2], b.m_vertices[2], b.m_vertices[0], tp, ts, a_closest, b_closest, curr_dist_sq, curr_dist_sq);
 	segmentSegmentDistance(this->m_vertices[2], this->m_vertices[0], b.m_vertices[2], b.m_vertices[0], tp, ts, a_closest, b_closest, curr_dist_sq, curr_dist_sq);
 
-	if (pointTriangleDistance(this->m_vertices[0], b.m_vertices[0], b.m_vertices[1], b.m_vertices[2], tp, ts, b_closest, curr_dist_sq, curr_dist_sq)) a_closest = this->m_vertices[0];
-	if (pointTriangleDistance(this->m_vertices[1], b.m_vertices[0], b.m_vertices[1], b.m_vertices[2], tp, ts, b_closest, curr_dist_sq, curr_dist_sq)) a_closest = this->m_vertices[1];
-	if (pointTriangleDistance(this->m_vertices[2], b.m_vertices[0], b.m_vertices[1], b.m_vertices[2], tp, ts, b_closest, curr_dist_sq, curr_dist_sq)) a_closest = this->m_vertices[2];
-	if (pointTriangleDistance(b.m_vertices[0], this->m_vertices[0], this->m_vertices[1], this->m_vertices[2], tp, ts, a_closest, curr_dist_sq, curr_dist_sq)) b_closest = b.m_vertices[0];
-	if (pointTriangleDistance(b.m_vertices[1], this->m_vertices[0], this->m_vertices[1], this->m_vertices[2], tp, ts, a_closest, curr_dist_sq, curr_dist_sq)) b_closest = b.m_vertices[1];
-	if (pointTriangleDistance(b.m_vertices[2], this->m_vertices[0], this->m_vertices[1], this->m_vertices[2], tp, ts, a_closest, curr_dist_sq, curr_dist_sq)) b_closest = b.m_vertices[2];
+	if (pointTriangleDistance(this->m_vertices[0], b.m_vertices[0], b.m_vertices[1], b.m_vertices[2], tp, ts, b_closest, curr_dist_sq, plane_dist[0], curr_dist_sq)) a_closest = this->m_vertices[0];
+	if (pointTriangleDistance(this->m_vertices[1], b.m_vertices[0], b.m_vertices[1], b.m_vertices[2], tp, ts, b_closest, curr_dist_sq, plane_dist[1], curr_dist_sq)) a_closest = this->m_vertices[1];
+	if (pointTriangleDistance(this->m_vertices[2], b.m_vertices[0], b.m_vertices[1], b.m_vertices[2], tp, ts, b_closest, curr_dist_sq, plane_dist[2], curr_dist_sq)) a_closest = this->m_vertices[2];
+	if (pointTriangleDistance(b.m_vertices[0], this->m_vertices[0], this->m_vertices[1], this->m_vertices[2], tp, ts, a_closest, curr_dist_sq, plane_dist[3], curr_dist_sq)) b_closest = b.m_vertices[0];
+	if (pointTriangleDistance(b.m_vertices[1], this->m_vertices[0], this->m_vertices[1], this->m_vertices[2], tp, ts, a_closest, curr_dist_sq, plane_dist[4], curr_dist_sq)) b_closest = b.m_vertices[1];
+	if (pointTriangleDistance(b.m_vertices[2], this->m_vertices[0], this->m_vertices[1], this->m_vertices[2], tp, ts, a_closest, curr_dist_sq, plane_dist[5], curr_dist_sq)) b_closest = b.m_vertices[2];
+
+	aNeg = plane_dist[0] < 0.0 && plane_dist[1] < 0.0 && plane_dist[2] < 0.0;
+	bNeg = plane_dist[3] < 0.0 && plane_dist[4] < 0.0 && plane_dist[5] < 0.0;
 
 	if (curr_dist_sq < max_distance_sq)
 	{
@@ -825,7 +833,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	contacts.m_point_count = 0;
 	btScalar dist_sq_out, dist, t = 1.0;
 	btVector3 a_closest_out, b_closest_out;
-	bool ret = false;
+	bool ret = false, aNeg, bNeg;
 	const btScalar maxDepth = margin * marginZoneRecoveryStrengthFactor;
 
 	auto create_contact = [&]()
@@ -851,39 +859,67 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		//printf("contacts.m_penetration_depth %f\n", contacts.m_penetration_depth);
 	};
 
-	ret = triangle_triangle_distance(other, dist_sq_out, a_closest_out, b_closest_out);
+	ret = triangle_triangle_distance(other, dist_sq_out, a_closest_out, b_closest_out, aNeg, bNeg);
 	dist = sqrtf(dist_sq_out);
-	if (ret && dist_sq_out != 0.0 && dist < margin)
+	if (ret && dist_sq_out != 0.0 && dist < margin /*&& !aNeg && !bNeg*/)
 	{
+		//fprintf(stderr, "tri margin\n");
+		//fprintf(stderr, "createTriangleObject \"trimarginthis\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+		//		m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
+		//		m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+		//fprintf(stderr, "createTriangleObject \"trimarginother\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+		//		other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
+		//		other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
 		// In the margin zone. No actual penetration yet. Calculating m_separating_normal is very easy thanks to this.
 		create_contact();
+		//if (contacts.m_separating_normal.z() > -0.99)
+		//	return false;
 		return true;
 	}
 	else if (ret && dist_sq_out == 0.0)
 	{
 		// Triangle penetration. Use the last safe transforms.
 
-		// TODO WATCH OUT HERE, I HAVE DELTED THE UNSTUCK CHECK - MIGHT HARM TOUCH SENSORS - VERIFY
+		if (doUnstuck)
+		{
+			auto thisLastSafe = thisBackup;
+			auto otherLastSafe = otherBackup;
+			thisLastSafe.applyTransform(thisTransformLastSafe);
+			otherLastSafe.applyTransform(otherTransformLastSafe);
 
-		auto thisLastSafe = thisBackup;
-		auto otherLastSafe = otherBackup;
-		thisLastSafe.applyTransform(thisTransformLastSafe);
-		otherLastSafe.applyTransform(otherTransformLastSafe);
+			thisLastSafe.buildTriPlane();
+			otherLastSafe.buildTriPlane();
 
-		printf("other z %f other safe z %f\n", other.m_vertices[0].z(), otherLastSafe.m_vertices[0].z());
+			//fprintf(stderr, "tri pen\n");
+			//fprintf(stderr, "createTriangleObject \"tripenthis\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
+			//		thisLastSafe.m_vertices[1].x(), thisLastSafe.m_vertices[1].y(), thisLastSafe.m_vertices[1].z(),
+			//		thisLastSafe.m_vertices[2].x(), thisLastSafe.m_vertices[2].y(), thisLastSafe.m_vertices[2].z());
+			//fprintf(stderr, "createTriangleObject \"tripenother\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", otherLastSafe.m_vertices[0].x(), otherLastSafe.m_vertices[0].y(), otherLastSafe.m_vertices[0].z(),
+			//		otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
+			//		otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+			ret = thisLastSafe.triangle_triangle_distance(otherLastSafe, dist_sq_out, a_closest_out, b_closest_out, aNeg, bNeg);
+			// Since we use the safe positions, nothing should be penetrating. This assert is very useful for testing if some change in code
+			// didn't mess things up, but in a more complex scenario where there is another movable which places itself into the first's safe zone,
+			// this assert should be commented out.
+			//btAssert(!(ret && dist_sq_out == 0.0));
 
-		thisLastSafe.buildTriPlane();
-		otherLastSafe.buildTriPlane();
-
-		ret = thisLastSafe.triangle_triangle_distance(otherLastSafe, dist_sq_out, a_closest_out, b_closest_out);
-		// Since we use the safe positions, nothing should be penetrating. This assert is very useful for testing if some change in code
-		// didn't mess things up, but in a more complex scenario where there is another movable which places itself into the first's safe zone,
-		// this assert should be commented out.
-		//btAssert(!(ret && dist_sq_out == 0.0));
-
-		dist = sqrtf(dist_sq_out);
-		create_contact();
-		contacts.m_penetration_depth = -maxDepth;  // Mark it as penetration by making it negative
+			dist = sqrtf(dist_sq_out);
+			// TODO! try to use only the normal direction from above. The contact position should come from the non-safe data.
+			create_contact();
+			btVector4 backupNormal = contacts.m_separating_normal;
+			find_triangle_collision_clip_method(other, contacts);
+			// Mark it as penetration by making it negative. At least MaxDepth (beacuse that is the max pushback when in the margin zone with 0 dist) and then subract
+			// the result depth from find_triangle_collision_clip_method, so that the contact can be sorted in btPersistentManifold::sortCachedPoints
+			contacts.m_penetration_depth = -maxDepth - (contacts.m_penetration_depth / 100.0f);
+			//if (contacts.m_separating_normal.z() > -0.99)
+			//	return false;
+			contacts.m_separating_normal = backupNormal;
+		}
+		else
+		{
+			find_triangle_collision_clip_method(other, contacts);
+			contacts.m_penetration_depth = -contacts.m_penetration_depth;
+		}
 
 		return true;
 	}

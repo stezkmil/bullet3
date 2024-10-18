@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_NEOHOOKEAN_H
 #define BT_NEOHOOKEAN_H
 
@@ -275,6 +274,7 @@ public:
 			}
 			averagePrincipalStress /= psb->m_tetras.size();
 			psb->m_averagePrincipalStress = averagePrincipalStress;
+			fprintf(stderr, "m_averagePrincipalStress %f\n", psb->m_averagePrincipalStress);
 		}
 	}
 

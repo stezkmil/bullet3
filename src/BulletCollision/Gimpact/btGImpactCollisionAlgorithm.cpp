@@ -363,7 +363,7 @@ int frameCnt = 0;
 // Designed to be used with MeshLab. The generated dbg file is opened there and then the dbg_*_bbox bounding box file is imported into the same scene.
 // I could not get MeshLab to import both triangles and lines in one file - therefore two files are generated.
 void debug_pairs(const std::span<const std::pair<int, int>>& pairSpan, const btTransform& orgtrans0, const btTransform& orgtrans1,
-											  const btGImpactMeshShapePart* shape0, const btGImpactMeshShapePart* shape1)
+				 const btGImpactMeshShapePart* shape0, const btGImpactMeshShapePart* shape1)
 {
 	BT_BOX_BOX_TRANSFORM_CACHE trans_cache_1to0;
 	trans_cache_1to0.calc_from_homogenic(orgtrans0, orgtrans1);
@@ -537,11 +537,10 @@ void debug_pairs(const std::span<const std::pair<int, int>>& pairSpan, const btT
 }
 
 void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObjectWrapper* body0Wrap,
-														const btCollisionObjectWrapper* body1Wrap,
-														const btGImpactMeshShapePart* shape0,
-														const btGImpactMeshShapePart* shape1,
-														btGimpactVsGimpactGroupedParams& grpParams
-														)
+															const btCollisionObjectWrapper* body1Wrap,
+															const btGImpactMeshShapePart* shape0,
+															const btGImpactMeshShapePart* shape1,
+															btGimpactVsGimpactGroupedParams& grpParams)
 {
 	grpParams.orgtrans0 = body0Wrap->getWorldTransform();
 	grpParams.orgtrans1 = body1Wrap->getWorldTransform();
@@ -557,7 +556,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 	grpParams.modifiedDepth = body0Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY && body1Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY;
 	grpParams.lastSafeTrans0 = isStatic0 ? grpParams.orgtrans0 : body0Wrap->getCollisionObject()->getLastSafeWorldTransform();
 	grpParams.lastSafeTrans1 = isStatic1 ? grpParams.orgtrans1 : body1Wrap->getCollisionObject()->getLastSafeWorldTransform();
-	
+
 	const auto& prevTimeMap = m_dispatcher->getPreviouslyConsumedTime();
 	auto timeIter = prevTimeMap.find({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()});
 	if (timeIter != prevTimeMap.end())
@@ -575,17 +574,31 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 
 void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGImpactResult* perThreadIntermediateResults,
 															 const std::list<btGImpactIntermediateResult>* intermediateResults,
-															const btCollisionObjectWrapper* body0Wrap,
-															const btCollisionObjectWrapper* body1Wrap,
-															const btGImpactMeshShapePart* shape0,
-															const btGImpactMeshShapePart* shape1)
+															 const btCollisionObjectWrapper* body0Wrap,
+															 const btCollisionObjectWrapper* body1Wrap,
+															 const btGImpactMeshShapePart* shape0,
+															 const btGImpactMeshShapePart* shape1)
 {
 	if (perThreadIntermediateResults)
 	{
+		bool anyPenetrating = false;
 		for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
 		{
 			for (const auto& ir : perThreadIntermediateResult)
 			{
+				if (ir.depth > 0.0)
+					anyPenetrating = true;
+				break;
+			}
+			if (anyPenetrating)
+				break;
+		}
+		for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
+		{
+			for (const auto& ir : perThreadIntermediateResult)
+			{
+				if (anyPenetrating && ir.depth <= 0.0)  // This one is non pen. so it can be wrong.
+					continue;
 				m_triface0 = ir.index0;
 				m_triface1 = ir.index1;
 				addContactPoint(body0Wrap, body1Wrap,
@@ -613,10 +626,10 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 }
 
 void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObjectWrapper* body0Wrap,
-														const btCollisionObjectWrapper* body1Wrap,
-														const btGImpactMeshShapePart* shape0,
-														const btGImpactMeshShapePart* shape1,
-														const btPairSet& auxPairSet)
+															const btCollisionObjectWrapper* body1Wrap,
+															const btGImpactMeshShapePart* shape0,
+															const btGImpactMeshShapePart* shape1,
+															const btPairSet& auxPairSet)
 {
 	btGimpactVsGimpactGroupedParams grpParams;
 	collide_sat_triangles_pre(body0Wrap, body1Wrap, shape0, shape1, grpParams);
@@ -792,7 +805,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		return;
 	}
 
-	btAssert(false); // Removed some code here not relevant to my use case.
+	btAssert(false);  // Removed some code here not relevant to my use case.
 }
 
 void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjectWrapper* softWrap,
@@ -818,6 +831,7 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
 	manifoldResultForSkin.swapped = swapped;
 
+	fprintf(stderr, "start %d\n", m_resultOut->getPersistentManifold()->getNumContacts());
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
@@ -825,12 +839,13 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 		manifoldResultForSkin.contactIndex = i;
 		m_algorithmForSoftVsRigid->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
+	fprintf(stderr, "end\n");
 }
 
 void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact_soft(const btCollisionObjectWrapper* soft0Wrap,
-														  const btCollisionObjectWrapper* soft1Wrap,
-														  const btGImpactShapeInterface* soft0Shape,
-														  const btGImpactShapeInterface* soft1Shape, bool swapped)
+															   const btCollisionObjectWrapper* soft1Wrap,
+															   const btGImpactShapeInterface* soft0Shape,
+															   const btGImpactShapeInterface* soft1Shape, bool swapped)
 {
 	if (soft0Shape->isCompound() || soft1Shape->isCompound())
 	{

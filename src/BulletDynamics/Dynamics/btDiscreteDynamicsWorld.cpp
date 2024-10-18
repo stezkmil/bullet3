@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btDiscreteDynamicsWorld.h"
 
 //collision detection
@@ -813,7 +812,8 @@ public:
 		///don't do CCD when the collision filters are not matching
 		if (!ClosestConvexResultCallback::needsCollision(proxy0))
 			return false;
-		if (m_pairCache->getOverlapFilterCallback()) {
+		if (m_pairCache->getOverlapFilterCallback())
+		{
 			btBroadphaseProxy* proxy1 = m_me->getBroadphaseHandle();
 			bool collides = m_pairCache->needsBroadphaseCollision(proxy0, proxy1);
 			if (!collides)
@@ -1059,11 +1059,11 @@ void btDiscreteDynamicsWorld::integrateTransformsInternal(btRigidBody** bodies, 
 
 void btDiscreteDynamicsWorld::updateLastSafeTransforms()
 {
-		BT_PROFILE("savePreviousTransforms");
-		if (m_nonStaticRigidBodies.size() > 0)
-		{
-			processLastSafeTransforms(reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size());
-		}
+	BT_PROFILE("updateLastSafeTransforms");
+	if (m_nonStaticRigidBodies.size() > 0)
+	{
+		processLastSafeTransforms(reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(), nullptr, 0);
+	}
 }
 
 void btDiscreteDynamicsWorld::integrateTransforms(btScalar timeStep)
@@ -1466,7 +1466,6 @@ void btDiscreteDynamicsWorld::serializeDynamicsWorldInfo(btSerializer* serialize
 
 	worldInfo->m_solverInfo.m_splitImpulse = getSolverInfo().m_splitImpulse;
 
-	
 #ifdef BT_USE_DOUBLE_PRECISION
 	const char* structType = "btDynamicsWorldDoubleData";
 #else   //BT_USE_DOUBLE_PRECISION

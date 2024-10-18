@@ -48,8 +48,7 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 
 public:
 	typedef btAlignedObjectArray<btVector3> TVStack;
-	btDeformableMousePickingForce(btScalar k, btScalar d, const btSoftBody::Face* face, const btSoftBody::Tetra* tetra, const btVector3& mouse_pos, btScalar maxForce = 0.3) :
-		m_elasticStiffness(k), m_dampingStiffness(d), m_face(face), m_tetra(tetra), m_mouse_pos(mouse_pos), m_maxForce(maxForce)
+	btDeformableMousePickingForce(btScalar k, btScalar d, const btSoftBody::Face* face, const btSoftBody::Tetra* tetra, const btVector3& mouse_pos, btScalar maxForce = 0.3) : m_elasticStiffness(k), m_dampingStiffness(d), m_face(face), m_tetra(tetra), m_mouse_pos(mouse_pos), m_maxForce(maxForce)
 	{
 	}
 
@@ -173,6 +172,21 @@ public:
 	void setMousePos(const btVector3& p)
 	{
 		m_mouse_pos = p;
+	}
+
+	void setMaxForce(btScalar maxForce)
+	{
+		m_maxForce = maxForce;
+	}
+
+	void setElasticStiffness(btScalar elasticStiffness)
+	{
+		m_elasticStiffness = elasticStiffness;
+	}
+
+	void setDampingStiffness(btScalar dampingStiffness)
+	{
+		m_dampingStiffness = dampingStiffness;
 	}
 
 	virtual btDeformableLagrangianForceType getForceType()

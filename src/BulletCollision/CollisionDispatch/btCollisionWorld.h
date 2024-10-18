@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 /**
  * @mainpage Bullet Documentation
  *
@@ -108,7 +107,7 @@ protected:
 
 	void serializeContactManifolds(btSerializer* serializer);
 
-	void processLastSafeTransforms(btCollisionObject** bodies, int numBodies);
+	void processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies);
 
 public:
 	//this constructor doesn't own the dispatcher and paircache/broadphase

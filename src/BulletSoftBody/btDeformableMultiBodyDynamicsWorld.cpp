@@ -39,6 +39,7 @@ The algorithm also closely resembles the one in http://physbam.stanford.edu/~fed
 #include "btDeformableBodySolver.h"
 #include "LinearMath/btQuickprof.h"
 #include "btSoftBodyInternals.h"
+
 btDeformableMultiBodyDynamicsWorld::btDeformableMultiBodyDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btDeformableMultiBodyConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration, btDeformableBodySolver* deformableBodySolver)
 	: btMultiBodyDynamicsWorld(dispatcher, pairCache, (btMultiBodyConstraintSolver*)constraintSolver, collisionConfiguration),
 	  m_deformableBodySolver(deformableBodySolver),
@@ -758,4 +759,12 @@ int btDeformableMultiBodyDynamicsWorld::stepSimulation(btScalar timeStep, int ma
 #endif  //BT_NO_PROFILE
 
 	return numSimulationSubSteps;
+}
+
+void btDeformableMultiBodyDynamicsWorld::updateLastSafeTransforms()
+{
+	BT_PROFILE("updateLastSafeTransforms");
+
+	processLastSafeTransforms(m_nonStaticRigidBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(),
+							  m_softBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_softBodies[0]), m_softBodies.size());
 }

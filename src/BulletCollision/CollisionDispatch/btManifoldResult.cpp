@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btManifoldResult.h"
 #include "BulletCollision/NarrowPhaseCollision/btPersistentManifold.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObject.h"
@@ -94,13 +93,11 @@ btScalar btManifoldResult::calculateCombinedContactStiffness(const btCollisionOb
 btManifoldResult::btManifoldResult(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap)
 	: m_manifoldPtr(0),
 	  m_body0Wrap(body0Wrap),
-	  m_body1Wrap(body1Wrap)
-	  ,
+	  m_body1Wrap(body1Wrap),
 	  m_partId0(-1),
 	  m_partId1(-1),
 	  m_index0(-1),
-	  m_index1(-1)
-	  ,
+	  m_index1(-1),
 	  m_closestPointDistanceThreshold(0)
 {
 }
@@ -147,6 +144,7 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 		newPt.m_contactPointFlags |= BT_CONTACT_FLAG_PENETRATING;
 
 	int insertIndex = m_manifoldPtr->getCacheEntry(newPt);
+	//fprintf(stderr, "insertIndex %d pen %d\n", insertIndex, (int)penetration);
 
 	newPt.m_combinedFriction = gCalculateCombinedFrictionCallback(m_body0Wrap->getCollisionObject(), m_body1Wrap->getCollisionObject());
 	newPt.m_combinedRestitution = gCalculateCombinedRestitutionCallback(m_body0Wrap->getCollisionObject(), m_body1Wrap->getCollisionObject());

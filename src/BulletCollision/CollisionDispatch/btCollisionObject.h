@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_COLLISION_OBJECT_H
 #define BT_COLLISION_OBJECT_H
 
@@ -333,7 +332,7 @@ public:
 		//m_checkCollideWith = m_objectsWithoutCollisionCheck.size() > 0;
 	}
 
-        int getNumObjectsWithoutCollision() const
+	int getNumObjectsWithoutCollision() const
 	{
 		return m_objectsWithoutCollisionCheck.size();
 	}
@@ -379,7 +378,7 @@ public:
 		//	forceActivationState(ACTIVE_TAG);
 	}
 
-	void setToleratedCollisionSome(InitialCollisionTolerance tolerance, const btCollisionObject * co)
+	void setToleratedCollisionSome(InitialCollisionTolerance tolerance, const btCollisionObject* co)
 	{
 		if (m_objectsWithToleratedCollision.size() == 0)
 			m_objectsWithToleratedCollision.push_back(tolerance == InitialCollisionTolerance::HIGH_DETAIL ? nullptr : reinterpret_cast<const btCollisionObject*>(~0));
@@ -435,7 +434,7 @@ public:
 	SIMD_FORCE_INLINE bool isActive() const
 	{
 		return ((getActivationState() != FIXED_BASE_MULTI_BODY) && (getActivationState() != ISLAND_SLEEPING) && (getActivationState() != DISABLE_SIMULATION)) ||
-				m_objectsWithToleratedCollision.size() > 0;
+			   m_objectsWithToleratedCollision.size() > 0;
 	}
 
 	void setRestitution(btScalar rest)
@@ -526,7 +525,7 @@ public:
 		return m_lastSafeWorldTransform;
 	}
 
-	void updateLastSafeWorldTransform()
+	virtual void updateLastSafeWorldTransform()
 	{
 		m_lastSafeWorldTransform = m_worldTransform;
 	}

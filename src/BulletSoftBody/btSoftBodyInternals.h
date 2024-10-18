@@ -838,7 +838,8 @@ static inline btVector3 Clamp(const btVector3& v, btScalar maxlength)
 template <typename T>
 static inline T Clamp(const T& x, const T& l, const T& h)
 {
-	return (x < l ? l : x > h ? h : x);
+	return (x < l ? l : x > h ? h
+							  : x);
 }
 //
 template <typename T>
@@ -1697,7 +1698,7 @@ struct btSoftColliders
 							const btMatrix3x3& iwi = m_rigidBody ? m_rigidBody->getInvInertiaTensorWorld() : iwiStatic;
 							if (psb->m_reducedModel)
 							{
-								c.m_c0 = MassMatrix(imb, iwi, ra); //impulse factor K of the rigid body only (not the inverse)
+								c.m_c0 = MassMatrix(imb, iwi, ra);  //impulse factor K of the rigid body only (not the inverse)
 							}
 							else
 							{
@@ -1731,7 +1732,7 @@ struct btSoftColliders
 												t1.getX(), t1.getY(), t1.getZ(),
 												t2.getX(), t2.getY(), t2.getZ());  // world frame to local frame
 								const int ndof = multibodyLinkCol->m_multiBody->getNumDofs() + 6;
-								
+
 								btMatrix3x3 local_impulse_matrix;
 								if (psb->m_reducedModel)
 								{
@@ -1792,6 +1793,14 @@ struct btSoftColliders
 					//                    psb->checkDeformableFaceContact(m_colObj1Wrap, f, contact_point, bary, m, c.m_cti, /*predict = */ false);
 					btSoftBody::sCti& cti = c.m_cti;
 					c.m_contactPoint = contact_point;
+
+					//psb->m_faceRigidContacts.clear();
+					//fprintf(stderr, "normal %f %f %f contact %f %f %f index %d\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), c.m_contactPoint.x(), c.m_contactPoint.y(), c.m_contactPoint.z(), f.m_index);
+					//fprintf(stderr, "createPointHelperObject \"pt\" [%f, %f, %f]\n", c.m_contactPoint.x(), c.m_contactPoint.y(), c.m_contactPoint.z());
+					//fprintf(stderr, "createTriangleObject \"tri\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+					//		f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+					//		f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+
 					c.m_bary = bary;
 					// todo xuchenhan@: this is assuming mass of all vertices are the same. Need to modify if mass are different for distinct vertices
 					c.m_weights = btScalar(2) / (btScalar(1) + bary.length2()) * bary;
@@ -1851,7 +1860,11 @@ struct btSoftColliders
 							c.t2 = t2;
 						}
 					}
-					//printf("norm %f %f %f off %f\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset);
+					btScalar yaw, pitch, roll;
+					btScalar yaw2, pitch2, roll2;
+					c.m_c0.getEulerYPR(yaw, pitch, roll);
+					c.m_c5.getEulerYPR(yaw2, pitch2, roll2);
+					fprintf(stderr, "pen %d index %d norm %f %f %f c0 y %f p %f r %f c1 %f %f %f c2 %f c3 %f c4 %f c5 y %f p %f r %f bary %f %f %f\n", 0, f.m_index, cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), yaw, pitch, roll, c.m_c1.x(), c.m_c1.y(), c.m_c1.z(), c.m_c2, c.m_c3, c.m_c4, yaw2, pitch2, roll2, bary.x(), bary.y(), bary.z());
 					psb->m_faceRigidContacts.push_back(c);
 				}
 			}

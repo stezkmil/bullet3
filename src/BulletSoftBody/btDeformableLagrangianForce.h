@@ -96,6 +96,11 @@ public:
 		m_softBodies.remove(psb);
 	}
 
+	virtual const btAlignedObjectArray<btSoftBody*>& getSoftBodies() const
+	{
+		return m_softBodies;
+	}
+
 	virtual void setIndices(const btAlignedObjectArray<btSoftBody::Node*>* nodes)
 	{
 		m_nodes = nodes;

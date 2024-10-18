@@ -232,9 +232,9 @@ public:
 	/* sCti is Softbody contact info	*/
 	struct sCti
 	{
-		const btCollisionObject* m_colObj;       /* Rigid body			        */
+		const btCollisionObject* m_colObj; /* Rigid body			        */
 		btVector3 m_normal;                /* Outward normal		        */
-		mutable btVector3 m_impulse;	   /* Applied impulse        	    */
+		mutable btVector3 m_impulse;       /* Applied impulse        	    */
 		btScalar m_offset;                 /* Offset from origin	        */
 		btVector3 m_bary;                  /* Barycentric weights for faces */
 		sCti() : m_impulse(0, 0, 0) {}
@@ -279,6 +279,7 @@ public:
 	{
 		btVector3 m_x;       // Position
 		btVector3 m_q;       // Previous step position/Test position
+		btVector3 m_xs;      // Safe position when there was no penetration
 		btVector3 m_v;       // Velocity
 		btVector3 m_vn;      // Previous step velocity
 		btVector3 m_f;       // Force accumulator
@@ -370,14 +371,14 @@ public:
 	class DeformableRigidContact
 	{
 	public:
-		sCti m_cti;        // Contact infos
-		btMatrix3x3 m_c0;  // Impulse matrix
-		btVector3 m_c1;    // Relative anchor
-		btScalar m_c2;     // inverse mass of node/face
-		btScalar m_c3;     // Friction
-		btScalar m_c4;     // Hardness
-		btMatrix3x3 m_c5;  // inverse effective mass
-		btScalar m_c6 = 1.0;     // Impulse factor
+		sCti m_cti;          // Contact infos
+		btMatrix3x3 m_c0;    // Impulse matrix
+		btVector3 m_c1;      // Relative anchor
+		btScalar m_c2;       // inverse mass of node/face
+		btScalar m_c3;       // Friction
+		btScalar m_c4;       // Hardness
+		btMatrix3x3 m_c5;    // inverse effective mass
+		bool m_pen = false;  // Penetrating contact
 
 		// jacobians and unit impulse responses for multibody
 		btMultiBodyJacobianData jacobianData_normal;
@@ -412,15 +413,15 @@ public:
 
 	struct DeformableFaceNodeContact
 	{
-		Node* m_node;         // Node
-		Face* m_face;         // Face
-		btVector3 m_bary;     // Barycentric weights
-		btVector3 m_weights;  // v_contactPoint * m_weights[i] = m_face->m_node[i]->m_v;
-		btVector3 m_normal;   // Normal
-		btScalar m_margin;    // Margin
-		btScalar m_friction;  // Friction
-		btScalar m_imf;       // inverse mass of the face at contact point
-		btScalar m_c0;        // scale of the impulse matrix;
+		Node* m_node;                       // Node
+		Face* m_face;                       // Face
+		btVector3 m_bary;                   // Barycentric weights
+		btVector3 m_weights;                // v_contactPoint * m_weights[i] = m_face->m_node[i]->m_v;
+		btVector3 m_normal;                 // Normal
+		btScalar m_margin;                  // Margin
+		btScalar m_friction;                // Friction
+		btScalar m_imf;                     // inverse mass of the face at contact point
+		btScalar m_c0;                      // scale of the impulse matrix;
 		const btCollisionObject* m_colObj;  // Collision object to collide with.
 	};
 
@@ -821,7 +822,7 @@ public:
 	typedef btAlignedObjectArray<Material*> tMaterialArray;
 	typedef btAlignedObjectArray<Joint*> tJointArray;
 	typedef btAlignedObjectArray<btSoftBody*> tSoftBodyArray;
-	typedef btAlignedObjectArray<btAlignedObjectArray<btScalar> > tDenseMatrix;
+	typedef btAlignedObjectArray<btAlignedObjectArray<btScalar>> tDenseMatrix;
 
 	//
 	// Fields
@@ -869,7 +870,7 @@ public:
 	btAlignedObjectArray<btVector3> m_X;  // initial positions
 
 	btAlignedObjectArray<btVector4> m_renderNodesInterpolationWeights;
-	btAlignedObjectArray<btAlignedObjectArray<const btSoftBody::Node*> > m_renderNodesParents;
+	btAlignedObjectArray<btAlignedObjectArray<const btSoftBody::Node*>> m_renderNodesParents;
 	btAlignedObjectArray<btScalar> m_z;  // vertical distance used in extrapolation
 	bool m_useSelfCollision;
 	bool m_softSoftCollision;
@@ -881,8 +882,8 @@ public:
 	btScalar m_restLengthScale;
 	btScalar m_averagePrincipalStress;
 
-	bool m_reducedModel;	// Reduced deformable model flag
-	
+	bool m_reducedModel;  // Reduced deformable model flag
+
 	//
 	// Api
 	//
@@ -1125,6 +1126,8 @@ public:
 	void defaultCollisionHandler(btSoftBody* psb);
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
 	void skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
+	int findClosestFaceCentroidLinearComplexity(const btVector3& p);
+	std::vector<std::pair<int, btVector3>> findNClosestFacesCentroidLinearComplexity(const btVector3& p, int N);
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
@@ -1447,7 +1450,7 @@ public:
 		return m_deformableAnchors;
 	}
 
-	virtual void resetColObjPtrsInAnchors(btCollisionObject * co)
+	virtual void resetColObjPtrsInAnchors(btCollisionObject* co)
 	{
 		for (auto i = 0; i < m_anchors.size(); ++i)
 			if (m_anchors[i].m_body == co)
@@ -1460,6 +1463,8 @@ public:
 				m_deformableAnchors[i].m_cti.m_colObj = nullptr;
 		}
 	}
+
+	virtual void updateLastSafeWorldTransform();
 };
 
 #endif  //_BT_SOFT_BODY_H

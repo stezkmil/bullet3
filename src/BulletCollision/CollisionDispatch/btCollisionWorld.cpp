@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btCollisionWorld.h"
 #include "btCollisionDispatcher.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObject.h"
@@ -422,9 +421,7 @@ void btCollisionWorld::rayTestSingleInternal(const btTransform& rayFromTrans, co
 				rcb.m_hitFraction = resultCallback.m_closestHitFraction;
 				triangleMesh->performRaycast(&rcb, rayFromLocalScaled, rayToLocalScaled);
 			}
-			else if (((resultCallback.m_flags&btTriangleRaycastCallback::kF_DisableHeightfieldAccelerator)==0) 
-				&& collisionShape->getShapeType() == TERRAIN_SHAPE_PROXYTYPE 
-				)
+			else if (((resultCallback.m_flags & btTriangleRaycastCallback::kF_DisableHeightfieldAccelerator) == 0) && collisionShape->getShapeType() == TERRAIN_SHAPE_PROXYTYPE)
 			{
 				///optimized version for btHeightfieldTerrainShape
 				btHeightfieldTerrainShape* heightField = (btHeightfieldTerrainShape*)collisionShape;
@@ -1314,7 +1311,7 @@ public:
 	}
 };
 
-void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies)
+void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies)
 {
 	int numManifolds = getDispatcher()->getNumManifolds();
 	std::map<const btCollisionObject*, const btCollisionObject*> penetratingColliders;
@@ -1328,9 +1325,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto cp = contactManifold->getContactPoint(j);
 			bool penetration = cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING;
 			bool phaseThrough = (contactManifold->getBody0()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
-								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
-								contactManifold->getBody0()->getInternalType() == btCollisionObject::CO_SOFT_BODY ||
-								contactManifold->getBody1()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE);
 			if (penetration && !phaseThrough)
 			{
 				penetratingColliders.insert({contactManifold->getBody0(), contactManifold->getBody1()});
@@ -1366,6 +1361,26 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			// with the hand constraint being weaker on small meshes.
 			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
 			bodyStack.push({body, penColIter->second, true});
+			nothingStuck = false;
+		}
+		else
+		{
+			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
+			auto stuckTestCounter = body->getUserIndex2();
+			if (stuckTestCounter > 0)
+			{
+				body->setUserIndex2(stuckTestCounter - 1);
+			}
+		}
+	}
+	for (int i = 0; i < numSoftBodies; i++)
+	{
+		auto* body = softBodies[i];
+		if (body->isStaticObject())
+			continue;
+		auto penColIter = penetratingColliders.find(body);
+		if (penColIter != penetratingColliders.end() && (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK))
+		{
 			nothingStuck = false;
 		}
 		else
@@ -1424,7 +1439,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					surroundingBody->setUserIndex2(0);
 					surroundingBody->setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL, opposingBody);
 					// This is needed because of the order of calls in internalSingleStepSimulation. The cd does is not called to fill InitialCollisionParticipant between this call to processLastSafeTransforms and the m_internalTickCallback
-					getDispatcher()->addInitialCollisionParticipant({ body, opposingBody });
+					getDispatcher()->addInitialCollisionParticipant({body, opposingBody});
 				}
 				// If a stuck situation happens, we play it safe and propagate the unstucking even based on rough aabb tests. Let's see if it is
 				// acceptable for our use case
@@ -1437,11 +1452,17 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state
 	if (nothingStuck)
 	{
+		fprintf(stderr, "nothing stuck\n");
 		for (int i = 0; i < numBodies; i++)
 		{
 			auto* body = bodies[i];
 			if (body->isStaticObject())
 				continue;
+			body->updateLastSafeWorldTransform();
+		}
+		for (int i = 0; i < numSoftBodies; i++)
+		{
+			auto* body = softBodies[i];
 			body->updateLastSafeWorldTransform();
 		}
 	}
