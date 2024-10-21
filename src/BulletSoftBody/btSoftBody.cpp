@@ -4341,28 +4341,9 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
-int btSoftBody::findClosestFaceCentroidLinearComplexity(const btVector3& p)
+std::vector<int> btSoftBody::findNClosestFacesLinearComplexity(const btVector3& p, int N)
 {
-	int closestIndex = -1;
-	btScalar closestDist = SIMD_INFINITY;
-	for (auto i = 0; i < m_faces.size(); ++i)
-	{
-		auto& f = m_faces[i];
-		auto centroid = (f.m_n[0]->m_x + f.m_n[1]->m_x + f.m_n[2]->m_x) / 3.0;
-		auto distSq = (p - centroid).length2();
-		if (distSq < closestDist)
-		{
-			closestIndex = i;
-			closestDist = distSq;
-		}
-	}
-	return closestIndex;
-}
-
-std::vector<std::pair<int, btVector3>> btSoftBody::findNClosestFacesCentroidLinearComplexity(const btVector3& p, int N)
-{
-	// Vector to store face indices along with their centroid and distance from point 'p'
-	std::vector<std::tuple<int, btVector3, btScalar>> faceDistances;
+	std::vector<std::tuple<int, btScalar>> faceDistances;
 
 	// Calculate centroid and distance for each face
 	for (int i = 0; i < m_faces.size(); ++i)
@@ -4370,21 +4351,21 @@ std::vector<std::pair<int, btVector3>> btSoftBody::findNClosestFacesCentroidLine
 		auto& f = m_faces[i];
 		btVector3 centroid = (f.m_n[0]->m_x + f.m_n[1]->m_x + f.m_n[2]->m_x) / 3.0;
 		btScalar distSq = (p - centroid).length2();
-		faceDistances.emplace_back(i, centroid, distSq);
+		faceDistances.emplace_back(i, distSq);
 	}
 
 	// Sort the face distances based on the distance to point 'p'
 	std::nth_element(faceDistances.begin(), faceDistances.begin() + N, faceDistances.end(),
-					 [](const std::tuple<int, btVector3, btScalar>& a, const std::tuple<int, btVector3, btScalar>& b)
+					 [](const std::tuple<int, btScalar>& a, const std::tuple<int, btScalar>& b)
 					 {
-						 return std::get<2>(a) < std::get<2>(b);
+						 return std::get<1>(a) < std::get<1>(b);
 					 });
 
 	// Prepare the result vector for N closest faces
-	std::vector<std::pair<int, btVector3>> closestFaces;
+	std::vector<int> closestFaces;
 	for (int i = 0; i < std::min(N, static_cast<int>(faceDistances.size())); ++i)
 	{
-		closestFaces.emplace_back(std::get<0>(faceDistances[i]), std::get<1>(faceDistances[i]));
+		closestFaces.emplace_back(std::get<0>(faceDistances[i]));
 	}
 
 	return closestFaces;
@@ -4394,110 +4375,48 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 											   btScalar distance, const bool penetrating)
 {
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
-	//auto diagonalLength = (m_bounds[1] - m_bounds[0]).length();
-	//auto rayDirectionProlonged = contactNormalOnSoftCollisionMesh * diagonalLength;
-	//auto towardsSoftSimFace = contactPointOnSoftCollisionMesh + rayDirectionProlonged;
-	//sRayCast faceTestResult;
-	//fprintf(stderr, "rayFaceTest start\n");
-	//fprintf(stderr, "createLineObject \"line\" [%f, %f, %f] [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z(),
-	//towardsSoftSimFace.x(), towardsSoftSimFace.y(), towardsSoftSimFace.z());
-	//rayFaceTest(contactPointOnSoftCollisionMesh, towardsSoftSimFace, faceTestResult);
-	//fprintf(stderr, "rayFaceTest end\n");
-	//if (faceTestResult.index == -1)
-	//{
-	//	return;
-	// It can happen that a contact is so close to the tetra bounding volume, that it falls out. There are margins when creating the tetra sim mesh, but they are
-	// applied only to the total shape aabb. If some voxel is discarded (because there are no vertices in it), then it can happen that some neighbouring voxel
-	// can have a vertex inside it that is extremely close to the voxel edge and due to some one frame lag (probably), the collision shape can fall outside of
-	// the tetra voxel bounding volume a little bit. Should be relatively rare though.
-	//	faceTestResult.index = findClosestFaceCentroidLinearComplexity(contactPointOnSoftCollisionMesh);
-	/*fprintf(stderr, "all tris\n");
-		for (auto i = 0; i < m_faces.size(); ++i)
-		{
-			auto& f = m_faces[i];
-			fprintf(stderr, "createTriangleObject \"tri\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-					f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-		}*/
-	// TODO The collision mesh is probably lagging one frame behind the simulation mesh or something similar, otherwise this would not happen. Investigate.
-	//fprintf(stderr, "rayFaceTest bad1 start\n");
-	//towardsSoftSimFace = contactPointOnSoftCollisionMesh - rayDirectionProlonged;
-	//fprintf(stderr, "createLineObject \"line\" [%f, %f, %f] [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z(),
-	//towardsSoftSimFace.x(), towardsSoftSimFace.y(), towardsSoftSimFace.z());
-	//rayFaceTest(contactPointOnSoftCollisionMesh, towardsSoftSimFace, faceTestResult);
-	//fprintf(stderr, "rayFaceTest bad1 end\n");
-	//}
-	//if (faceTestResult.index != -1)
-	auto res = findNClosestFacesCentroidLinearComplexity(contactPointOnSoftCollisionMesh, 7);
+	
+	// This is based on CollideSDF_RDF (TODO deduplicate common code) and it is weird, because depth of contact has no role in the calculation of strength of impulse.
+	// So the only way to control the strength of impulse is to change the number of impulsed faces (!). The original CollideSDF_RDF code is the same in this aspect.
+	// So there is this hack which makes sure that a sufficient number of faces are impulsed, so that the soft body does not phase through.
+	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
 	for (auto& r : res)
 	{
-		//if (m_faceRigidContacts.size() >= 4)
-		//	break;
-		// This branch is based on CollideSDF_RDF. TODO deduplicate common code.
-		//faceTestResult.index = 87;
-
-		btVector3 contactPointOnSoftSimMesh = /*contactPointOnSoftCollisionMesh + rayDirectionProlonged * faceTestResult.fraction*/ r.second;
-
-		auto pickedBoundaryFace = /*faceTestResult.index*/ r.first;
+		auto pickedBoundaryFace = r;
 		btSoftBody::Face& f = m_faces[pickedBoundaryFace];
 
-		bool anyPen = false;
 		bool alreadyImpulsed = false;
 		for (auto i = 0; i < m_faceRigidContacts.size(); ++i)
 		{
 			// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
-			// raycast the same sim mesh face, resulting in huge impulse spikes.
+			// result in the same sim mesh face, resulting in huge impulse spikes.
 			if (m_faceRigidContacts[i].m_cti.m_colObj == rigidBody && m_faceRigidContacts[i].m_face == &f)
 			{
 				alreadyImpulsed = true;
 				break;
 			}
-
-			/*if (m_faceRigidContacts[i].m_pen && m_faceRigidContacts[i].m_cti.m_colObj == rigidBody)
-			{
-				anyPen = true;
-				if (!penetrating)
-				{
-					return;
-				}
-			}*/
 		}
 
 		if (alreadyImpulsed)
 			continue;
 
-		//if (anyPen)
-		//{
-		//	for (auto i = 0; i < m_faceRigidContacts.size();)
-		//	{
-		//		bool removed = false;
-		//		// If there is a penetrating contact then all the non penetrating for that rigid body are considered potentially invalid - they could be so deep in
-		//		// that they are not penetrating anymore, so they would be generating impulse in an unwanted direction
-		//		if (!m_faceRigidContacts[i].m_pen && m_faceRigidContacts[i].m_cti.m_colObj == rigidBody)
-		//		{
-		//			m_faceRigidContacts.removeAtIndex(i);
-		//			removed = true;
-		//		}
-		//		if (!removed)
-		//			++i;
-		//	}
-		//}
-
 		btSoftBody::Node* n0 = f.m_n[0];
 		btSoftBody::Node* n1 = f.m_n[1];
 		btSoftBody::Node* n2 = f.m_n[2];
+
+		std::map<btScalar, btVector3> dists;
+		dists.insert({n0->m_x.distance2(contactPointOnSoftCollisionMesh), n0->m_x});
+		dists.insert({n1->m_x.distance2(contactPointOnSoftCollisionMesh), n1->m_x});
+		dists.insert({n2->m_x.distance2(contactPointOnSoftCollisionMesh), n2->m_x});
+
+		// This is also weird. It would be natural to do a closest point on tri to determine the most accurate point on the tetra face. But instead I choose the closest
+		// face vertex (so a face interior point can not be the contact point) because it seems that there is some bug in Bullet which causes some random impulse spikes
+		// whenever a face interior is used. TODO investigate those impulses spikes.
+		btVector3 contactPointOnSoftSimMesh = dists.begin()->second;
+
 		btSoftBody::DeformableFaceRigidContact c;
 		btVector3 bary;
 		getBarycentric(contactPointOnSoftSimMesh, f.m_n[0]->m_x, f.m_n[1]->m_x, f.m_n[2]->m_x, bary);
-
-		//const btScalar softMargin = getCollisionShape()->getMargin();
-		//const btScalar timemargin = 0.0;
-		//const btScalar stamargin = softMargin;
-		//const btScalar dynmargin = softMargin + timemargin;
-		//const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
-
-		//const btScalar rigidMargin = rigidWrap->getCollisionObject()->getCollisionShape()->getMargin();
-		//const btScalar sumMargin = m + rigidMargin;
 
 		c.m_cti.m_colObj = rigidBody;
 		c.m_cti.m_normal = -contactNormalOnSoftCollisionMesh;
@@ -4513,17 +4432,9 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		const btScalar ms = ima + imb;
 		if (ms > 0)
 		{
-			// resolve contact at x_n
-			//                    psb->checkDeformableFaceContact(m_colObj1Wrap, f, contact_point, bary, m, c.m_cti, /*predict = */ false);
 			btSoftBody::sCti& cti = c.m_cti;
 			c.m_contactPoint = contactPointOnSoftSimMesh;
 			c.m_bary = bary;
-
-			//fprintf(stderr, "createPointHelperObject \"pt\" [%f, %f, %f]\n", c.m_contactPoint.x(), c.m_contactPoint.y(), c.m_contactPoint.z());
-			//fprintf(stderr, "createTriangleObject \"tri\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-			//		f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-			//		f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-			//fprintf(stderr, "pen %d dist %f normal %f %f %f contact %f %f %f off %f index %d\n", (int)penetrating, distance, c.m_cti.m_normal.x(), c.m_cti.m_normal.y(), c.m_cti.m_normal.z(), c.m_contactPoint.x(), c.m_contactPoint.y(), c.m_contactPoint.z(), c.m_cti.m_offset, /*faceTestResult.index*/ r.first);
 
 			// todo xuchenhan@: this is assuming mass of all vertices are the same. Need to modify if mass are different for distinct vertices
 			c.m_weights = btScalar(2) / (btScalar(1) + bary.length2()) * bary;
@@ -4533,7 +4444,9 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 			const btScalar fc = m_cfg.kDF * rigidWrap->getCollisionObject()->getFriction();
 
 			// the effective inverse mass of the face as in https://graphics.stanford.edu/papers/cloth-sig02/cloth.pdf
-			ima = 68.0 /*bary.getX() * c.m_weights.getX() * n0->m_im + bary.getY() * c.m_weights.getY() * n1->m_im + bary.getZ() * c.m_weights.getZ() * n2->m_im*/;
+			// This is also weird. For example when all three vertices have the same mass, then this resulting ima mass is half when in the centre of the
+			// triangle and full when it is in one of the vertices. Why should it be like that?
+			ima = bary.getX() * c.m_weights.getX() * n0->m_im + bary.getY() * c.m_weights.getY() * n1->m_im + bary.getZ() * c.m_weights.getZ() * n2->m_im;
 			c.m_c2 = ima;
 			c.m_c3 = fc;
 			c.m_c4 = rigidWrap->getCollisionObject()->isStaticOrKinematicObject() ? m_cfg.kKHR : m_cfg.kCHR;
@@ -4583,21 +4496,9 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 					c.t2 = t2;
 				}
 			}
-			//for (auto blah = 0; blah < 8; ++blah)
 			m_faceRigidContacts.push_back(c);
-			btScalar yaw, pitch, roll;
-			btScalar yaw2, pitch2, roll2;
-			c.m_c0.getEulerYPR(yaw, pitch, roll);
-			c.m_c5.getEulerYPR(yaw2, pitch2, roll2);
-			fprintf(stderr, "pen %d index %d norm %f %f %f c0 y %f p %f r %f c1 %f %f %f c2 %f c3 %f c4 %f c5 y %f p %f r %f bary %f %f %f\n", (int)penetrating, r.first, cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), yaw, pitch, roll, c.m_c1.x(), c.m_c1.y(), c.m_c1.z(), c.m_c2, c.m_c3, c.m_c4, yaw2, pitch2, roll2, bary.x(), bary.y(), bary.z());
-			//printf("norm %f %f %f off %f pen %d\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), cti.m_offset, (int)penetrating);
 		}
 	}
-	/*else
-	{
-		btAssert(0);
-		printf("No tetra face found\n");
-	}*/
 }
 
 void btSoftBody::skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,

@@ -1126,8 +1126,7 @@ public:
 	void defaultCollisionHandler(btSoftBody* psb);
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
 	void skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
-	int findClosestFaceCentroidLinearComplexity(const btVector3& p);
-	std::vector<std::pair<int, btVector3>> findNClosestFacesCentroidLinearComplexity(const btVector3& p, int N);
+	std::vector<int> findNClosestFacesLinearComplexity(const btVector3& p, int N);
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
