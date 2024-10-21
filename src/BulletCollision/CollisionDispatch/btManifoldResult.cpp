@@ -144,7 +144,6 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 		newPt.m_contactPointFlags |= BT_CONTACT_FLAG_PENETRATING;
 
 	int insertIndex = m_manifoldPtr->getCacheEntry(newPt);
-	//fprintf(stderr, "insertIndex %d pen %d\n", insertIndex, (int)penetration);
 
 	newPt.m_combinedFriction = gCalculateCombinedFrictionCallback(m_body0Wrap->getCollisionObject(), m_body1Wrap->getCollisionObject());
 	newPt.m_combinedRestitution = gCalculateCombinedRestitutionCallback(m_body0Wrap->getCollisionObject(), m_body1Wrap->getCollisionObject());

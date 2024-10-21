@@ -1794,13 +1794,6 @@ struct btSoftColliders
 					btSoftBody::sCti& cti = c.m_cti;
 					c.m_contactPoint = contact_point;
 
-					//psb->m_faceRigidContacts.clear();
-					//fprintf(stderr, "normal %f %f %f contact %f %f %f index %d\n", cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), c.m_contactPoint.x(), c.m_contactPoint.y(), c.m_contactPoint.z(), f.m_index);
-					//fprintf(stderr, "createPointHelperObject \"pt\" [%f, %f, %f]\n", c.m_contactPoint.x(), c.m_contactPoint.y(), c.m_contactPoint.z());
-					//fprintf(stderr, "createTriangleObject \"tri\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-					//		f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-					//		f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-
 					c.m_bary = bary;
 					// todo xuchenhan@: this is assuming mass of all vertices are the same. Need to modify if mass are different for distinct vertices
 					c.m_weights = btScalar(2) / (btScalar(1) + bary.length2()) * bary;
@@ -1860,11 +1853,6 @@ struct btSoftColliders
 							c.t2 = t2;
 						}
 					}
-					btScalar yaw, pitch, roll;
-					btScalar yaw2, pitch2, roll2;
-					c.m_c0.getEulerYPR(yaw, pitch, roll);
-					c.m_c5.getEulerYPR(yaw2, pitch2, roll2);
-					fprintf(stderr, "pen %d index %d norm %f %f %f c0 y %f p %f r %f c1 %f %f %f c2 %f c3 %f c4 %f c5 y %f p %f r %f bary %f %f %f\n", 0, f.m_index, cti.m_normal.x(), cti.m_normal.y(), cti.m_normal.z(), yaw, pitch, roll, c.m_c1.x(), c.m_c1.y(), c.m_c1.z(), c.m_c2, c.m_c3, c.m_c4, yaw2, pitch2, roll2, bary.x(), bary.y(), bary.z());
 					psb->m_faceRigidContacts.push_back(c);
 				}
 			}

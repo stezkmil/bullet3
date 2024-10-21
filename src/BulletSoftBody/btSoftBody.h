@@ -378,7 +378,6 @@ public:
 		btScalar m_c3;       // Friction
 		btScalar m_c4;       // Hardness
 		btMatrix3x3 m_c5;    // inverse effective mass
-		bool m_pen = false;  // Penetrating contact
 
 		// jacobians and unit impulse responses for multibody
 		btMultiBodyJacobianData jacobianData_normal;

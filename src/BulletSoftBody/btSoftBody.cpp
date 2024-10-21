@@ -4230,9 +4230,7 @@ void btSoftBody::defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap
 					docollideFace.m_rigidBody = prb1;
 					docollideFace.dynmargin = basemargin + timemargin;
 					docollideFace.stamargin = basemargin;
-					fprintf(stderr, "m_fdbvt.collideTV start\n");
 					m_fdbvt.collideTV(m_fdbvt.m_root, volume, docollideFace);
-					fprintf(stderr, "m_fdbvt.collideTV end\n");
 				}
 			}
 		}
@@ -4423,8 +4421,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		// Offset set to 0 for now, because the btDeformableRigidContactConstraint::solveConstraint m_penetration handling is quite peculiar. It seems that less than 0 values
 		// are ignored and even quite small values larger than 0 can cause the contact to be completely discarded causing a free penetration.
 		c.m_cti.m_offset = 0.0;
-
-		c.m_pen = penetrating;
 
 		btScalar ima = n0->m_im + n1->m_im + n2->m_im;
 		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;

@@ -274,7 +274,7 @@ public:
 			}
 			averagePrincipalStress /= psb->m_tetras.size();
 			psb->m_averagePrincipalStress = averagePrincipalStress;
-			fprintf(stderr, "m_averagePrincipalStress %f\n", psb->m_averagePrincipalStress);
+			//fprintf(stderr, "m_averagePrincipalStress %f\n", psb->m_averagePrincipalStress);
 		}
 	}
 

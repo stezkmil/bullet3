@@ -597,7 +597,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 		{
 			for (const auto& ir : perThreadIntermediateResult)
 			{
-				if (anyPenetrating && ir.depth <= 0.0)  // This one is non pen. so it can be wrong.
+				if (anyPenetrating && ir.depth <= 0.0)  // This one is non pen. so it can be wrong. For example a triangle which has completely tunneled through and now it would cause a contact with a normal which would oppose the pen. ones.
 					continue;
 				m_triface0 = ir.index0;
 				m_triface1 = ir.index1;
@@ -831,7 +831,6 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
 	manifoldResultForSkin.swapped = swapped;
 
-	fprintf(stderr, "start %d\n", m_resultOut->getPersistentManifold()->getNumContacts());
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
@@ -839,7 +838,6 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 		manifoldResultForSkin.contactIndex = i;
 		m_algorithmForSoftVsRigid->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
-	fprintf(stderr, "end\n");
 }
 
 void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact_soft(const btCollisionObjectWrapper* soft0Wrap,

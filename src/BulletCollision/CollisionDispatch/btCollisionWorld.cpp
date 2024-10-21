@@ -1452,7 +1452,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state
 	if (nothingStuck)
 	{
-		fprintf(stderr, "nothing stuck\n");
 		for (int i = 0; i < numBodies; i++)
 		{
 			auto* body = bodies[i];
