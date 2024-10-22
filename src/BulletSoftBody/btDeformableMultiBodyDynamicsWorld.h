@@ -135,7 +135,11 @@ public:
 
 	void addForce(btSoftBody* psb, btDeformableLagrangianForce* force);
 
+	void addForce(btDeformableLagrangianForce* force);
+
 	void removeForce(btSoftBody* psb, btDeformableLagrangianForce* force);
+
+	void removeForce(btDeformableLagrangianForce* force);
 
 	void removeSoftBodyForce(btSoftBody* psb);
 

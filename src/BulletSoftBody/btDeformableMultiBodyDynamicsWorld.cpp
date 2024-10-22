@@ -648,6 +648,13 @@ void btDeformableMultiBodyDynamicsWorld::addForce(btSoftBody* psb, btDeformableL
 	}
 }
 
+void btDeformableMultiBodyDynamicsWorld::addForce(btDeformableLagrangianForce* force)
+{
+	btAlignedObjectArray<btDeformableLagrangianForce*>& forces = *m_deformableBodySolver->getLagrangianForceArray();
+	force->setIndices(m_deformableBodySolver->getIndices());
+	forces.push_back(force);
+}
+
 void btDeformableMultiBodyDynamicsWorld::removeForce(btSoftBody* psb, btDeformableLagrangianForce* force)
 {
 	btAlignedObjectArray<btDeformableLagrangianForce*>& forces = *m_deformableBodySolver->getLagrangianForceArray();
@@ -659,6 +666,22 @@ void btDeformableMultiBodyDynamicsWorld::removeForce(btSoftBody* psb, btDeformab
 			forces[i]->removeSoftBody(psb);
 			if (forces[i]->m_softBodies.size() == 0)
 				removed_index = i;
+			break;
+		}
+	}
+	if (removed_index >= 0)
+		forces.removeAtIndex(removed_index);
+}
+
+void btDeformableMultiBodyDynamicsWorld::removeForce(btDeformableLagrangianForce* force)
+{
+	btAlignedObjectArray<btDeformableLagrangianForce*>& forces = *m_deformableBodySolver->getLagrangianForceArray();
+	int removed_index = -1;
+	for (int i = 0; i < forces.size(); ++i)
+	{
+		if (forces[i] == force)
+		{
+			removed_index = i;
 			break;
 		}
 	}

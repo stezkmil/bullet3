@@ -4339,7 +4339,7 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
-std::vector<int> btSoftBody::findNClosestFacesLinearComplexity(const btVector3& p, int N)
+std::vector<int> btSoftBody::findNClosestFacesLinearComplexity(const btVector3& p, int N) const
 {
 	std::vector<std::tuple<int, btScalar>> faceDistances;
 
@@ -4373,7 +4373,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 											   btScalar distance, const bool penetrating)
 {
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
-	
+
 	// This is based on CollideSDF_RDF (TODO deduplicate common code) and it is weird, because depth of contact has no role in the calculation of strength of impulse.
 	// So the only way to control the strength of impulse is to change the number of impulsed faces (!). The original CollideSDF_RDF code is the same in this aspect.
 	// So there is this hack which makes sure that a sufficient number of faces are impulsed, so that the soft body does not phase through.
@@ -4497,9 +4497,65 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	}
 }
 
-void btSoftBody::skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											  btScalar distance, const bool penetrating)
 {
+	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
+	auto resOther = otherSoft->findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
+
+	fprintf(stderr, "start\n");
+
+	fprintf(stderr, "createPointHelperObject \"pt\" [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
+
+	int cnt = 0;
+
+	for (auto r : res)
+	{
+		auto pickedBoundaryFace = r;
+		btSoftBody::Face& f = m_faces[pickedBoundaryFace];
+
+		//for (auto i = 0; i < m_faceNodeContacts.size(); ++i)
+		//	// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
+		//	// result in the same sim mesh face, resulting in huge impulse spikes.
+		//	if (m_faceNodeContacts[i].m_colObj == otherSoft && m_faceNodeContacts[i].m_face == &f)
+		//		continue;
+
+		for (auto ro : resOther)
+		{
+			auto pickedBoundaryFaceOther = ro;
+			btSoftBody::Face& fOther = otherSoft->m_faces[pickedBoundaryFaceOther];
+
+			//for (auto i = 0; i < otherSoft->m_faceNodeContacts.size(); ++i)
+			//	// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
+			//	// result in the same sim mesh face, resulting in huge impulse spikes.
+			//	if (otherSoft->m_faceNodeContacts[i].m_colObj == this && otherSoft->m_faceNodeContacts[i].m_face == &fOther)
+			//		return;
+
+			btSoftColliders::CollideFF_DD collide;
+			collide.mrg = /*getCollisionShape()->getMargin() + otherSoft->getCollisionShape()->getMargin()*/ 20.0;
+			collide.psb[0] = this;
+			collide.psb[1] = otherSoft;
+			collide.useFaceNormal = true;
+			collide.testProximity = true;
+			//collide.testProximity = false;
+			//collide.RepelCustom(&f, -contactNormalOnSoftCollisionMesh, &fOther, contactNormalOnSoftCollisionMesh);
+			//collide.RepelCustom(&fOther, contactNormalOnSoftCollisionMesh, &f, -contactNormalOnSoftCollisionMesh);
+
+			fprintf(stderr, "createTriangleObject \"tri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", cnt, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+					f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+
+			fprintf(stderr, "createTriangleObject \"triother%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", cnt, fOther.m_n[0]->m_x.x(), fOther.m_n[0]->m_x.y(), fOther.m_n[0]->m_x.z(),
+					fOther.m_n[1]->m_x.x(), fOther.m_n[1]->m_x.y(), fOther.m_n[1]->m_x.z(),
+					fOther.m_n[2]->m_x.x(), fOther.m_n[2]->m_x.y(), fOther.m_n[2]->m_x.z());
+
+			++cnt;
+
+			collide.Repel(&f, &fOther);
+			collide.Repel(&fOther, &f);
+		}
+	}
+	fprintf(stderr, "end\n");
 }
 
 void btSoftBody::geometricCollisionHandler(btSoftBody* psb)

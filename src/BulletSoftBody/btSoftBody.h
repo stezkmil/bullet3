@@ -371,13 +371,13 @@ public:
 	class DeformableRigidContact
 	{
 	public:
-		sCti m_cti;          // Contact infos
-		btMatrix3x3 m_c0;    // Impulse matrix
-		btVector3 m_c1;      // Relative anchor
-		btScalar m_c2;       // inverse mass of node/face
-		btScalar m_c3;       // Friction
-		btScalar m_c4;       // Hardness
-		btMatrix3x3 m_c5;    // inverse effective mass
+		sCti m_cti;        // Contact infos
+		btMatrix3x3 m_c0;  // Impulse matrix
+		btVector3 m_c1;    // Relative anchor
+		btScalar m_c2;     // inverse mass of node/face
+		btScalar m_c3;     // Friction
+		btScalar m_c4;     // Hardness
+		btMatrix3x3 m_c5;  // inverse effective mass
 
 		// jacobians and unit impulse responses for multibody
 		btMultiBodyJacobianData jacobianData_normal;
@@ -1124,8 +1124,8 @@ public:
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
-	void skinSoftSoftCollisionHandler(const btSoftBody* psb, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
-	std::vector<int> findNClosestFacesLinearComplexity(const btVector3& p, int N);
+	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
+	std::vector<int> findNClosestFacesLinearComplexity(const btVector3& p, int N) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
