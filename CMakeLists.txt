@@ -142,7 +142,7 @@ IF(MSVC)
 	option(USE_MSVC_AVX "Compile your program with AVX instructions"  OFF)
 
 	IF(USE_MSVC_AVX)
-		add_definitions(/arch:AVX)
+		add_definitions(/arch:AVX2)
 	ENDIF()
 
 	OPTION(USE_MSVC_FAST_FLOATINGPOINT "Use MSVC /fp:fast option"	ON)
