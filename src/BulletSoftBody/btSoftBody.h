@@ -52,6 +52,140 @@ class btBroadphaseInterface;
 class btDispatcher;
 class btSoftBodySolver;
 
+//#include <iostream>
+//#include <fstream>
+//#include <vector>
+//#include <string>
+//
+//#include <iostream>
+//#include <fstream>
+//#include <vector>
+//#include <string>
+//
+//class SimpleOBJDrawer
+//{
+//public:
+//	SimpleOBJDrawer() : vertexCount(0), fileOpen(false) {}
+//
+//	~SimpleOBJDrawer()
+//	{
+//		if (fileOpen)
+//		{
+//			outFile.close();
+//		}
+//	}
+//
+//	void OpenFile(const std::string& filename)
+//	{
+//		this->filename = filename;
+//		if (!fileOpen)
+//		{
+//			outFile.open(filename, std::ios::out | std::ios::trunc);
+//			if (!outFile.is_open())
+//			{
+//				throw std::runtime_error("Failed to open file");
+//			}
+//			fileOpen = true;
+//			outFile.imbue(std::locale::classic());
+//		}
+//	}
+//
+//	void CloseFile()
+//	{
+//		if (fileOpen)
+//		{
+//			outFile.close();
+//			fileOpen = false;
+//		}
+//	}
+//
+//	void DrawPoint(float x, float y, float z)
+//	{
+//		vertices.push_back({x, y, z});
+//		flushToFile();
+//	}
+//
+//	void DrawLine(float x1, float y1, float z1, float x2, float y2, float z2)
+//	{
+//		vertices.push_back({x1, y1, z1});
+//		vertices.push_back({x2, y2, z2});
+//		lines.push_back({vertexCount + 1, vertexCount + 2});
+//		vertexCount += 2;
+//		flushToFile();
+//	}
+//
+//	void DrawTriangle(float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3)
+//	{
+//		vertices.push_back({x1, y1, z1});
+//		vertices.push_back({x2, y2, z2});
+//		vertices.push_back({x3, y3, z3});
+//		triangles.push_back({vertexCount + 1, vertexCount + 2, vertexCount + 3});
+//		vertexCount += 3;
+//		flushToFile();
+//	}
+//
+//	void Clear()
+//	{
+//		vertices.clear();
+//		lines.clear();
+//		triangles.clear();
+//		vertexCount = 0;
+//	}
+//
+//private:
+//	struct Vertex
+//	{
+//		float x, y, z;
+//	};
+//
+//	struct Line
+//	{
+//		int v1, v2;
+//	};
+//
+//	struct Triangle
+//	{
+//		int v1, v2, v3;
+//	};
+//
+//	std::string filename;
+//	std::ofstream outFile;
+//	std::vector<Vertex> vertices;
+//	std::vector<Line> lines;
+//	std::vector<Triangle> triangles;
+//	int vertexCount;
+//	bool fileOpen;
+//
+//	void flushToFile()
+//	{
+//		if (!fileOpen)
+//		{
+//			throw std::runtime_error("File is not open");
+//		}
+//
+//		outFile.close();
+//		outFile.open(filename, std::ios::out | std::ios::trunc);
+//		if (!outFile.is_open())
+//		{
+//			throw std::runtime_error("Failed to reopen file");
+//		}
+//
+//		for (const auto& vertex : vertices)
+//		{
+//			outFile << "v " << vertex.x << " " << vertex.y << " " << vertex.z << "\n";
+//		}
+//		for (const auto& line : lines)
+//		{
+//			outFile << "l " << line.v1 << " " << line.v2 << "\n";
+//		}
+//		for (const auto& triangle : triangles)
+//		{
+//			outFile << "f " << triangle.v1 << " " << triangle.v2 << " " << triangle.v3 << "\n";
+//		}
+//		outFile.flush();
+//	}
+//};
+
 /* btSoftBodyWorldInfo	*/
 struct btSoftBodyWorldInfo
 {
@@ -883,6 +1017,8 @@ public:
 
 	bool m_reducedModel;  // Reduced deformable model flag
 
+	//static SimpleOBJDrawer drawer;
+
 	//
 	// Api
 	//
@@ -1395,6 +1531,12 @@ public:
 			}
 			if (face_penetration <= 0)
 			{
+				for (int j = 0; j < 3; ++j)
+				{
+					btVector3 dbg;
+					dbg = w[j] * n * I_tilde * node->m_im;
+					fprintf(stderr, "vel delta j %d is %f %f %f\n", j, dbg.x(), dbg.y(), dbg.z());
+				}
 				for (int j = 0; j < 3; ++j)
 					face->m_n[j]->m_v += w[j] * n * I_tilde * node->m_im;
 			}

@@ -4497,11 +4497,14 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	}
 }
 
+//SimpleOBJDrawer btSoftBody::drawer;
+//int cnt = 0;
+
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											  btScalar distance, const bool penetrating)
 {
-	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
-	auto resOther = otherSoft->findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
+	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 1);
+	auto resOther = otherSoft->findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 1);
 
 	for (auto r : res)
 	{
@@ -4526,7 +4529,7 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 			//		return;
 
 			btSoftColliders::CollideFF_DD collide;
-			collide.mrg = /*getCollisionShape()->getMargin() + otherSoft->getCollisionShape()->getMargin()*/ 20.0;
+			collide.mrg = /*getCollisionShape()->getMargin() + otherSoft->getCollisionShape()->getMargin()*/ 100.0;
 			collide.psb[0] = this;
 			collide.psb[1] = otherSoft;
 			collide.useFaceNormal = true;
@@ -4534,6 +4537,16 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 			//collide.testProximity = false;
 			//collide.RepelCustom(&f, -contactNormalOnSoftCollisionMesh, &fOther, contactNormalOnSoftCollisionMesh);
 			//collide.RepelCustom(&fOther, contactNormalOnSoftCollisionMesh, &f, -contactNormalOnSoftCollisionMesh);
+
+			/*drawer.Clear();
+			drawer.OpenFile("debug_draw" + std::to_string(cnt++) + ".obj");
+			drawer.DrawTriangle(f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+								f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+								f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+			drawer.DrawTriangle(fOther.m_n[0]->m_x.x(), fOther.m_n[0]->m_x.y(), fOther.m_n[0]->m_x.z(),
+								fOther.m_n[1]->m_x.x(), fOther.m_n[1]->m_x.y(), fOther.m_n[1]->m_x.z(),
+								fOther.m_n[2]->m_x.x(), fOther.m_n[2]->m_x.y(), fOther.m_n[2]->m_x.z());
+			drawer.CloseFile();*/
 
 			collide.Repel(&f, &fOther);
 			collide.Repel(&fOther, &f);
