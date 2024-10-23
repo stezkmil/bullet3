@@ -4503,12 +4503,6 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
 	auto resOther = otherSoft->findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
 
-	fprintf(stderr, "start\n");
-
-	fprintf(stderr, "createPointHelperObject \"pt\" [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
-
-	int cnt = 0;
-
 	for (auto r : res)
 	{
 		auto pickedBoundaryFace = r;
@@ -4541,21 +4535,10 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 			//collide.RepelCustom(&f, -contactNormalOnSoftCollisionMesh, &fOther, contactNormalOnSoftCollisionMesh);
 			//collide.RepelCustom(&fOther, contactNormalOnSoftCollisionMesh, &f, -contactNormalOnSoftCollisionMesh);
 
-			fprintf(stderr, "createTriangleObject \"tri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", cnt, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-					f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-
-			fprintf(stderr, "createTriangleObject \"triother%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", cnt, fOther.m_n[0]->m_x.x(), fOther.m_n[0]->m_x.y(), fOther.m_n[0]->m_x.z(),
-					fOther.m_n[1]->m_x.x(), fOther.m_n[1]->m_x.y(), fOther.m_n[1]->m_x.z(),
-					fOther.m_n[2]->m_x.x(), fOther.m_n[2]->m_x.y(), fOther.m_n[2]->m_x.z());
-
-			++cnt;
-
 			collide.Repel(&f, &fOther);
 			collide.Repel(&fOther, &f);
 		}
 	}
-	fprintf(stderr, "end\n");
 }
 
 void btSoftBody::geometricCollisionHandler(btSoftBody* psb)

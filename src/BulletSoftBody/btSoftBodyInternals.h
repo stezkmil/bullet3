@@ -67,15 +67,7 @@ static SIMD_FORCE_INLINE bool proximityTest(const btVector3& x1, const btVector3
 {
 	btVector3 x43 = x4 - x3;
 	if (!onlyGetBary && std::abs(x43.dot(normal)) > mrg)
-	{
-		fprintf(stderr, "-- ret false1 %f\n", std::abs(x43.dot(normal)));
-		fprintf(stderr, "-- createPointHelperObject \"x4\" [%f, %f, %f] \n", x4.x(), x4.y(), x4.z());
-		fprintf(stderr, "-- createPointHelperObject \"x3\" [%f, %f, %f] \n", x3.x(), x3.y(), x3.z());
-		btVector3 end = x3 + normal;
-		fprintf(stderr, "-- createLineObject \"normal\" [%f, %f, %f] [%f, %f, %f] \n", x3.x(), x3.y(), x3.z(),
-				end.x(), end.y(), end.z());
 		return false;
-	}
 	btVector3 x13 = x1 - x3;
 	btVector3 x23 = x2 - x3;
 	btScalar a11 = x13.length2();
@@ -85,10 +77,7 @@ static SIMD_FORCE_INLINE bool proximityTest(const btVector3& x1, const btVector3
 	btScalar b2 = x23.dot(x43);
 	btScalar det = a11 * a22 - a12 * a12;
 	if (!onlyGetBary && det < SIMD_EPSILON)
-	{
-		fprintf(stderr, "-- ret false2 %f\n", det);
 		return false;
-	}
 	btScalar w1 = (b1 * a22 - b2 * a12) / det;
 	btScalar w2 = (b2 * a11 - b1 * a12) / det;
 	btScalar w3 = 1 - w1 - w2;
@@ -99,10 +88,7 @@ static SIMD_FORCE_INLINE bool proximityTest(const btVector3& x1, const btVector3
 		for (int i = 0; i < 3; ++i)
 		{
 			if (bary[i] < -delta || bary[i] > 1 + delta)
-			{
-				fprintf(stderr, "-- ret false3 %f %f\n", bary[i], delta);
 				return false;
-			}
 		}
 		return true;
 	}
