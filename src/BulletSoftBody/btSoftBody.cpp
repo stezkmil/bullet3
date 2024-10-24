@@ -4369,6 +4369,33 @@ std::vector<int> btSoftBody::findNClosestFacesLinearComplexity(const btVector3& 
 	return closestFaces;
 }
 
+std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& p, int N) const
+{
+	std::vector<std::tuple<int, btScalar>> nodeDistances;
+
+	for (int i = 0; i < m_nodes.size(); ++i)
+	{
+		auto& n = m_nodes[i];
+		btScalar distSq = (p - n.m_x).length2();
+		nodeDistances.emplace_back(i, distSq);
+	}
+
+	std::nth_element(nodeDistances.begin(), nodeDistances.begin() + N, nodeDistances.end(),
+					 [](const std::tuple<int, btScalar>& a, const std::tuple<int, btScalar>& b)
+					 {
+						 return std::get<1>(a) < std::get<1>(b);
+					 });
+
+	// Prepare the result vector for N closest faces
+	std::vector<int> closestNodes;
+	for (int i = 0; i < std::min(N, static_cast<int>(nodeDistances.size())); ++i)
+	{
+		closestNodes.emplace_back(std::get<0>(nodeDistances[i]));
+	}
+
+	return closestNodes;
+}
+
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
@@ -4503,53 +4530,41 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											  btScalar distance, const bool penetrating)
 {
-	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 1);
-	auto resOther = otherSoft->findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 1);
+	//if (penetrating)
+	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;  // TODO find why this is needed. Where is that flip earlier in code path?
+	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 10);
+	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 10);
 
-	for (auto r : res)
+	for (auto i = 0; i < res.size() && i < resOther.size(); ++i)
 	{
-		auto pickedBoundaryFace = r;
-		btSoftBody::Face& f = m_faces[pickedBoundaryFace];
+		btSoftBody::Node& n = m_nodes[i];
+		btSoftBody::Node& nOther = otherSoft->m_nodes[i];
 
-		//for (auto i = 0; i < m_faceNodeContacts.size(); ++i)
-		//	// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
-		//	// result in the same sim mesh face, resulting in huge impulse spikes.
-		//	if (m_faceNodeContacts[i].m_colObj == otherSoft && m_faceNodeContacts[i].m_face == &f)
-		//		continue;
+		bool alreadyCreated = false;
+		for (auto i = 0; i < m_nodeNodeContacts.size(); ++i)
+			// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
+			// result in the same sim mesh face, resulting in huge impulse spikes.
+			if (m_nodeNodeContacts[i].m_colObj == otherSoft && m_nodeNodeContacts[i].m_node0 == &n && m_nodeNodeContacts[i].m_node1 == &nOther)
+			{
+				alreadyCreated = true;
+				break;
+			}
 
-		for (auto ro : resOther)
+		if (alreadyCreated)
+			continue;
+
+		fprintf(stderr, "pen %d\n", (int)penetrating);
+		fprintf(stderr, "createPointHelperObject \"n%d\" [%f, %f, %f] \n", getUserIndex(), n.m_x.x(), n.m_x.y(), n.m_x.z());
+		fprintf(stderr, "createPointHelperObject \"nOther%d\" [%f, %f, %f] \n", otherSoft->getUserIndex(), nOther.m_x.x(), nOther.m_x.y(), nOther.m_x.z());
+
 		{
-			auto pickedBoundaryFaceOther = ro;
-			btSoftBody::Face& fOther = otherSoft->m_faces[pickedBoundaryFaceOther];
-
-			//for (auto i = 0; i < otherSoft->m_faceNodeContacts.size(); ++i)
-			//	// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
-			//	// result in the same sim mesh face, resulting in huge impulse spikes.
-			//	if (otherSoft->m_faceNodeContacts[i].m_colObj == this && otherSoft->m_faceNodeContacts[i].m_face == &fOther)
-			//		return;
-
-			btSoftColliders::CollideFF_DD collide;
-			collide.mrg = /*getCollisionShape()->getMargin() + otherSoft->getCollisionShape()->getMargin()*/ 100.0;
-			collide.psb[0] = this;
-			collide.psb[1] = otherSoft;
-			collide.useFaceNormal = true;
-			collide.testProximity = true;
-			//collide.testProximity = false;
-			//collide.RepelCustom(&f, -contactNormalOnSoftCollisionMesh, &fOther, contactNormalOnSoftCollisionMesh);
-			//collide.RepelCustom(&fOther, contactNormalOnSoftCollisionMesh, &f, -contactNormalOnSoftCollisionMesh);
-
-			/*drawer.Clear();
-			drawer.OpenFile("debug_draw" + std::to_string(cnt++) + ".obj");
-			drawer.DrawTriangle(f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-								f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-								f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-			drawer.DrawTriangle(fOther.m_n[0]->m_x.x(), fOther.m_n[0]->m_x.y(), fOther.m_n[0]->m_x.z(),
-								fOther.m_n[1]->m_x.x(), fOther.m_n[1]->m_x.y(), fOther.m_n[1]->m_x.z(),
-								fOther.m_n[2]->m_x.x(), fOther.m_n[2]->m_x.y(), fOther.m_n[2]->m_x.z());
-			drawer.CloseFile();*/
-
-			collide.Repel(&f, &fOther);
-			collide.Repel(&fOther, &f);
+			btSoftBody::DeformableNodeNodeContact c;
+			c.m_normal = contactNormalOnSoftCollisionMesh;
+			c.m_node0 = &n;
+			c.m_node1 = &nOther;
+			c.m_colObj = otherSoft;
+			c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
+			m_nodeNodeContacts.push_back(c);
 		}
 	}
 }

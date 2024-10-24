@@ -883,7 +883,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			dist = sqrtf(dist_sq_out);
 			create_contact();
 			// Mark it as penetration by making it negative. At least MaxDepth (beacuse that is the max pushback when in the margin zone with 0 dist) and then subract
-			// the result depth from find_triangle_collision_clip_method, so that the contact can be sorted in btPersistentManifold::sortCachedPoints
+			// the result depth from triangle_triangle_distance, so that the contact can be sorted in btPersistentManifold::sortCachedPoints
 			contacts.m_penetration_depth = -maxDepth - (contacts.m_penetration_depth / 100.0f);
 			// Take the collision point from the original penetrating position because we really care only about the normal direction from the safe triangle_triangle_distance
 			contacts.m_points[0] = a_closest_out_pen;

@@ -412,6 +412,7 @@ void btDeformableBodySolver::predictMotion(btScalar solverdt)
 			psb->m_nodeRigidContacts.resize(0);
 			psb->m_faceRigidContacts.resize(0);
 			psb->m_faceNodeContacts.resize(0);
+			psb->m_nodeNodeContacts.resize(0);
 			psb->m_faceNodeContactsCCD.resize(0);
 			// predict motion for collision detection
 			predictDeformableMotion(psb, solverdt);
@@ -600,9 +601,9 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 	{
 		const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 		softBody->skinSoftRigidCollisionHandler(collisionObjectWrap,
-			resultOut->swapped ? cp.getPositionWorldOnB() : cp.getPositionWorldOnA(),
-			resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
-			cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
+												resultOut->swapped ? cp.getPositionWorldOnB() : cp.getPositionWorldOnA(),
+												resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
+												cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
 	}
 }
 
@@ -615,6 +616,6 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 {
 	const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->swapped ? cp.getPositionWorldOnB() : cp.getPositionWorldOnA(),
-											resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
-											cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
+										   resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
+										   cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
 }

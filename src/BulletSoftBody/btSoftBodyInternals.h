@@ -63,10 +63,10 @@ static SIMD_FORCE_INLINE btVector3 generateUnitOrthogonalVector(const btVector3&
 	return v;
 }
 
-static SIMD_FORCE_INLINE bool proximityTest(const btVector3& x1, const btVector3& x2, const btVector3& x3, const btVector3& x4, const btVector3& normal, const btScalar& mrg, btVector3& bary, bool onlyGetBary = false)
+static SIMD_FORCE_INLINE bool proximityTest(const btVector3& x1, const btVector3& x2, const btVector3& x3, const btVector3& x4, const btVector3& normal, const btScalar& mrg, btVector3& bary)
 {
 	btVector3 x43 = x4 - x3;
-	if (!onlyGetBary && std::abs(x43.dot(normal)) > mrg)
+	if (std::abs(x43.dot(normal)) > mrg)
 		return false;
 	btVector3 x13 = x1 - x3;
 	btVector3 x23 = x2 - x3;
@@ -76,24 +76,19 @@ static SIMD_FORCE_INLINE bool proximityTest(const btVector3& x1, const btVector3
 	btScalar b1 = x13.dot(x43);
 	btScalar b2 = x23.dot(x43);
 	btScalar det = a11 * a22 - a12 * a12;
-	if (!onlyGetBary && det < SIMD_EPSILON)
+	if (det < SIMD_EPSILON)
 		return false;
 	btScalar w1 = (b1 * a22 - b2 * a12) / det;
 	btScalar w2 = (b2 * a11 - b1 * a12) / det;
 	btScalar w3 = 1 - w1 - w2;
-	btScalar delta = mrg / std::sqrt(0.5 * std::abs(x13.cross(x23).safeNorm()));
+	btScalar delta = 0.01 /*mrg / std::sqrt(0.5 * std::abs(x13.cross(x23).safeNorm()))*/;
 	bary = btVector3(w1, w2, w3);
-	if (!onlyGetBary)
+	for (int i = 0; i < 3; ++i)
 	{
-		for (int i = 0; i < 3; ++i)
-		{
-			if (bary[i] < -delta || bary[i] > 1 + delta)
-				return false;
-		}
-		return true;
+		if (bary[i] < -delta || bary[i] > 1 + delta)
+			return false;
 	}
-	else
-		return true;
+	return true;
 }
 static const int KDOP_COUNT = 13;
 static btVector3 dop[KDOP_COUNT] = {btVector3(1, 0, 0),
@@ -2048,63 +2043,9 @@ struct btSoftColliders
 			}
 		}
 
-		void RepelCustom(btSoftBody::Face* f1, const btVector3& f1_normal, btSoftBody::Face* f2, const btVector3& f2_normal)
-		{
-			//#define REPEL_NEIGHBOR 1
-#ifndef REPEL_NEIGHBOR
-			for (int node_id = 0; node_id < 3; ++node_id)
-			{
-				btSoftBody::Node* node = f1->m_n[node_id];
-				for (int i = 0; i < 3; ++i)
-				{
-					if (f2->m_n[i] == node)
-						return;
-				}
-			}
-#endif
-			bool skip = false;
-			for (int node_id = 0; node_id < 3; ++node_id)
-			{
-				btSoftBody::Node* node = f1->m_n[node_id];
-#ifdef REPEL_NEIGHBOR
-				for (int i = 0; i < 3; ++i)
-				{
-					if (f2->m_n[i] == node)
-					{
-						skip = true;
-						break;
-					}
-				}
-				if (skip)
-				{
-					skip = false;
-					continue;
-				}
-#endif
-				btSoftBody::Face* face = f2;
-				btVector3 bary;
-				proximityTest(face->m_n[0]->m_x, face->m_n[1]->m_x, face->m_n[2]->m_x, node->m_x, face->m_normal, mrg, bary, !testProximity);
-				btSoftBody::DeformableFaceNodeContact c;
-				c.m_normal = f2_normal;
-				if (!useFaceNormal && c.m_normal.dot(node->m_x - face->m_n[2]->m_x) < 0)
-					c.m_normal = -f2_normal;
-				c.m_margin = mrg;
-				c.m_node = node;
-				c.m_face = face;
-				c.m_bary = bary;
-				c.m_friction = psb[0]->m_cfg.kDF * psb[1]->m_cfg.kDF;
-				// Initialize unused fields.
-				c.m_weights = btVector3(0, 0, 0);
-				c.m_imf = 0;
-				c.m_c0 = 0;
-				c.m_colObj = psb[1];
-				psb[0]->m_faceNodeContacts.push_back(c);
-			}
-		}
 		btSoftBody* psb[2];
 		btScalar mrg;
 		bool useFaceNormal;
-		bool testProximity = true;
 	};
 
 	struct CollideCCD : btDbvt::ICollide

@@ -558,6 +558,15 @@ public:
 		const btCollisionObject* m_colObj;  // Collision object to collide with.
 	};
 
+	struct DeformableNodeNodeContact
+	{
+		Node* m_node0;                      // Node0
+		Node* m_node1;                      // Node1
+		btVector3 m_normal;                 // Normal
+		btScalar m_friction;                // Friction
+		const btCollisionObject* m_colObj;  // Collision object to collide with.
+	};
+
 	/* SContact		*/
 	struct SContact
 	{
@@ -980,6 +989,7 @@ public:
 	tRContactArray m_rcontacts;  // Rigid contacts
 	btAlignedObjectArray<DeformableNodeRigidContact> m_nodeRigidContacts;
 	btAlignedObjectArray<DeformableFaceNodeContact> m_faceNodeContacts;
+	btAlignedObjectArray<DeformableNodeNodeContact> m_nodeNodeContacts;
 	btAlignedObjectArray<DeformableFaceRigidContact> m_faceRigidContacts;
 	btAlignedObjectArray<DeformableFaceNodeContact> m_faceNodeContactsCCD;
 	tSContactArray m_scontacts;     // Soft contacts
@@ -1262,6 +1272,7 @@ public:
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
 	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
 	std::vector<int> findNClosestFacesLinearComplexity(const btVector3& p, int N) const;
+	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
@@ -1566,6 +1577,89 @@ public:
 				if (node_penetration <= 0)
 				{
 					node->m_v -= I_tilde * node->m_im * vt;
+				}
+			}
+		}
+
+		for (int k = 0; k < m_nodeNodeContacts.size(); ++k)
+		{
+			//int idx = indices[k];
+			btSoftBody::DeformableNodeNodeContact& c = m_nodeNodeContacts[k];
+			btSoftBody::Node* node0 = c.m_node0;
+			btSoftBody::Node* node1 = c.m_node1;
+			const btVector3& n = c.m_normal;
+			fprintf(stderr, "c.m_normal %f %f %f\n", c.m_normal.x(), c.m_normal.y(), c.m_normal.z());
+			btVector3 l = node0->m_x - node1->m_x;
+			btScalar d = n.dot(l);  // Not taking into account the margins, because margins were already taken into consideration in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
+			d = btMax(btScalar(0), d);
+
+			const btVector3& va = node0->m_v;
+			btVector3 vb = node1->m_v;
+			btVector3 vr = va - vb;
+			const btScalar vn = btDot(vr, n);  // dn < 0 <==> opposing
+			fprintf(stderr, "vn %f d %f rhs %f\n", vn, d, OVERLAP_REDUCTION_FACTOR * d / timeStep);
+			if (vn > OVERLAP_REDUCTION_FACTOR * d / timeStep)
+			{
+				fprintf(stderr, "CONTINUE\n");
+				continue;
+			}
+			btVector3 vt = vr - vn * n;
+			btScalar I = 0;
+			btScalar mass = node0->m_im == 0 ? 0 : btScalar(1) / node0->m_im;
+			if (applySpringForce)
+				I = -btMin(m_repulsionStiffness * timeStep * d, mass * (OVERLAP_REDUCTION_FACTOR * d / timeStep - vn));
+			if (vn < 0)
+				I += 0.5 * mass * vn;
+			int node0_penetration = node0->m_constrained, node1_penetration = node1->m_constrained;
+
+			btScalar I_tilde = 2.0 * I / (1.0 + /*w.length2()*/ 1.0);
+
+			//             double the impulse if node or face is constrained.
+			if (node0_penetration > 0 || node1_penetration > 0)
+			{
+				I_tilde *= 2.0;
+			}
+
+			if (node0_penetration <= 0)
+			{
+				auto delta = -I_tilde * node0->m_im * n;
+				fprintf(stderr, "node0->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
+				node0->m_v += delta;
+				fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
+			}
+
+			if (node1_penetration <= 0)
+			{
+				auto delta = I_tilde * node0->m_im * n;
+				fprintf(stderr, "node1->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
+				node1->m_v += delta;
+				fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
+			}
+
+			// apply frictional impulse
+			btScalar vt_norm = vt.safeNorm();
+			if (vt_norm > SIMD_EPSILON)
+			{
+				btScalar delta_vn = -2 * I * node0->m_im;
+				btScalar mu = c.m_friction;
+				btScalar vt_new = btMax(btScalar(1) - mu * delta_vn / (vt_norm + SIMD_EPSILON), btScalar(0)) * vt_norm;
+				I = 0.5 * mass * (vt_norm - vt_new);
+				vt.safeNormalize();
+				I_tilde = 2.0 * I / (1.0 + /*w.length2()*/ 1.0);
+				//                 double the impulse if node or face is constrained.
+				if (node0_penetration > 0 || node1_penetration > 0)
+					I_tilde *= 2.0;
+
+				if (node0_penetration <= 0)
+				{
+					node0->m_v -= I_tilde * node0->m_im * vt;
+					fprintf(stderr, "after frict node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
+				}
+
+				if (node1_penetration <= 0)
+				{
+					node1->m_v += I_tilde * node1->m_im * vt;
+					fprintf(stderr, "after frict node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
 				}
 			}
 		}
