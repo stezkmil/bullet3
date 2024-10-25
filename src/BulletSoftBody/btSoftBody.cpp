@@ -4537,8 +4537,8 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 
 	for (auto i = 0; i < res.size() && i < resOther.size(); ++i)
 	{
-		btSoftBody::Node& n = m_nodes[i];
-		btSoftBody::Node& nOther = otherSoft->m_nodes[i];
+		btSoftBody::Node& n = m_nodes[res[i]];
+		btSoftBody::Node& nOther = otherSoft->m_nodes[resOther[i]];
 
 		bool alreadyCreated = false;
 		for (auto i = 0; i < m_nodeNodeContacts.size(); ++i)
