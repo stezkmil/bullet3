@@ -4403,7 +4403,8 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 
 	// This is based on CollideSDF_RDF (TODO deduplicate common code) and it is weird, because depth of contact has no role in the calculation of strength of impulse.
 	// So the only way to control the strength of impulse is to change the number of impulsed faces (!). The original CollideSDF_RDF code is the same in this aspect.
-	// So there is this hack which makes sure that a sufficient number of faces are impulsed, so that the soft body does not phase through.
+	// So this simulates the typical situation where not just one face hits, but typically also the surrounding faces are found to be colliding. As a result, this
+	// causes many soft body nodes to be influenced, needing smaller impulses, which are not prone to explosions so much.
 	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
 	for (auto& r : res)
 	{
@@ -4413,8 +4414,8 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		bool alreadyImpulsed = false;
 		for (auto i = 0; i < m_faceRigidContacts.size(); ++i)
 		{
-			// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
-			// result in the same sim mesh face, resulting in huge impulse spikes.
+			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
+			// This prevents that.
 			if (m_faceRigidContacts[i].m_cti.m_colObj == rigidBody && m_faceRigidContacts[i].m_face == &f)
 			{
 				alreadyImpulsed = true;
@@ -4526,12 +4527,15 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 
 //SimpleOBJDrawer btSoftBody::drawer;
 //int cnt = 0;
+//int origsDrawn = false;
 
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											  btScalar distance, const bool penetrating)
 {
-	//if (penetrating)
-	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;  // TODO find why this is needed. Where is that flip earlier in code path?
+	//fprintf(stderr, "pen %d\n", (int)penetrating);
+
+	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
+	// See similar comment in skinSoftRigidCollisionHandler
 	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 10);
 	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 10);
 
@@ -4542,8 +4546,8 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 
 		bool alreadyCreated = false;
 		for (auto i = 0; i < m_nodeNodeContacts.size(); ++i)
-			// This emulates how the original collision detection for softs works. The same face is never impulsed twice. With the separate collision mesh, many contact points can
-			// result in the same sim mesh face, resulting in huge impulse spikes.
+			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
+			// This prevents that.
 			if (m_nodeNodeContacts[i].m_colObj == otherSoft && m_nodeNodeContacts[i].m_node0 == &n && m_nodeNodeContacts[i].m_node1 == &nOther)
 			{
 				alreadyCreated = true;
@@ -4553,9 +4557,28 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 		if (alreadyCreated)
 			continue;
 
-		fprintf(stderr, "pen %d\n", (int)penetrating);
+		/*if (!origsDrawn)
+		{
+			for (auto i = 0; i < m_faces.size(); ++i)
+			{
+				auto& f = m_faces[i];
+				fprintf(stderr, "createTriangleObject \"tri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+						f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+						f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+			}
+			for (auto i = 0; i < otherSoft->m_faces.size(); ++i)
+			{
+				auto& f = otherSoft->m_faces[i];
+				fprintf(stderr, "createTriangleObject \"othertri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+						f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+						f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+			}
+			origsDrawn = true;
+		}*/
+
+		/*fprintf(stderr, "createPointHelperObject \"contactpoint\" [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 		fprintf(stderr, "createPointHelperObject \"n%d\" [%f, %f, %f] \n", getUserIndex(), n.m_x.x(), n.m_x.y(), n.m_x.z());
-		fprintf(stderr, "createPointHelperObject \"nOther%d\" [%f, %f, %f] \n", otherSoft->getUserIndex(), nOther.m_x.x(), nOther.m_x.y(), nOther.m_x.z());
+		fprintf(stderr, "createPointHelperObject \"nOther%d\" [%f, %f, %f] \n", otherSoft->getUserIndex(), nOther.m_x.x(), nOther.m_x.y(), nOther.m_x.z());*/
 
 		{
 			btSoftBody::DeformableNodeNodeContact c;
@@ -4565,6 +4588,182 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 			c.m_colObj = otherSoft;
 			c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
 			m_nodeNodeContacts.push_back(c);
+
+			// Not entirely sure if this is needed as applyRepulsionForce applies opposite forces on both faces in one go, but there is some
+			// asymetry there - for example the mass is calculated only based on node0.
+			c.m_normal = -contactNormalOnSoftCollisionMesh;
+			c.m_node0 = &nOther;
+			c.m_node1 = &n;
+			m_nodeNodeContacts.push_back(c);
+		}
+	}
+}
+
+void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
+{
+	btAlignedObjectArray<int> indices;
+	{
+		// randomize the order of repulsive force
+		indices.resize(m_faceNodeContacts.size());
+		for (int i = 0; i < m_faceNodeContacts.size(); ++i)
+			indices[i] = i;
+#define NEXTRAND (seed = (1664525L * seed + 1013904223L) & 0xffffffff)
+		int i, ni;
+
+		for (i = 0, ni = indices.size(); i < ni; ++i)
+		{
+			btSwap(indices[i], indices[NEXTRAND % ni]);
+		}
+	}
+	for (int k = 0; k < m_faceNodeContacts.size(); ++k)
+	{
+		int idx = indices[k];
+		btSoftBody::DeformableFaceNodeContact& c = m_faceNodeContacts[idx];
+		btSoftBody::Node* node = c.m_node;
+		btSoftBody::Face* face = c.m_face;
+		const btVector3& w = c.m_bary;
+		const btVector3& n = c.m_normal;
+		btVector3 l = node->m_x - BaryEval(face->m_n[0]->m_x, face->m_n[1]->m_x, face->m_n[2]->m_x, w);
+		btScalar d = c.m_margin - n.dot(l);
+		d = btMax(btScalar(0), d);
+
+		const btVector3& va = node->m_v;
+		btVector3 vb = BaryEval(face->m_n[0]->m_v, face->m_n[1]->m_v, face->m_n[2]->m_v, w);
+		btVector3 vr = va - vb;
+		const btScalar vn = btDot(vr, n);  // dn < 0 <==> opposing
+		if (vn > OVERLAP_REDUCTION_FACTOR * d / timeStep)
+			continue;
+		btVector3 vt = vr - vn * n;
+		btScalar I = 0;
+		btScalar mass = node->m_im == 0 ? 0 : btScalar(1) / node->m_im;
+		if (applySpringForce)
+			I = -btMin(m_repulsionStiffness * timeStep * d, mass * (OVERLAP_REDUCTION_FACTOR * d / timeStep - vn));
+		if (vn < 0)
+			I += 0.5 * mass * vn;
+		int face_penetration = 0, node_penetration = node->m_constrained;
+		for (int i = 0; i < 3; ++i)
+			face_penetration |= face->m_n[i]->m_constrained;
+		btScalar I_tilde = 2.0 * I / (1.0 + w.length2());
+
+		//             double the impulse if node or face is constrained.
+		if (face_penetration > 0 || node_penetration > 0)
+		{
+			I_tilde *= 2.0;
+		}
+		if (face_penetration <= 0)
+		{
+			for (int j = 0; j < 3; ++j)
+				face->m_n[j]->m_v += w[j] * n * I_tilde * node->m_im;
+		}
+		if (node_penetration <= 0)
+		{
+			node->m_v -= I_tilde * node->m_im * n;
+		}
+
+		// apply frictional impulse
+		btScalar vt_norm = vt.safeNorm();
+		if (vt_norm > SIMD_EPSILON)
+		{
+			btScalar delta_vn = -2 * I * node->m_im;
+			btScalar mu = c.m_friction;
+			btScalar vt_new = btMax(btScalar(1) - mu * delta_vn / (vt_norm + SIMD_EPSILON), btScalar(0)) * vt_norm;
+			I = 0.5 * mass * (vt_norm - vt_new);
+			vt.safeNormalize();
+			I_tilde = 2.0 * I / (1.0 + w.length2());
+			//                 double the impulse if node or face is constrained.
+			if (face_penetration > 0 || node_penetration > 0)
+				I_tilde *= 2.0;
+			if (face_penetration <= 0)
+			{
+				for (int j = 0; j < 3; ++j)
+					face->m_n[j]->m_v += w[j] * vt * I_tilde * (face->m_n[j])->m_im;
+			}
+			if (node_penetration <= 0)
+			{
+				node->m_v -= I_tilde * node->m_im * vt;
+			}
+		}
+	}
+
+	//fprintf(stderr, "m_nodeNodeContacts %d idx %d\n", m_nodeNodeContacts.size(), getUserIndex());
+	for (int k = 0; k < m_nodeNodeContacts.size(); ++k)
+	{
+		//int idx = indices[k];
+		btSoftBody::DeformableNodeNodeContact& c = m_nodeNodeContacts[k];
+		btSoftBody::Node* node0 = c.m_node0;
+		btSoftBody::Node* node1 = c.m_node1;
+		const btVector3& n = c.m_normal;
+		//fprintf(stderr, "c.m_normal %f %f %f\n", c.m_normal.x(), c.m_normal.y(), c.m_normal.z());
+		btVector3 l = node0->m_x - node1->m_x;
+		btScalar d = n.dot(l);  // Not taking into account the margins, because margins were already taken into consideration in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
+		d = btMax(btScalar(0), d);
+
+		const btVector3& va = node0->m_v;
+		btVector3 vb = node1->m_v;
+		btVector3 vr = va - vb;
+		const btScalar vn = btDot(vr, n);  // dn < 0 <==> opposing
+		//fprintf(stderr, "vn %f d %f rhs %f\n", vn, d, OVERLAP_REDUCTION_FACTOR * d / timeStep);
+		if (vn > OVERLAP_REDUCTION_FACTOR * d / timeStep)
+		{
+			//fprintf(stderr, "CONTINUE\n");
+			continue;
+		}
+		const btScalar impulseFactor = 1.0;
+		btVector3 vt = vr - vn * n;
+		btScalar I = 0;
+		btScalar mass = node0->m_im == 0 ? 0 : btScalar(1) / node0->m_im;
+		if (applySpringForce)
+			I = -btMin(m_repulsionStiffness * timeStep * d, mass * (OVERLAP_REDUCTION_FACTOR * d / timeStep - vn));
+		if (vn < 0)
+			I += impulseFactor * mass * vn;
+		int node0_penetration = node0->m_constrained, node1_penetration = node1->m_constrained;
+
+		//             double the impulse if node or face is constrained.
+		if (node0_penetration > 0 || node1_penetration > 0)
+		{
+			I *= 2.0;
+		}
+
+		if (node0_penetration <= 0)
+		{
+			auto delta = -I * node0->m_im * n;
+			//fprintf(stderr, "node0->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
+			node0->m_v += delta;
+			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
+		}
+
+		if (node1_penetration <= 0)
+		{
+			auto delta = I * node0->m_im * n;
+			//fprintf(stderr, "node1->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
+			node1->m_v += delta;
+			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
+		}
+
+		// apply frictional impulse
+		btScalar vt_norm = vt.safeNorm();
+		if (vt_norm > SIMD_EPSILON)
+		{
+			btScalar delta_vn = -2 * I * node0->m_im;
+			btScalar mu = c.m_friction;
+			btScalar vt_new = btMax(btScalar(1) - mu * delta_vn / (vt_norm + SIMD_EPSILON), btScalar(0)) * vt_norm;
+			I = impulseFactor * mass * (vt_norm - vt_new);
+			vt.safeNormalize();
+			//                 double the impulse if node or face is constrained.
+			if (node0_penetration > 0 || node1_penetration > 0)
+				I *= 2.0;
+
+			if (node0_penetration <= 0)
+			{
+				node0->m_v -= I * node0->m_im * vt;
+				//fprintf(stderr, "after frict node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
+			}
+
+			if (node1_penetration <= 0)
+			{
+				node1->m_v += I * node1->m_im * vt;
+				//fprintf(stderr, "after frict node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
+			}
 		}
 	}
 }
