@@ -26,6 +26,8 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 class btCollisionObject;
 #include "LinearMath/btAlignedAllocator.h"
 
+#include <vector>
+
 struct btCollisionResult;
 struct btCollisionObjectDoubleData;
 struct btCollisionObjectFloatData;
@@ -33,6 +35,7 @@ struct btCollisionObjectFloatData;
 ///maximum contact breaking and merging threshold
 extern btScalar gContactBreakingThreshold;
 extern btScalar gMarginZoneRecoveryStrengthFactor;
+extern bool gContactCalcArea3Points;
 
 #ifndef SWIG
 class btPersistentManifold;
@@ -68,7 +71,8 @@ enum btContactManifoldTypes
 ATTRIBUTE_ALIGNED16(class)
 btPersistentManifold : public btTypedObject
 {
-	btManifoldPoint m_pointCache[MANIFOLD_CACHE_SIZE];
+	std::vector<btManifoldPoint> m_pointCache;
+	bool m_unlimitedCacheSize;
 
 	/// this two body pointers can point to the physics rigidbody class.
 	const btCollisionObject* m_body0;
@@ -94,8 +98,9 @@ public:
 
 	btPersistentManifold();
 
-	btPersistentManifold(const btCollisionObject* body0, const btCollisionObject* body1, int, btScalar contactBreakingThreshold, btScalar contactProcessingThreshold)
+	btPersistentManifold(const btCollisionObject* body0, const btCollisionObject* body1, int, btScalar contactBreakingThreshold, btScalar contactProcessingThreshold, bool unlimitedCacheSize)
 		: btTypedObject(BT_PERSISTENT_MANIFOLD_TYPE),
+		  m_unlimitedCacheSize(unlimitedCacheSize),
 		  m_body0(body0),
 		  m_body1(body1),
 		  m_cachedPoints(0),
@@ -105,6 +110,8 @@ public:
 		  m_companionIdB(0),
 		  m_index1a(0)
 	{
+		if (!m_unlimitedCacheSize)
+			m_pointCache.resize(MANIFOLD_CACHE_SIZE);
 	}
 
 	SIMD_FORCE_INLINE const btCollisionObject* getBody0() const { return m_body0; }
@@ -142,6 +149,11 @@ public:
 	{
 		btAssert(index < m_cachedPoints);
 		return m_pointCache[index];
+	}
+
+	bool isUnlimitedCacheSize() const
+	{
+		return m_unlimitedCacheSize;
 	}
 
 	///@todo: get this margin from the current physics / collision environment

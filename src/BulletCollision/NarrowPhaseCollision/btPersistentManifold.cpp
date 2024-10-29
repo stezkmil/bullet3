@@ -39,6 +39,7 @@ bool gContactCalcArea3Points = true;
 
 btPersistentManifold::btPersistentManifold()
 	: btTypedObject(BT_PERSISTENT_MANIFOLD_TYPE),
+	  m_unlimitedCacheSize(false),
 	  m_body0(0),
 	  m_body1(0),
 	  m_cachedPoints(0),
@@ -46,6 +47,8 @@ btPersistentManifold::btPersistentManifold()
 	  m_companionIdB(0),
 	  m_index1a(0)
 {
+	if (!m_unlimitedCacheSize)
+		m_pointCache.resize(MANIFOLD_CACHE_SIZE);
 }
 
 #ifdef DEBUG_PERSISTENCY
@@ -225,32 +228,41 @@ int btPersistentManifold::addManifoldPoint(const btManifoldPoint& newPoint, bool
 		btAssert(validContactDistance(newPoint));
 	}
 
-	int insertIndex = getNumContacts();
-	if (insertIndex == MANIFOLD_CACHE_SIZE)
+	if (!m_unlimitedCacheSize)
 	{
-#if MANIFOLD_CACHE_SIZE >= 4
-		//sort cache so best points come first, based on area
-		insertIndex = sortCachedPoints(newPoint);
-#else
-		insertIndex = 0;
-#endif
-		if (insertIndex < 0)
+		int insertIndex = getNumContacts();
+		if (insertIndex == MANIFOLD_CACHE_SIZE)
 		{
-			printf("btPersistentManifold::addManifoldPoint insertIndex would have been -1\n");
+#if MANIFOLD_CACHE_SIZE >= 4
+			//sort cache so best points come first, based on area
+			insertIndex = sortCachedPoints(newPoint);
+#else
 			insertIndex = 0;
+#endif
+			if (insertIndex < 0)
+			{
+				printf("btPersistentManifold::addManifoldPoint insertIndex would have been -1\n");
+				insertIndex = 0;
+			}
+			clearUserCache(m_pointCache[insertIndex]);
 		}
-		clearUserCache(m_pointCache[insertIndex]);
+		else
+		{
+			m_cachedPoints++;
+		}
+		if (insertIndex < 0)
+			insertIndex = 0;
+
+		btAssert(m_pointCache[insertIndex].m_userPersistentData == 0);
+		m_pointCache[insertIndex] = newPoint;
+		return insertIndex;
 	}
 	else
 	{
+		m_pointCache.push_back(newPoint);
 		m_cachedPoints++;
+		return m_cachedPoints - 1;
 	}
-	if (insertIndex < 0)
-		insertIndex = 0;
-
-	btAssert(m_pointCache[insertIndex].m_userPersistentData == 0);
-	m_pointCache[insertIndex] = newPoint;
-	return insertIndex;
 }
 
 btScalar btPersistentManifold::getContactBreakingThreshold() const

@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btCollisionDispatcherMt.h"
 #include "LinearMath/btQuickprof.h"
 
@@ -64,7 +63,8 @@ btPersistentManifold* btCollisionDispatcherMt::getNewManifold(const btCollisionO
 			return 0;
 		}
 	}
-	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold);
+	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold);
 	if (!m_batchUpdating)
 	{
 		// batch updater will update manifold pointers array after finishing, so
@@ -84,7 +84,7 @@ btPersistentManifold* btCollisionDispatcherMt::getNewManifold(const btCollisionO
 void btCollisionDispatcherMt::releaseManifold(btPersistentManifold* manifold)
 {
 	//btAssert( !btThreadsAreRunning() );
-	
+
 	if (!m_batchUpdating)
 	{
 		clearManifold(manifold);
@@ -95,7 +95,9 @@ void btCollisionDispatcherMt::releaseManifold(btPersistentManifold* manifold)
 		m_manifoldsPtr.swap(findIndex, m_manifoldsPtr.size() - 1);
 		m_manifoldsPtr[findIndex]->m_index1a = findIndex;
 		m_manifoldsPtr.pop_back();
-	} else {
+	}
+	else
+	{
 		m_batchReleasePtr[btGetCurrentThreadIndex()].push_back(manifold);
 		return;
 	}
