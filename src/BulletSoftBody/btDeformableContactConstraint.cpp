@@ -98,6 +98,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
 		if (rigidCol)
 		{
+			//fprintf(stderr, "applyImpulse %f %f %f\n", impulse.x(), impulse.y(), impulse.z());
 			rigidCol->applyImpulse(impulse, m_anchor->m_c1);
 		}
 	}
