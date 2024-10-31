@@ -4520,7 +4520,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 					c.t2 = t2;
 				}
 			}
-			fprintf(stderr, "m_faceRigidContacts.push_back(c)\n");
 			m_faceRigidContacts.push_back(c);
 		}
 	}

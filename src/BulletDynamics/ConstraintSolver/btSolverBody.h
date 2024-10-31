@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_SOLVER_BODY_H
 #define BT_SOLVER_BODY_H
 
@@ -50,7 +49,8 @@ struct btSimdScalar
 		: m_vec128(v128)
 	{
 	}
-	union {
+	union
+	{
 		__m128 m_vec128;
 		float m_floats[4];
 		int m_ints[4];

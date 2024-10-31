@@ -32,8 +32,6 @@ btScalar btDeformableMultiBodyConstraintSolver::solveDeformableGroupIterations(b
 		{
 			// rigid bodies are solved using solver body velocity, but rigid/deformable contact directly uses the velocity of the actual rigid body. So we have to do the following: Solve one iteration of the rigid/rigid contact, get the updated velocity in the solver body and update the velocity of the underlying rigid body. Then solve the rigid/deformable contact. Finally, grab the (once again) updated rigid velocity and update the velocity of the wrapping solver body
 
-			for (int i = 0; i < numBodies; ++i)
-				fprintf(stderr, "body %d\n", bodies[i]->getUserIndex());
 			// solve rigid/rigid in solver body
 			m_leastSquaresResidual = solveSingleIteration(iteration, bodies, numBodies, manifoldPtr, numManifolds, constraints, numConstraints, infoGlobal, debugDrawer);
 			// solver body velocity -> rigid body velocity
@@ -44,8 +42,6 @@ btScalar btDeformableMultiBodyConstraintSolver::solveDeformableGroupIterations(b
 			// solver body velocity <- rigid body velocity
 			writeToSolverBody(bodies, numBodies, infoGlobal);
 
-			fprintf(stderr, "------------Iteration %d------------\n", iteration);
-			fprintf(stderr, "m_leastSquaresResidual: %f\n", m_leastSquaresResidual);
 			// std::cout << "------------Iteration " << iteration << "------------\n";
 			// std::cout << "m_leastSquaresResidual: " << m_leastSquaresResidual << "\n";
 
@@ -65,7 +61,6 @@ btScalar btDeformableMultiBodyConstraintSolver::solveDeformableGroupIterations(b
 				m_analyticsData.m_remainingLeastSquaresResidual = m_leastSquaresResidual;
 
 				m_deformableSolver->deformableBodyInternalWriteBack();
-				fprintf(stderr, "[===================Next Step===================]\n");
 				// std::cout << "[===================Next Step===================]\n";
 				break;
 			}
@@ -92,6 +87,21 @@ void btDeformableMultiBodyConstraintSolver::solveDeformableBodyGroup(btCollision
 	m_tmpNumMultiBodyConstraints = 0;
 }
 
+void btDeformableMultiBodyConstraintSolver::synchronizeSolverBodyWithRigidBody(btSolverBody* solverBody, btRigidBody* rigidBody)
+{
+	// Compute the total velocity change
+	btVector3 totalDeltaLinearVelocity = rigidBody->getLinearVelocity() - (solverBody->m_linearVelocity + solverBody->m_deltaLinearVelocity);
+	btVector3 totalDeltaAngularVelocity = rigidBody->getAngularVelocity() - (solverBody->m_angularVelocity + solverBody->m_deltaAngularVelocity);
+
+	// Update the delta velocities
+	solverBody->m_deltaLinearVelocity += totalDeltaLinearVelocity;
+	solverBody->m_deltaAngularVelocity += totalDeltaAngularVelocity;
+
+	// Adjust the solver body's base velocities
+	solverBody->m_linearVelocity = rigidBody->getLinearVelocity() - solverBody->m_deltaLinearVelocity;
+	solverBody->m_angularVelocity = rigidBody->getAngularVelocity() - solverBody->m_deltaAngularVelocity;
+}
+
 void btDeformableMultiBodyConstraintSolver::writeToSolverBody(btCollisionObject** bodies, int numBodies, const btContactSolverInfo& infoGlobal)
 {
 	// reduced soft body solver directly modifies the solver body
@@ -108,8 +118,7 @@ void btDeformableMultiBodyConstraintSolver::writeToSolverBody(btCollisionObject*
 		if (body && body->getInvMass())
 		{
 			btSolverBody& solverBody = m_tmpSolverBodyPool[bodyId];
-			solverBody.m_linearVelocity = body->getLinearVelocity() - solverBody.m_deltaLinearVelocity;
-			solverBody.m_angularVelocity = body->getAngularVelocity() - solverBody.m_deltaAngularVelocity;
+			synchronizeSolverBodyWithRigidBody(&solverBody, body);
 		}
 	}
 }
