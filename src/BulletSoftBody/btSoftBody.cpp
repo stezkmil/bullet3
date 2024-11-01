@@ -4403,24 +4403,22 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 {
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
-	// This is based on CollideSDF_RDF (TODO deduplicate common code) and it is weird, because depth of contact has no role in the calculation of strength of impulse.
-	// So the only way to control the strength of impulse is to change the number of impulsed faces (!). The original CollideSDF_RDF code is the same in this aspect.
-	// So this simulates the typical situation where not just one face hits, but typically also the surrounding faces are found to be colliding. As a result, this
-	// causes many soft body nodes to be influenced, needing smaller impulses, which are not prone to explosions so much.
-	auto res = findNClosestFacesLinearComplexity(contactPointOnSoftCollisionMesh, 7);
+	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 30);
 	for (auto& r : res)
 	{
-		auto pickedBoundaryFace = r;
-		btSoftBody::Face& f = m_faces[pickedBoundaryFace];
+		btSoftBody::Node& n = m_nodes[r];
 
 		bool alreadyImpulsed = false;
-		for (auto i = 0; i < m_faceRigidContacts.size(); ++i)
+		for (auto i = 0; i < m_nodeRigidContacts.size(); ++i)
 		{
 			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
 			// This prevents that.
-			if (m_faceRigidContacts[i].m_cti.m_colObj == rigidBody && m_faceRigidContacts[i].m_face == &f)
+			if (m_nodeRigidContacts[i].m_cti.m_colObj == rigidBody && m_nodeRigidContacts[i].m_node == &n)
 			{
 				alreadyImpulsed = true;
+				m_nodeRigidContacts[i].m_cti.m_normal += -contactNormalOnSoftCollisionMesh;
+				m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
+				m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
 				break;
 			}
 		}
@@ -4428,54 +4426,25 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		if (alreadyImpulsed)
 			continue;
 
-		btSoftBody::Node* n0 = f.m_n[0];
-		btSoftBody::Node* n1 = f.m_n[1];
-		btSoftBody::Node* n2 = f.m_n[2];
-
-		std::map<btScalar, btVector3> dists;
-		if (n0->m_im > 0.0)
-			dists.insert({n0->m_x.distance2(contactPointOnSoftCollisionMesh), n0->m_x});
-		if (n1->m_im > 0.0)
-			dists.insert({n1->m_x.distance2(contactPointOnSoftCollisionMesh), n1->m_x});
-		if (n2->m_im > 0.0)
-			dists.insert({n2->m_x.distance2(contactPointOnSoftCollisionMesh), n2->m_x});
-		if (dists.empty())
-			continue;
-
-		// This is also weird. It would be natural to do a closest point on tri to determine the most accurate point on the tetra face. But instead I choose the closest
-		// face vertex (so a face interior point can not be the contact point) because it seems that there is some bug in Bullet which causes some random impulse spikes
-		// whenever a face interior is used. TODO investigate those impulses spikes.
-		btVector3 contactPointOnSoftSimMesh = dists.begin()->second;
-
-		btSoftBody::DeformableFaceRigidContact c;
-		btVector3 bary;
-		getBarycentric(contactPointOnSoftSimMesh, f.m_n[0]->m_x, f.m_n[1]->m_x, f.m_n[2]->m_x, bary);
+		btSoftBody::DeformableNodeRigidContact c;
 
 		c.m_cti.m_colObj = rigidBody;
 		c.m_cti.m_normal = -contactNormalOnSoftCollisionMesh;
 		c.m_cti.m_offset = distance;
 
-		btScalar ima = n0->m_im + n1->m_im + n2->m_im;
+		btScalar ima = n.m_im;
 		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
-		// todo: collision between multibody and fixed deformable face will be missed.
+
 		const btScalar ms = ima + imb;
 		if (ms > 0)
 		{
 			btSoftBody::sCti& cti = c.m_cti;
-			c.m_contactPoint = contactPointOnSoftSimMesh;
-			c.m_bary = bary;
 
-			// todo xuchenhan@: this is assuming mass of all vertices are the same. Need to modify if mass are different for distinct vertices
-			c.m_weights = btScalar(2) / (btScalar(1) + bary.length2()) * bary;
-			c.m_face = &f;
+			c.m_node = &n;
 			// friction is handled by the nodes to prevent sticking
 			//                    const btScalar fc = 0;
 			const btScalar fc = m_cfg.kDF * rigidWrap->getCollisionObject()->getFriction();
 
-			// the effective inverse mass of the face as in https://graphics.stanford.edu/papers/cloth-sig02/cloth.pdf
-			// This is also weird. For example when all three vertices have the same mass, then this resulting ima mass is half when in the centre of the
-			// triangle and full when it is in one of the vertices. Why should it be like that?
-			ima = bary.getX() * c.m_weights.getX() * n0->m_im + bary.getY() * c.m_weights.getY() * n1->m_im + bary.getZ() * c.m_weights.getZ() * n2->m_im;
 			c.m_c2 = ima;
 			c.m_c3 = fc;
 			c.m_c4 = rigidWrap->getCollisionObject()->isStaticOrKinematicObject() ? m_cfg.kKHR : m_cfg.kCHR;
@@ -4525,7 +4494,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 					c.t2 = t2;
 				}
 			}
-			m_faceRigidContacts.push_back(c);
+			m_nodeRigidContacts.push_back(c);
 		}
 	}
 }
