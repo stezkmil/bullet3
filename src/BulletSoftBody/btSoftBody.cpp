@@ -4376,6 +4376,8 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	for (int i = 0; i < m_nodes.size(); ++i)
 	{
 		auto& n = m_nodes[i];
+		if (n.m_im <= 0.0)
+			continue;
 		btScalar distSq = (p - n.m_x).length2();
 		nodeDistances.emplace_back(i, distSq);
 	}
