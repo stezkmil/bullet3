@@ -260,17 +260,20 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	btVector3 vb = getVb();
 	btVector3 vr = vb - va;
 	btScalar dn = btDot(vr, cti.m_normal) + m_total_normal_dv.dot(cti.m_normal) * infoGlobal.m_deformable_cfm;
-	if (m_penetration > 0)
+	if (m_penetration < 0)
 	{
 		dn += m_penetration / infoGlobal.m_timeStep;
 	}
-	if (!infoGlobal.m_splitImpulse)
+	if (!infoGlobal.m_splitImpulse && m_penetration < 0)
 	{
 		dn += m_penetration * infoGlobal.m_deformable_erp / infoGlobal.m_timeStep;
 	}
 	// dn is the normal component of velocity difference. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
-	btVector3 impulse = m_contact->m_c0 * (vr + m_total_normal_dv * infoGlobal.m_deformable_cfm + ((m_penetration > 0) ? m_penetration / infoGlobal.m_timeStep * cti.m_normal : btVector3(0, 0, 0)));
-	if (!infoGlobal.m_splitImpulse)
+	btVector3 impulse = m_contact->m_c0 * (vr +
+										   m_total_normal_dv * infoGlobal.m_deformable_cfm +
+										   ((m_penetration < 0) ? m_penetration / infoGlobal.m_timeStep * cti.m_normal : btVector3(0, 0, 0)));
+
+	if (!infoGlobal.m_splitImpulse && m_penetration < 0)
 	{
 		impulse += m_contact->m_c0 * (m_penetration * infoGlobal.m_deformable_erp / infoGlobal.m_timeStep * cti.m_normal);
 	}
@@ -325,8 +328,7 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	// apply impulse to the rigid/multibodies involved and change their velocities
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
 	{
-		btRigidBody* rigidCol = 0;
-		rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
+		btRigidBody* rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
 		if (rigidCol)
 		{
 			rigidCol->applyImpulse(impulse, m_contact->m_c1);
@@ -334,8 +336,7 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	}
 	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
 	{
-		btMultiBodyLinkCollider* multibodyLinkCol = 0;
-		multibodyLinkCol = (btMultiBodyLinkCollider*)btMultiBodyLinkCollider::upcast(cti.m_colObj);
+		btMultiBodyLinkCollider* multibodyLinkCol = (btMultiBodyLinkCollider*)btMultiBodyLinkCollider::upcast(cti.m_colObj);
 		if (multibodyLinkCol)
 		{
 			const btScalar* deltaV_normal = &m_contact->jacobianData_normal.m_deltaVelocitiesUnitImpulse[0];
