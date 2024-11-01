@@ -4431,9 +4431,14 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		btSoftBody::Node* n2 = f.m_n[2];
 
 		std::map<btScalar, btVector3> dists;
-		dists.insert({n0->m_x.distance2(contactPointOnSoftCollisionMesh), n0->m_x});
-		dists.insert({n1->m_x.distance2(contactPointOnSoftCollisionMesh), n1->m_x});
-		dists.insert({n2->m_x.distance2(contactPointOnSoftCollisionMesh), n2->m_x});
+		if (n0->m_im > 0.0)
+			dists.insert({n0->m_x.distance2(contactPointOnSoftCollisionMesh), n0->m_x});
+		if (n1->m_im > 0.0)
+			dists.insert({n1->m_x.distance2(contactPointOnSoftCollisionMesh), n1->m_x});
+		if (n2->m_im > 0.0)
+			dists.insert({n2->m_x.distance2(contactPointOnSoftCollisionMesh), n2->m_x});
+		if (dists.empty())
+			continue;
 
 		// This is also weird. It would be natural to do a closest point on tri to determine the most accurate point on the tetra face. But instead I choose the closest
 		// face vertex (so a face interior point can not be the contact point) because it seems that there is some bug in Bullet which causes some random impulse spikes
