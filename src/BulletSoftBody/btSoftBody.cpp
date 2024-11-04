@@ -4339,36 +4339,6 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
-std::vector<int> btSoftBody::findNClosestFacesLinearComplexity(const btVector3& p, int N) const
-{
-	std::vector<std::tuple<int, btScalar>> faceDistances;
-
-	// Calculate centroid and distance for each face
-	for (int i = 0; i < m_faces.size(); ++i)
-	{
-		auto& f = m_faces[i];
-		btVector3 centroid = (f.m_n[0]->m_x + f.m_n[1]->m_x + f.m_n[2]->m_x) / 3.0;
-		btScalar distSq = (p - centroid).length2();
-		faceDistances.emplace_back(i, distSq);
-	}
-
-	// Sort the face distances based on the distance to point 'p'
-	std::nth_element(faceDistances.begin(), faceDistances.begin() + N, faceDistances.end(),
-					 [](const std::tuple<int, btScalar>& a, const std::tuple<int, btScalar>& b)
-					 {
-						 return std::get<1>(a) < std::get<1>(b);
-					 });
-
-	// Prepare the result vector for N closest faces
-	std::vector<int> closestFaces;
-	for (int i = 0; i < std::min(N, static_cast<int>(faceDistances.size())); ++i)
-	{
-		closestFaces.emplace_back(std::get<0>(faceDistances[i]));
-	}
-
-	return closestFaces;
-}
-
 std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& p, int N) const
 {
 	std::vector<std::tuple<int, btScalar>> nodeDistances;
@@ -4398,12 +4368,16 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	return closestNodes;
 }
 
+const btScalar influencedNodesFactor = 0.25;
+
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
+	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
-	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 30);
+	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
+	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
 	for (auto& r : res)
 	{
 		btSoftBody::Node& n = m_nodes[r];
@@ -4416,7 +4390,11 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 			if (m_nodeRigidContacts[i].m_cti.m_colObj == rigidBody && m_nodeRigidContacts[i].m_node == &n)
 			{
 				alreadyImpulsed = true;
-				m_nodeRigidContacts[i].m_cti.m_normal += -contactNormalOnSoftCollisionMesh;
+				// TODO we should not just modify normals. If dragging through a hole, then all the normals pointing to the circle center should be kept.
+				// Otherwise the cable will not stay calmly in the hole. It would be better (but it would be more expensive) to just do findNClosestNodesLinearComplexity
+				// with 1 as the N parameter and the do a 3d "blur" operation between all these nodes. Where blurring will create contacts on inbetween nodes with blurred normals.
+				// The blurring would be done using a kernel with a radius which would correspond to the original value of N being 30.
+				m_nodeRigidContacts[i].m_cti.m_normal += contactNormalOnSoftCollisionMesh;
 				m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
 				m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
 				break;
@@ -4429,7 +4407,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		btSoftBody::DeformableNodeRigidContact c;
 
 		c.m_cti.m_colObj = rigidBody;
-		c.m_cti.m_normal = -contactNormalOnSoftCollisionMesh;
+		c.m_cti.m_normal = contactNormalOnSoftCollisionMesh;
 		c.m_cti.m_offset = distance;
 
 		btScalar ima = n.m_im;
@@ -4510,21 +4488,43 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	// See similar comment in skinSoftRigidCollisionHandler
-	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 10);
-	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, 10);
+	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
+	auto otherNodeCount = std::max(static_cast<int>(otherSoft->m_nodes.size() * influencedNodesFactor), 1);
+	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
+	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, otherNodeCount);
 
-	for (auto i = 0; i < res.size() && i < resOther.size(); ++i)
+	bool iGoingAgain = false;
+	bool jGoingAgain = false;
+	for (auto i = 0, j = 0; !(iGoingAgain && jGoingAgain); ++i, ++j)
 	{
+		if (i >= res.size())
+		{
+			i = 0;
+			iGoingAgain = true;
+		}
+
+		if (j >= resOther.size())
+		{
+			j = 0;
+			jGoingAgain = true;
+		}
+
 		btSoftBody::Node& n = m_nodes[res[i]];
-		btSoftBody::Node& nOther = otherSoft->m_nodes[resOther[i]];
+		btSoftBody::Node& nOther = otherSoft->m_nodes[resOther[j]];
 
 		bool alreadyCreated = false;
-		for (auto i = 0; i < m_nodeNodeContacts.size(); ++i)
+		for (auto c = 0; c < m_nodeNodeContacts.size(); ++c)
 			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
 			// This prevents that.
-			if (m_nodeNodeContacts[i].m_colObj == otherSoft && m_nodeNodeContacts[i].m_node0 == &n && m_nodeNodeContacts[i].m_node1 == &nOther)
+			if (m_nodeNodeContacts[c].m_colObj == otherSoft && m_nodeNodeContacts[c].m_node0 == &n && m_nodeNodeContacts[c].m_node1 == &nOther)
 			{
 				alreadyCreated = true;
+				// TODO we should not just modify normals. If dragging through a hole, then all the normals pointing to the circle center should be kept.
+				// Otherwise the cable will not stay calmly in the hole. It would be better (but it would be more expensive) to just do findNClosestNodesLinearComplexity
+				// with 1 as the N parameter and the do a 3d "blur" operation between all these nodes. Where blurring will create contacts on inbetween nodes with blurred normals.
+				// The blurring would be done using a kernel with a radius which would correspond to the original value of N being 30.
+				m_nodeNodeContacts[c].m_normal += contactNormalOnSoftCollisionMesh;
+				m_nodeNodeContacts[c].m_normal = m_nodeNodeContacts[c].m_normal.normalize();
 				break;
 			}
 
