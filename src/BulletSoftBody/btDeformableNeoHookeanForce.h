@@ -226,6 +226,7 @@ public:
 				firstPiola(psb->m_tetraScratches[j], P);
 				btScalar trPTP = (P[0].length() + P[1].length() + P[2].length());
 				averagePrincipalStress += trPTP;
+#define USE_SVD 1
 #ifdef USE_SVD
 				if (max_p > 0)
 				{

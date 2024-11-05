@@ -18,6 +18,7 @@
 
 #include "btDeformableLagrangianForce.h"
 #include "LinearMath/btQuickprof.h"
+#include "LinearMath/btImplicitQRSVD.h"
 #include "btSoftBodyInternals.h"
 #define TETRA_FLAT_THRESHOLD 0.01
 class btDeformableLinearElasticityForce : public btDeformableLagrangianForce
@@ -236,6 +237,7 @@ public:
 				firstPiola(psb->m_tetraScratches[j], P);
 				btScalar trPTP = (P[0].length() + P[1].length() + P[2].length());
 				averagePrincipalStress += trPTP;
+#define USE_SVD 1
 #if USE_SVD
 				if (max_p > 0)
 				{

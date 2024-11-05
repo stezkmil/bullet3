@@ -371,6 +371,7 @@ public:
 		mutable btVector3 m_impulse;       /* Applied impulse        	    */
 		btScalar m_offset;                 /* Offset from origin	        */
 		btVector3 m_bary;                  /* Barycentric weights for faces */
+		int m_count = 0;
 		sCti() : m_impulse(0, 0, 0) {}
 	};
 
@@ -877,7 +878,6 @@ public:
 		btScalar kKHR;              // Kinetic contacts hardness [0,1]
 		btScalar kSHR;              // Soft contacts hardness [0,1]
 		btScalar kAHR;              // Anchors hardness [0,1]
-		btScalar kIMP;              // Impulse coefficient [0,+inf]
 		btScalar kSRHR_CL;          // Soft vs rigid hardness [0,1] (cluster only)
 		btScalar kSKHR_CL;          // Soft vs kinetic hardness [0,1] (cluster only)
 		btScalar kSSHR_CL;          // Soft vs soft hardness [0,1] (cluster only)

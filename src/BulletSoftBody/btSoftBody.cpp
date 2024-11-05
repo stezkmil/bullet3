@@ -4394,7 +4394,8 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 				// Otherwise the cable will not stay calmly in the hole. It would be better (but it would be more expensive) to just do findNClosestNodesLinearComplexity
 				// with 1 as the N parameter and the do a 3d "blur" operation between all these nodes. Where blurring will create contacts on inbetween nodes with blurred normals.
 				// The blurring would be done using a kernel with a radius which would correspond to the original value of N being 30.
-				m_nodeRigidContacts[i].m_cti.m_normal += contactNormalOnSoftCollisionMesh;
+				m_nodeRigidContacts[i].m_cti.m_normal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
+				++m_nodeRigidContacts[i].m_cti.m_count;
 				m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
 				m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
 				break;

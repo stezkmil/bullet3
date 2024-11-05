@@ -831,9 +831,11 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
 	manifoldResultForSkin.swapped = swapped;
 
+	//fprintf(stderr, "m_resultOut->getPersistentManifold()->getNumContacts() %d\n", m_resultOut->getPersistentManifold()->getNumContacts());
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
 	{
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
+		//fprintf(stderr, "contactPoint %d normal %f %f %f orig %f %f %f\n", i, -contactPoint.m_normalWorldOnB.x(), -contactPoint.m_normalWorldOnB.y(), -contactPoint.m_normalWorldOnB.z(), contactPoint.getPositionWorldOnB().x(), contactPoint.getPositionWorldOnB().y(), contactPoint.getPositionWorldOnB().z());
 
 		manifoldResultForSkin.contactIndex = i;
 		m_algorithmForSoftVsRigid->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
