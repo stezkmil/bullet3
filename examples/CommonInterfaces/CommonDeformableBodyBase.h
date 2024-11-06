@@ -23,12 +23,12 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 	btDeformableMousePickingForce* m_mouseForce;
 	btScalar m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, m_maxPickingForce;
 	CommonDeformableBodyBase(GUIHelperInterface* helper)
-	: CommonMultiBodyBase(helper),
-	m_pickedSoftBody(0),
-	m_mouseForce(0),
-	m_pickingForceElasticStiffness(100),
-	m_pickingForceDampingStiffness(0.0),
-	m_maxPickingForce(0.3)
+		: CommonMultiBodyBase(helper),
+		  m_pickedSoftBody(0),
+		  m_mouseForce(0),
+		  m_pickingForceElasticStiffness(100),
+		  m_pickingForceDampingStiffness(0.0),
+		  m_maxPickingForce(0.3)
 	{
 	}
 
@@ -41,20 +41,20 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 	{
 		return (btDeformableMultiBodyDynamicsWorld*)m_dynamicsWorld;
 	}
-	
+
 	struct ClosestRayResultCallbackWithInfo : public btCollisionWorld::ClosestRayResultCallback
 	{
 		ClosestRayResultCallbackWithInfo(const btVector3& rayFromWorld, const btVector3& rayToWorld)
-		: ClosestRayResultCallback(rayFromWorld, rayToWorld)
+			: ClosestRayResultCallback(rayFromWorld, rayToWorld)
 		{
 		}
 		int m_faceId;
-		
+
 		virtual btScalar addSingleResult(btCollisionWorld::LocalRayResult& rayResult, bool normalInWorldSpace)
 		{
 			//caller already does the filter on the m_closestHitFraction
 			btAssert(rayResult.m_hitFraction <= m_closestHitFraction);
-			
+
 			m_closestHitFraction = rayResult.m_hitFraction;
 			m_collisionObject = rayResult.m_collisionObject;
 			if (rayResult.m_localShapeInfo)
@@ -78,7 +78,7 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 			return rayResult.m_hitFraction;
 		}
 	};
-	
+
 	virtual bool pickBody(const btVector3& rayFromWorld, const btVector3& rayToWorld)
 	{
 		if (getDeformableDynamicsWorld() == 0)
@@ -90,9 +90,9 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 			btVector3 pickPos = rayCallback.m_hitPointWorld;
 			btRigidBody* body = (btRigidBody*)btRigidBody::upcast(rayCallback.m_collisionObject);
 			btSoftBody* psb = (btSoftBody*)btSoftBody::upcast(rayCallback.m_collisionObject);
-            m_oldPickingPos = rayToWorld;
-            m_hitPos = pickPos;
-            m_oldPickingDist = (pickPos - rayFromWorld).length();
+			m_oldPickingPos = rayToWorld;
+			m_hitPos = pickPos;
+			m_oldPickingDist = (pickPos - rayFromWorld).length();
 			if (body)
 			{
 				if (!(body->isStaticObject() || body->isKinematicObject()))
@@ -117,7 +117,7 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 					m_pickedSoftBody = psb;
 					psb->setActivationState(DISABLE_DEACTIVATION);
 					const btSoftBody::Face& f = psb->m_faces[face_id];
-					btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, &f, nullptr, m_hitPos, m_maxPickingForce);
+					btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, &f, nullptr, btVector4(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0), m_hitPos, m_maxPickingForce);
 					m_mouseForce = mouse_force;
 					getDeformableDynamicsWorld()->addForce(psb, mouse_force);
 				}

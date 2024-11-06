@@ -1183,6 +1183,17 @@ static inline T BaryEval(const T& a,
 {
 	return (a * coord.x() + b * coord.y() + c * coord.z());
 }
+
+template <typename T>
+static inline T BaryEval(const T& a,
+						 const T& b,
+						 const T& c,
+						 const T& d,
+						 const btVector4& coord)
+{
+	return (a * coord.x() + b * coord.y() + c * coord.z() + d * coord.w());
+}
+
 //
 static inline btVector3 BaryCoord(const btVector3& a,
 								  const btVector3& b,
