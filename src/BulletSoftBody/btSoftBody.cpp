@@ -4368,13 +4368,19 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	return closestNodes;
 }
 
-const btScalar influencedNodesFactor = 0.25;
+const btScalar influencedNodesFactor = 0.05;
 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
+
+	fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
+	auto lineStart = contactPointOnSoftCollisionMesh;
+	auto lineEnd = contactPointOnSoftCollisionMesh + contactNormalOnSoftCollisionMesh * 10.0;
+	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", lineStart.x(), lineStart.y(), lineStart.z(),
+			lineEnd.x(), lineEnd.y(), lineEnd.z());
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
@@ -4394,7 +4400,10 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 				// Otherwise the cable will not stay calmly in the hole. It would be better (but it would be more expensive) to just do findNClosestNodesLinearComplexity
 				// with 1 as the N parameter and the do a 3d "blur" operation between all these nodes. Where blurring will create contacts on inbetween nodes with blurred normals.
 				// The blurring would be done using a kernel with a radius which would correspond to the original value of N being 30.
-				m_nodeRigidContacts[i].m_cti.m_normal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
+				auto newNormal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
+				if (newNormal.fuzzyZero())
+					break;
+				m_nodeRigidContacts[i].m_cti.m_normal = newNormal;
 				++m_nodeRigidContacts[i].m_cti.m_count;
 				m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
 				m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
@@ -4478,7 +4487,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	}
 }
 
-//SimpleOBJDrawer btSoftBody::drawer;
 //int cnt = 0;
 //int origsDrawn = false;
 
