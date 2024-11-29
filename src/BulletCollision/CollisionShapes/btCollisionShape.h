@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_COLLISION_SHAPE_H
 #define BT_COLLISION_SHAPE_H
 

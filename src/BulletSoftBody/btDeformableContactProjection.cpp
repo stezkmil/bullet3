@@ -144,8 +144,8 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 
 			auto lineStart = contact.m_node->m_x;
 			auto lineEnd = contact.m_node->m_x + contact.m_cti.m_normal * 100.0;
-			fprintf(stderr, "drawline \"line%d\" [%f,%f,%f][%f,%f,%f] \n", contact.m_cti.m_count, lineStart.x(), lineStart.y(), lineStart.z(),
-					lineEnd.x(), lineEnd.y(), lineEnd.z());
+			//fprintf(stderr, "drawline \"line%d\" [%f,%f,%f][%f,%f,%f] \n", contact.m_cti.m_count, lineStart.x(), lineStart.y(), lineStart.z(),
+			//		lineEnd.x(), lineEnd.y(), lineEnd.z());
 			//fprintf(stderr, "normal %d %f %f %f\n", j, contact.m_cti.m_normal.x(), contact.m_cti.m_normal.y(), contact.m_cti.m_normal.z());
 			btDeformableNodeRigidContactConstraint constraint(contact, infoGlobal);
 			m_nodeRigidConstraints[i].push_back(constraint);
@@ -164,7 +164,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			m_faceRigidConstraints[i].push_back(constraint);
 		}
 	}
-	fprintf(stderr, "frameend()\n");
+	//fprintf(stderr, "frameend()\n");
 }
 
 void btDeformableContactProjection::project(TVStack& x)

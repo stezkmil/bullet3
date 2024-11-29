@@ -1322,7 +1322,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		int numContacts = contactManifold->getNumContacts();
 		for (int j = 0; j < numContacts; ++j)
 		{
-			auto cp = contactManifold->getContactPoint(j);
+			const auto& cp = contactManifold->getContactPoint(j);
 			bool penetration = cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING;
 			bool phaseThrough = (contactManifold->getBody0()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
 								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE);
@@ -1355,10 +1355,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		if (penColIter != penetratingColliders.end() && (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK))
 		{
 			// We got into the penetration which I consider to be an invalid state. In this case, top priority for me is unstuck.
-			// For now I zero the velocities which seems to work fine for meshes of normal size. For smaller
-			// meshes, there seems to be some momentum accumulation somewhere because it takes a while
-			// before they start rotating in opposite direction. Will look into that later. Probably has something to do
-			// with the hand constraint being weaker on small meshes.
 			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
 			bodyStack.push({body, penColIter->second, true});
 			nothingStuck = false;

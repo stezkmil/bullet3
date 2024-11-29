@@ -20,6 +20,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 	if (!grpParams.shape1->getPrimitiveTriangleSafe(pair.m_index2, ptri1Backup))
 		ptri1Backup = ptri1;
 
+	// Not sure whether softs (hasSafeX == true) should be subjected to this applyTransform. TODO verify.
 	ptri0.applyTransform(grpParams.orgtrans0);
 	ptri1.applyTransform(grpParams.orgtrans1);
 

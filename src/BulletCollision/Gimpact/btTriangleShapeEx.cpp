@@ -854,12 +854,12 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	dist = sqrtf(dist_sq_out);
 	if (ret && dist_sq_out != 0.0 && dist < margin)
 	{
-		fprintf(stderr, "drawtriangle \"col tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+		/*fprintf(stderr, "drawtriangle \"col tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
 				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
 				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
 		fprintf(stderr, "drawtriangle \"col tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
 				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
-				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());*/
 		// In the margin zone. No actual penetration yet. Calculating m_separating_normal is very easy thanks to this.
 		create_contact();
 		return true;
@@ -868,12 +868,12 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	{
 		// Triangle penetration. Use the last safe transforms.
 
-		fprintf(stderr, "drawtriangle \"col tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+		/*fprintf(stderr, "drawtriangle \"col tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
 				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
 				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
 		fprintf(stderr, "drawtriangle \"col tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
 				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
-				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());*/
 
 		if (doUnstuck)
 		{
@@ -887,9 +887,6 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 
 			auto a_closest_out_pen = a_closest_out;
 
-			// TODO This is now completely wrong for softs. The soft never saves the safe transform. Safe transforms have to be done per triangle for softs.
-			// Have to develop a system for storing safe traingle positions for soft collision meshes.
-			// The m_xs positions might be completely useless fro that matter. Verify.
 			ret = thisLastSafe.triangle_triangle_distance(otherLastSafe, dist_sq_out, a_closest_out, b_closest_out);
 			// Since we use the safe positions, nothing should be penetrating. This assert is very useful for testing if some change in code
 			// didn't mess things up, but in a more complex scenario where there is another movable which places itself into the first's safe zone,
@@ -898,16 +895,22 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 
 			dist = sqrtf(dist_sq_out);
 			create_contact();
-			// Mark it as penetration by making it negative. At least MaxDepth (beacuse that is the max pushback when in the margin zone with 0 dist) and then subract
-			// the result depth from triangle_triangle_distance, so that the contact can be sorted in btPersistentManifold::sortCachedPoints
-			contacts.m_penetration_depth = -maxDepth - (contacts.m_penetration_depth / 100.0f);
-			//contacts.m_penetration_depth = -(contacts.m_penetration_depth / 100.0f);
+
 			// Take the collision point from the original penetrating position because we really care only about the normal direction from the safe triangle_triangle_distance
 			contacts.m_points[0] = a_closest_out_pen;
-			//auto deleteme = btVector3(0, -1, 1);
-			//deleteme = deleteme.normalize();
-			//btVector4 deleteme = btVector4(-m_plane.x(), -m_plane.y(), -m_plane.z(), 0);
-			//contacts.m_separating_normal = btVector4(deleteme.x(), deleteme.y(), deleteme.z(), 0);
+
+			auto thisCentroid = (m_vertices[0] + m_vertices[1] + m_vertices[2]) / 3.0;
+			auto thisSafeCentroid = (thisLastSafe.m_vertices[0] + thisLastSafe.m_vertices[1] + thisLastSafe.m_vertices[2]) / 3.0;
+			auto thisCentroidDistToSafe = (thisCentroid - thisSafeCentroid).length();
+
+			auto otherCentroid = (other.m_vertices[0] + other.m_vertices[1] + other.m_vertices[2]) / 3.0;
+			auto otherSafeCentroid = (otherLastSafe.m_vertices[0] + otherLastSafe.m_vertices[1] + otherLastSafe.m_vertices[2]) / 3.0;
+			auto otherCentroidDistToSafe = (otherCentroid - otherSafeCentroid).length();
+
+			auto centroidDistSum = thisCentroidDistToSafe + otherCentroidDistToSafe;
+			// Mark it as penetration by making it negative. At least MaxDepth (beacuse that is the max pushback when in the margin zone with 0 dist).
+			// Distance to the safe triangle serves as an estimate of penetration depth.
+			contacts.m_penetration_depth = -std::max(centroidDistSum, maxDepth);
 		}
 		else
 		{

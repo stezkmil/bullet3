@@ -4376,11 +4376,11 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
-	fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
+	/*fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 	auto lineStart = contactPointOnSoftCollisionMesh;
 	auto lineEnd = contactPointOnSoftCollisionMesh + contactNormalOnSoftCollisionMesh * 10.0;
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", lineStart.x(), lineStart.y(), lineStart.z(),
-			lineEnd.x(), lineEnd.y(), lineEnd.z());
+			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);

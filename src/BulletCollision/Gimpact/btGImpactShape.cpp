@@ -22,7 +22,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btGImpactShape.h"
 #include "btGImpactMassUtil.h"
 
@@ -58,7 +57,7 @@ btGImpactMeshShapePart::~btGImpactMeshShapePart()
 {
 	if (m_primitive_manager)
 		delete m_primitive_manager;
-	// moved from .h to .cpp because of conditional compilation
+		// moved from .h to .cpp because of conditional compilation
 #if BT_THREADSAFE
 	m_primitive_manager.unlock();
 #endif
