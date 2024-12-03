@@ -82,6 +82,8 @@ struct btSoftBodyWorldInfo
 ///There is two-way interaction between btSoftBody and btRigidBody/btCollisionObject.
 class btSoftBody : public btCollisionObject
 {
+	static constexpr btScalar influencedNodesFactor = 0.0;  // At least 0.05 for neohookean
+
 public:
 	btAlignedObjectArray<const class btCollisionObject*> m_collisionDisabledObjects;
 

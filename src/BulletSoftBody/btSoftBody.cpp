@@ -4368,8 +4368,6 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	return closestNodes;
 }
 
-const btScalar influencedNodesFactor = 0.05;
-
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
