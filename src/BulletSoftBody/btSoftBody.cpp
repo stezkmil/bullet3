@@ -4371,6 +4371,7 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
+	distance *= 0.1;  // TODO improve this somehow
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
@@ -4491,6 +4492,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											  btScalar distance, const bool penetrating)
 {
+	//distance *= 0.1;
 	//fprintf(stderr, "pen %d\n", (int)penetrating);
 
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;

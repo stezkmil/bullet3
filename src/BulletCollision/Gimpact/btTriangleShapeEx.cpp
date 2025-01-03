@@ -817,7 +817,7 @@ bool btPrimitiveTriangle::find_triangle_collision_clip_method(btPrimitiveTriangl
 
 bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTriangle& other, GIM_TRIANGLE_CONTACT& contacts, btScalar marginZoneRecoveryStrengthFactor,
 																   const btTransform& thisTransformLastSafe, const btTransform& otherTransformLastSafe,
-																   const btPrimitiveTriangle& thisBackup, const btPrimitiveTriangle& otherBackup, bool doUnstuck, bool depthModified)
+																   const btPrimitiveTriangle& thisBackup, const btPrimitiveTriangle& otherBackup, bool doUnstuck, /*TODO remove*/ bool depthModified)
 {
 	btScalar margin = m_margin + other.m_margin;
 	btScalar marginEpsilon = margin / 40.0;
@@ -827,6 +827,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	btVector3 a_closest_out, b_closest_out;
 	bool ret = false;
 	const btScalar maxDepth = margin * marginZoneRecoveryStrengthFactor;
+	const btScalar maxDepthPenetration = 5.0;
 
 	auto create_contact = [&]()
 	{
@@ -837,7 +838,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		contacts.m_point_count = 1;
 		contacts.m_points[0] = a_closest_out;
 		contacts.m_separating_normal = btVector4(dir.x(), dir.y(), dir.z(), 1.0);
-		if (fabs(margin) < SIMD_EPSILON || !depthModified)
+		if (fabs(margin) < SIMD_EPSILON /*|| !depthModified*/)
 			contacts.m_penetration_depth = dist;
 		else
 		{
@@ -908,9 +909,11 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			auto otherCentroidDistToSafe = (otherCentroid - otherSafeCentroid).length();
 
 			auto centroidDistSum = thisCentroidDistToSafe + otherCentroidDistToSafe;
+			centroidDistSum = std::min(centroidDistSum, maxDepthPenetration);
+			centroidDistSum = std::max(centroidDistSum, maxDepth);
 			// Mark it as penetration by making it negative. At least MaxDepth (beacuse that is the max pushback when in the margin zone with 0 dist).
 			// Distance to the safe triangle serves as an estimate of penetration depth.
-			contacts.m_penetration_depth = -std::max(centroidDistSum, maxDepth);
+			contacts.m_penetration_depth = -centroidDistSum;
 		}
 		else
 		{
