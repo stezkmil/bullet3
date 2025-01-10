@@ -1392,6 +1392,7 @@ public:
 	}
 
 	virtual void updateLastSafeWorldTransform();
+	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply);
 };
 
 #endif  //_BT_SOFT_BODY_H

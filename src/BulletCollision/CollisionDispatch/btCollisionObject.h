@@ -530,6 +530,19 @@ public:
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
+	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply)
+	{
+		btTransform dst = getLastSafeWorldTransform();
+		btTransform src = getWorldTransform();
+		// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
+		// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
+		constexpr btScalar speedOfConvergenceToSafe = 0.1;
+		btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), speedOfConvergenceToSafe);
+		btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), speedOfConvergenceToSafe);
+		btTransform interp(interpRot, interpOrigin);
+		setWorldTransform(interp);
+	}
+
 	void setWorldTransform(const btTransform& worldTrans)
 	{
 		m_updateRevision++;

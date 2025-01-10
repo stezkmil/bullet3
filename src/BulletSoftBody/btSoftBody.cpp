@@ -5248,3 +5248,20 @@ void btSoftBody::updateLastSafeWorldTransform()
 	for (auto i = 0; i < m_nodes.size(); ++i)
 		m_nodes[i].m_xs = m_nodes[i].m_x;
 }
+
+void btSoftBody::applyLastSafeWorldTransform(const std::set<int>* partialApply)
+{
+	if (partialApply)
+	{
+		for (auto tetra : *partialApply)
+		{
+			for (auto i = 0; i < 4; ++i)
+				m_tetras[tetra].m_n[i]->m_x = m_tetras[tetra].m_n[i]->m_xs;
+		}
+	}
+	else
+	{
+		for (auto i = 0; i < m_nodes.size(); ++i)
+			m_nodes[i].m_x = m_nodes[i].m_xs;
+	}
+}

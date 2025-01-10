@@ -24,6 +24,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "LinearMath/btVector3.h"
 #include "LinearMath/btMatrix3x3.h"
 #include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"  //for the shape types
+
+#include <utility>
+
 class btSerializer;
 
 ///The btCollisionShape class provides an interface for collision shapes that can be shared among btCollisionObjects.
@@ -121,6 +124,11 @@ public:
 	}
 	virtual void setMargin(btScalar margin) = 0;
 	virtual btScalar getMargin() const = 0;
+
+	virtual int getMapping(const std::pair<int, int>& partAndIndex) const
+	{
+		return 0;
+	}
 
 	///optional user data pointer
 	void setUserPointer(void* userPtr)

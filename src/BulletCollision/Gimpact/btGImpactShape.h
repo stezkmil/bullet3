@@ -1164,6 +1164,8 @@ public:
 
 	virtual void rayTest(const btVector3& rayFrom, const btVector3& rayTo, btCollisionWorld::RayResultCallback& resultCallback) const;
 
+	virtual int getMapping(const std::pair<int, int>& partAndIndex) const;
+
 	//! Function for retrieve triangles.
 	/*!
 	It gives the triangles in local space

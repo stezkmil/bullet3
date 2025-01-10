@@ -1314,7 +1314,13 @@ public:
 void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies)
 {
 	int numManifolds = getDispatcher()->getNumManifolds();
-	std::map<const btCollisionObject*, const btCollisionObject*> penetratingColliders;
+	struct MappedType
+	{
+		btCollisionObject* mappedCollisionObject;
+		// This is used for softs. For softs we can be more efficient and unstuck only the tetra nodes which are really stuck and leave the remaining nodes as they were.
+		std::set<int> partialUnstuckIndex;
+	};
+	std::map<btCollisionObject*, MappedType> penetratingColliders;
 	for (int i = 0; i < numManifolds; i++)
 	{
 		btPersistentManifold* contactManifold = getDispatcher()->getManifoldByIndexInternal(i);
@@ -1328,22 +1334,53 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE);
 			if (penetration && !phaseThrough)
 			{
-				penetratingColliders.insert({contactManifold->getBody0(), contactManifold->getBody1()});
-				penetratingColliders.insert({contactManifold->getBody1(), contactManifold->getBody0()});
+				fprintf(stderr, "id0 %d id1 %d userind0 %d userind1 %d cp.m_partId0 %d cp.m_index0 %d cp.m_partId1 %d cp.m_index1 %d\n", contactManifold->getBody0()->getUserIndex(), contactManifold->getBody1()->getUserIndex(), contactManifold->getBody0()->getUserIndex2(), contactManifold->getBody1()->getUserIndex2(), cp.m_partId0, cp.m_index0, cp.m_partId1, cp.m_index1);
+				{
+					bool body0IsSoft = contactManifold->getBody0()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+					auto body0Iter = penetratingColliders.find(const_cast<btCollisionObject*>(contactManifold->getBody0()));
+					if (body0Iter == penetratingColliders.end())
+					{
+						std::set<int> partialUnstuckIndex;
+						if (body0IsSoft)
+							partialUnstuckIndex.insert(contactManifold->getBody0()->getCollisionShape()->getMapping({cp.m_partId0, cp.m_index0}));
+						MappedType val{
+							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody1()),
+							.partialUnstuckIndex = partialUnstuckIndex};
+						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody0()), val});
+					}
+					else if (body0IsSoft)
+						body0Iter->second.partialUnstuckIndex.insert(contactManifold->getBody0()->getCollisionShape()->getMapping({cp.m_partId0, cp.m_index0}));
+				}
+
+				{
+					bool body1IsSoft = contactManifold->getBody1()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+					auto body1Iter = penetratingColliders.find(const_cast<btCollisionObject*>(contactManifold->getBody1()));
+					if (body1Iter == penetratingColliders.end())
+					{
+						std::set<int> partialUnstuckIndex;
+						if (body1IsSoft)
+							partialUnstuckIndex.insert(contactManifold->getBody1()->getCollisionShape()->getMapping({cp.m_partId1, cp.m_index1}));
+						MappedType val{
+							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody0()),
+							.partialUnstuckIndex = partialUnstuckIndex};
+						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody1()), val});
+					}
+					else if (body1IsSoft)
+						body1Iter->second.partialUnstuckIndex.insert(contactManifold->getBody1()->getCollisionShape()->getMapping({cp.m_partId1, cp.m_index1}));
+				}
 			}
 		}
 	}
 
-	std::vector<bool> bodyAlreadyUnstuck(numBodies, false);
-
-	struct StackElem
+	struct VectorElem
 	{
 		btCollisionObject* body;
 		const btCollisionObject* opposingBody;
-		bool original;
+		bool isSoft;
+		std::set<int> partialUnstuckIndex;
 	};
 
-	std::stack<StackElem> bodyStack;
+	std::vector<VectorElem> unstuckVector;
 	bool nothingStuck = true;
 
 	for (int i = 0; i < numBodies; i++)
@@ -1352,14 +1389,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		if (body->isStaticObject())
 			continue;
 		auto penColIter = penetratingColliders.find(body);
-		if (penColIter != penetratingColliders.end() && (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK))
-		{
-			// We got into the penetration which I consider to be an invalid state. In this case, top priority for me is unstuck.
-			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
-			bodyStack.push({body, penColIter->second, true});
-			nothingStuck = false;
-		}
-		else
+		if (!penetratingColliders.contains(body))
 		{
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
 			auto stuckTestCounter = body->getUserIndex2();
@@ -1375,11 +1405,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		if (body->isStaticObject())
 			continue;
 		auto penColIter = penetratingColliders.find(body);
-		if (penColIter != penetratingColliders.end() && (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK))
-		{
-			nothingStuck = false;
-		}
-		else
+		if (!penetratingColliders.contains(body))
 		{
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
 			auto stuckTestCounter = body->getUserIndex2();
@@ -1390,62 +1416,51 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		}
 	}
 
-	while (!bodyStack.empty())
+	for (auto penColIter = penetratingColliders.begin(); penColIter != penetratingColliders.end(); ++penColIter)
 	{
-		auto elem = bodyStack.top();
-		auto body = elem.body;
-		auto opposingBody = elem.opposingBody;
-		bool original = elem.original;
-		bodyStack.pop();
+		auto* body = penColIter->first;
+		if (body->isStaticObject())
+			continue;
 		if (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK)
 		{
-			for (int i = 0; i < numBodies; i++)
-			{
-				auto* surroundingBody = bodies[i];
-				if (surroundingBody->isStaticObject() || surroundingBody->getLastSafeWorldTransform() == btTransform::getIdentity() ||
-					bodyAlreadyUnstuck[i])
-					continue;
-				btAABB bodyAabb, surroundingBodyAabb;
-				body->getCollisionShape()->getAabb(body->getWorldTransform(), bodyAabb.m_min, bodyAabb.m_max);
-				surroundingBody->getCollisionShape()->getAabb(surroundingBody->getWorldTransform(), surroundingBodyAabb.m_min, surroundingBodyAabb.m_max);
-				// This is a rough culling of bodies affected by the body from the stack being stuck
-				if (!bodyAabb.has_collision(surroundingBodyAabb))
-					continue;
-				// Experimental disable of the velocity resets. Was causing bad stoppages in traditional dynamics scenes (bowling etc.)
-				//btVector3 zeroVec(0.0, 0.0, 0.0);
-				//surroundingBody->setLinearVelocity(zeroVec);
-				//surroundingBody->setAngularVelocity(zeroVec);
-				btTransform dst = surroundingBody->getLastSafeWorldTransform();
-				btTransform src = surroundingBody->getWorldTransform();
-				// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
-				// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
-				constexpr btScalar speedOfConvergenceToSafe = 0.1;
-				btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), speedOfConvergenceToSafe);
-				btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), speedOfConvergenceToSafe);
-				btTransform interp(interpRot, interpOrigin);
-				surroundingBody->setWorldTransform(interp);
-				if (!m_forceUpdateAllAabbs)
-					updateSingleAabb(surroundingBody);
-				bodyAlreadyUnstuck[i] = true;
+			// We got into the penetration which I consider to be an invalid state. In this case, top priority for me is unstuck.
+			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
+			unstuckVector.push_back({body, penColIter->second.mappedCollisionObject, body->getInternalType() == btCollisionObject::CO_SOFT_BODY,
+									 penColIter->second.partialUnstuckIndex});
+			nothingStuck = false;
+		}
+	}
 
-				if (original && body == surroundingBody && opposingBody && body->getUserIndex2() > 0)
-				{
-					// Body is having difficulties staying unstuck with that opposing body, tolerate the opposing body otherwise some severe slowdowns could be
-					// experienced - these are a TODO too, they should not cause such gradual performance deterioration.
-					surroundingBody->setUserIndex2(0);
-					surroundingBody->setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL, opposingBody);
-					// This is needed because of the order of calls in internalSingleStepSimulation. The cd does is not called to fill InitialCollisionParticipant between this call to processLastSafeTransforms and the m_internalTickCallback
-					getDispatcher()->addInitialCollisionParticipant({body, opposingBody});
-				}
-				// If a stuck situation happens, we play it safe and propagate the unstucking even based on rough aabb tests. Let's see if it is
-				// acceptable for our use case
-				bodyStack.push({surroundingBody, nullptr, false});
+	for (const auto& unstuckVectorElem : unstuckVector)
+	{
+		auto body = unstuckVectorElem.body;
+		auto opposingBody = unstuckVectorElem.opposingBody;
+		auto isSoft = unstuckVectorElem.isSoft;
+
+		if (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK)
+		{
+			if (!isSoft && body->getLastSafeWorldTransform() == btTransform::getIdentity())
+				continue;
+
+			body->applyLastSafeWorldTransform(&unstuckVectorElem.partialUnstuckIndex);
+			if (!m_forceUpdateAllAabbs)
+				updateSingleAabb(body);
+
+			if (body->getUserIndex2() > 0)
+			{
+				// Body is having difficulties staying unstuck with that opposing body, tolerate the opposing body otherwise some severe slowdowns could be
+				// experienced - these are a TODO too, they should not cause such gradual performance deterioration.
+				body->setUserIndex2(0);
+				body->setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL, opposingBody);
+				// This is needed because of the order of calls in internalSingleStepSimulation. The cd does is not called to fill InitialCollisionParticipant between this call to processLastSafeTransforms and the m_internalTickCallback
+				getDispatcher()->addInitialCollisionParticipant({body, opposingBody});
 			}
 		}
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_IS_PENETRATING);
 	}
 
-	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state
+	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state.
+	// TODO some "clusterisation" could be done so that each "cluster" of close bodies has its own nothingStuck. Clusters would be based on AABB collisions of all bodies.
 	if (nothingStuck)
 	{
 		for (int i = 0; i < numBodies; i++)
