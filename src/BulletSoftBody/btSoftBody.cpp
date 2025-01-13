@@ -4371,7 +4371,8 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
-	distance *= 0.1;  // TODO improve this somehow
+	constexpr btScalar offsetMagnitudeFactor = 0.5;  // TODO obviously it would be best if such an ad hoc magical value was not needed
+	distance *= offsetMagnitudeFactor;
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
@@ -4383,7 +4384,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
-	for (auto& r : res)
+	for (const auto& r : res)
 	{
 		btSoftBody::Node& n = m_nodes[r];
 
@@ -4489,12 +4490,8 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
-void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-											  btScalar distance, const bool penetrating)
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh)
 {
-	//distance *= 0.1;
-	//fprintf(stderr, "pen %d\n", (int)penetrating);
-
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	// See similar comment in skinSoftRigidCollisionHandler
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
@@ -5246,22 +5243,100 @@ bool btSoftBody::wantsSleeping()
 void btSoftBody::updateLastSafeWorldTransform()
 {
 	for (auto i = 0; i < m_nodes.size(); ++i)
-		m_nodes[i].m_xs = m_nodes[i].m_x;
+	{
+		m_nodes[i].m_safe.m_x = m_nodes[i].m_x;
+		m_nodes[i].m_safe.m_q = m_nodes[i].m_q;
+		m_nodes[i].m_safe.m_v = m_nodes[i].m_v;
+		m_nodes[i].m_safe.m_vn = m_nodes[i].m_vn;
+		m_nodes[i].m_safe.m_f = m_nodes[i].m_f;
+		m_nodes[i].m_safe.m_n = m_nodes[i].m_n;
+		m_nodes[i].m_safe.m_im = m_nodes[i].m_im;
+		m_nodes[i].m_safe.m_area = m_nodes[i].m_area;
+		m_nodes[i].m_safe.m_splitv = m_nodes[i].m_splitv;
+		m_nodes[i].m_safe.m_effectiveMass = m_nodes[i].m_effectiveMass;
+		m_nodes[i].m_safe.m_effectiveMass_inv = m_nodes[i].m_effectiveMass_inv;
+	}
 }
 
-void btSoftBody::applyLastSafeWorldTransform(const std::set<int>* partialApply)
+void btSoftBody::applyLastSafeWorldTransform(const std::set<int>* partialApply, btScalar fraction)
 {
 	if (partialApply)
 	{
 		for (auto tetra : *partialApply)
 		{
 			for (auto i = 0; i < 4; ++i)
-				m_tetras[tetra].m_n[i]->m_x = m_tetras[tetra].m_n[i]->m_xs;
+			{
+				auto node = m_tetras[tetra].m_n[i];
+				/*node->m_x = node->m_x.lerp(node->m_safe.m_x, speedOfConvergenceToSafe);
+				node->m_q = node->m_q.lerp(node->m_safe.m_q, speedOfConvergenceToSafe);
+				node->m_v = node->m_v.lerp(node->m_safe.m_v, speedOfConvergenceToSafe);
+				node->m_vn = node->m_vn.lerp(node->m_safe.m_vn, speedOfConvergenceToSafe);
+				node->m_f = node->m_f.lerp(node->m_safe.m_f, speedOfConvergenceToSafe);
+				node->m_n = node->m_n.lerp(node->m_safe.m_n, speedOfConvergenceToSafe);*/
+
+				//m_nodes[i].m_im = m_nodes[i].m_im.lerp(m_nodes[i].m_ims, speedOfConvergenceToSafe);
+
+				//m_nodes[i].m_x = m_nodes[i].m_xs;
+				//m_nodes[i].m_q = m_nodes[i].m_qs;
+				//m_nodes[i].m_v = m_nodes[i].m_vs;
+				//m_nodes[i].m_vn = m_nodes[i].m_vns;
+				//m_nodes[i].m_f = m_nodes[i].m_fs;
+				//m_nodes[i].m_n = m_nodes[i].m_ns;
+				//m_nodes[i].m_im = m_nodes[i].m_ims;
+				//m_nodes[i].m_area = m_nodes[i].m_areas;
+				//m_nodes[i].m_splitv = m_nodes[i].m_splitvs;
+				//m_nodes[i].m_effectiveMass = m_nodes[i].m_effectiveMasss;
+				//m_nodes[i].m_effectiveMass_inv = m_nodes[i].m_effectiveMass_invs;
+
+				//m_tetras[tetra].m_n[i]->m_q = m_tetras[tetra].m_n[i]->m_x;
+				//m_tetras[tetra].m_n[i]->m_v.setZero();
+				//m_tetras[tetra].m_n[i]->m_vn.setZero();
+				//m_tetras[tetra].m_n[i]->m_f.setZero();
+				//m_tetras[tetra].m_n[i]->m_splitv.setZero();
+
+				/*node->m_x = node->m_x.lerp(node->m_safe.m_x, speedOfConvergenceToSafe);
+				node->m_q = node->m_q.lerp(node->m_safe.m_q, speedOfConvergenceToSafe);
+				node->m_v = node->m_v.lerp(node->m_safe.m_v, speedOfConvergenceToSafe);
+				node->m_vn = node->m_vn.lerp(node->m_safe.m_vn, speedOfConvergenceToSafe);
+				node->m_f = node->m_f.lerp(node->m_safe.m_f, speedOfConvergenceToSafe);
+				node->m_n = node->m_n.lerp(node->m_safe.m_n, speedOfConvergenceToSafe);
+				node->m_splitv = node->m_splitv.lerp(node->m_safe.m_splitv, speedOfConvergenceToSafe);
+				node->m_im = node->m_safe.m_im;
+				node->m_area = node->m_safe.m_area;
+				node->m_effectiveMass = node->m_safe.m_effectiveMass;
+				node->m_effectiveMass_inv = node->m_safe.m_effectiveMass_inv;*/
+			}
 		}
 	}
 	else
 	{
-		for (auto i = 0; i < m_nodes.size(); ++i)
+		btAssert(false);
+		/*for (auto i = 0; i < m_nodes.size(); ++i)
+		{
 			m_nodes[i].m_x = m_nodes[i].m_xs;
+			m_nodes[i].m_q = m_nodes[i].m_xs;
+			m_nodes[i].m_v.setZero();
+			m_nodes[i].m_vn.setZero();
+			m_nodes[i].m_f.setZero();
+			m_nodes[i].m_splitv.setZero();
+		}*/
 	}
+
+	for (auto i = 0; i < m_nodes.size(); ++i)
+	{
+		m_nodes[i].m_x = m_nodes[i].m_x.lerp(m_nodes[i].m_safe.m_x, fraction);
+		m_nodes[i].m_q = m_nodes[i].m_q.lerp(m_nodes[i].m_safe.m_q, fraction);
+		m_nodes[i].m_v = m_nodes[i].m_v.lerp(m_nodes[i].m_safe.m_v, fraction);
+		m_nodes[i].m_vn = m_nodes[i].m_vn.lerp(m_nodes[i].m_safe.m_vn, fraction);
+		m_nodes[i].m_f = m_nodes[i].m_f.lerp(m_nodes[i].m_safe.m_f, fraction);
+		m_nodes[i].m_n = m_nodes[i].m_n.lerp(m_nodes[i].m_safe.m_n, fraction);
+		m_nodes[i].m_splitv = m_nodes[i].m_splitv.lerp(m_nodes[i].m_safe.m_splitv, fraction);
+		m_nodes[i].m_im = m_nodes[i].m_safe.m_im;
+		m_nodes[i].m_area = m_nodes[i].m_safe.m_area;
+
+		m_nodes[i].m_effectiveMass = m_nodes[i].m_safe.m_effectiveMass;
+		m_nodes[i].m_effectiveMass_inv = m_nodes[i].m_safe.m_effectiveMass_inv;
+	}
+	if (fraction < 1.0)
+		++m_lastSafeApplyCounter;
 }

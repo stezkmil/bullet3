@@ -82,7 +82,7 @@ struct btSoftBodyWorldInfo
 ///There is two-way interaction between btSoftBody and btRigidBody/btCollisionObject.
 class btSoftBody : public btCollisionObject
 {
-	static constexpr btScalar influencedNodesFactor = 0.0;  // At least 0.05 for neohookean
+	static constexpr btScalar influencedNodesFactor = 0.0;  // At least 0.05 for neohookean. It seems that linear elasticity is ok with just one node being inluenced.
 
 public:
 	btAlignedObjectArray<const class btCollisionObject*> m_collisionDisabledObjects;
@@ -278,11 +278,26 @@ public:
 		btVector3 m_uv1;
 		btVector3 m_normal;
 	};
+
+	struct NodeSafe
+	{
+		btVector3 m_x;                    // Safe position when there was no penetration. Used in TrimeshDeformedPrimitiveManager.
+		btVector3 m_q;                    // Previous step position/Test position
+		btVector3 m_v;                    // Velocity
+		btVector3 m_vn;                   // Previous step velocity
+		btVector3 m_f;                    // Force accumulator
+		btVector3 m_n;                    // Normal
+		btScalar m_im;                    // 1/mass
+		btScalar m_area;                  // Area
+		btVector3 m_splitv;               // velocity associated with split impulse
+		btMatrix3x3 m_effectiveMass;      // effective mass in contact
+		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
+	};
+
 	struct Node : Feature
 	{
 		btVector3 m_x;       // Position
 		btVector3 m_q;       // Previous step position/Test position
-		btVector3 m_xs;      // Safe position when there was no penetration. Used in TrimeshDeformedPrimitiveManager.
 		btVector3 m_v;       // Velocity
 		btVector3 m_vn;      // Previous step velocity
 		btVector3 m_f;       // Force accumulator
@@ -296,6 +311,7 @@ public:
 		btVector3 m_splitv;               // velocity associated with split impulse
 		btMatrix3x3 m_effectiveMass;      // effective mass in contact
 		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
+		NodeSafe m_safe;
 	};
 	/* Link			*/
 	ATTRIBUTE_ALIGNED16(struct)
@@ -1138,7 +1154,7 @@ public:
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
-	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
+	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
@@ -1392,7 +1408,7 @@ public:
 	}
 
 	virtual void updateLastSafeWorldTransform();
-	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply);
+	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply, btScalar fraction);
 };
 
 #endif  //_BT_SOFT_BODY_H

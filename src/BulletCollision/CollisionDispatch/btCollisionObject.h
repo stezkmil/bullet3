@@ -58,6 +58,7 @@ btCollisionObject
 protected:
 	btTransform m_worldTransform;
 	btTransform m_lastSafeWorldTransform;
+	int m_lastSafeApplyCounter;
 
 	///m_interpolationWorldTransform is used for CCD and interpolation
 	///it can be either previous or future (predicted) transform
@@ -530,17 +531,27 @@ public:
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply)
+	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply, btScalar fraction)
 	{
 		btTransform dst = getLastSafeWorldTransform();
 		btTransform src = getWorldTransform();
-		// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
-		// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
-		constexpr btScalar speedOfConvergenceToSafe = 0.1;
-		btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), speedOfConvergenceToSafe);
-		btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), speedOfConvergenceToSafe);
+
+		btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), fraction);
+		btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), fraction);
 		btTransform interp(interpRot, interpOrigin);
 		setWorldTransform(interp);
+		if (fraction < 1.0)
+			++m_lastSafeApplyCounter;
+	}
+
+	void resetLastSafeApplyCounter()
+	{
+		m_lastSafeApplyCounter = 1;
+	}
+
+	btScalar getLastSafeApplyCounter() const
+	{
+		return m_lastSafeApplyCounter;
 	}
 
 	void setWorldTransform(const btTransform& worldTrans)

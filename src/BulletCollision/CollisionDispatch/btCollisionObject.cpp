@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btCollisionObject.h"
 #include "LinearMath/btSerializer.h"
 #include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"
@@ -55,7 +54,8 @@ btCollisionObject::btCollisionObject()
 	  m_ccdSweptSphereRadius(btScalar(0.)),
 	  m_ccdMotionThreshold(btScalar(0.)),
 	  m_checkCollideWith(false),
-	  m_updateRevision(0)
+	  m_updateRevision(0),
+	  m_lastSafeApplyCounter(0)
 {
 	m_worldTransform.setIdentity();
 	m_lastSafeWorldTransform.setIdentity();

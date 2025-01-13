@@ -1388,7 +1388,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		auto* body = bodies[i];
 		if (body->isStaticObject())
 			continue;
-		auto penColIter = penetratingColliders.find(body);
 		if (!penetratingColliders.contains(body))
 		{
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
@@ -1404,7 +1403,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		auto* body = softBodies[i];
 		if (body->isStaticObject())
 			continue;
-		auto penColIter = penetratingColliders.find(body);
 		if (!penetratingColliders.contains(body))
 		{
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
@@ -1442,7 +1440,16 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			if (!isSoft && body->getLastSafeWorldTransform() == btTransform::getIdentity())
 				continue;
 
-			body->applyLastSafeWorldTransform(&unstuckVectorElem.partialUnstuckIndex);
+			if (!(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING))
+				body->resetLastSafeApplyCounter();
+
+			constexpr btScalar maxApplySteps = 10;
+			// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
+			// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
+			btScalar fraction = body->getLastSafeApplyCounter() / maxApplySteps;
+			fraction = min(fraction, 1.0);
+			fprintf(stderr, "fraction %f\n", fraction);
+			body->applyLastSafeWorldTransform(&unstuckVectorElem.partialUnstuckIndex, fraction);
 			if (!m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
 
