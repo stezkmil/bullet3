@@ -59,8 +59,8 @@ class GIM_CONTACT
 public:
 	btVector3 m_point;
 	btVector3 m_normal;
-	GREAL m_depth;     //Positive value indicates interpenetration
-	GREAL m_distance;  //Padding not for use
+	GREAL m_depth;  //Positive value indicates interpenetration
+	GREAL m_unmodified_depth;
 	GUINT m_feature1;  //Face number
 	GUINT m_feature2;  //Face number
 public:
@@ -71,22 +71,25 @@ public:
 	GIM_CONTACT(const GIM_CONTACT &contact) : m_point(contact.m_point),
 											  m_normal(contact.m_normal),
 											  m_depth(contact.m_depth),
+											  m_unmodified_depth(contact.m_unmodified_depth),
 											  m_feature1(contact.m_feature1),
 											  m_feature2(contact.m_feature2)
 	{
 		m_point = contact.m_point;
 		m_normal = contact.m_normal;
 		m_depth = contact.m_depth;
+		m_unmodified_depth = contact.m_unmodified_depth;
 		m_feature1 = contact.m_feature1;
 		m_feature2 = contact.m_feature2;
 	}
 
 	GIM_CONTACT(const btVector3 &point, const btVector3 &normal,
-				GREAL depth, GUINT feature1, GUINT feature2) : m_point(point),
-															   m_normal(normal),
-															   m_depth(depth),
-															   m_feature1(feature1),
-															   m_feature2(feature2)
+				GREAL depth, GREAL unmodified_depth, GUINT feature1, GUINT feature2) : m_point(point),
+																					   m_normal(normal),
+																					   m_depth(depth),
+																					   m_unmodified_depth(unmodified_depth),
+																					   m_feature1(feature1),
+																					   m_feature2(feature2)
 	{
 	}
 
@@ -156,6 +159,7 @@ public:
 			newele.m_point = tricontact.m_points[i];
 			newele.m_normal = tricontact.m_separating_normal;
 			newele.m_depth = tricontact.m_penetration_depth;
+			newele.m_unmodified_depth = tricontact.m_unmodified_depth;
 			newele.m_feature1 = feature1;
 			newele.m_feature2 = feature2;
 		}

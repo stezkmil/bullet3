@@ -28,7 +28,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "LinearMath/btTransform.h"
 #include "LinearMath/btAlignedObjectArray.h"
 #include "btTriangleShapeEx.h"
@@ -47,10 +46,10 @@ class GIM_CONTACT
 public:
 	btVector3 m_point;
 	btVector3 m_normal;
-	btScalar m_depth;     //Positive value indicates interpenetration
-	btScalar m_distance;  //Padding not for use
-	int m_feature1;       //Face number
-	int m_feature2;       //Face number
+	btScalar m_depth;  //Positive value indicates interpenetration
+	btScalar m_unmodified_depth;
+	int m_feature1;  //Face number
+	int m_feature2;  //Face number
 public:
 	GIM_CONTACT()
 	{
@@ -59,17 +58,19 @@ public:
 	GIM_CONTACT(const GIM_CONTACT &contact) : m_point(contact.m_point),
 											  m_normal(contact.m_normal),
 											  m_depth(contact.m_depth),
+											  m_unmodified_depth(contact.m_unmodified_depth),
 											  m_feature1(contact.m_feature1),
 											  m_feature2(contact.m_feature2)
 	{
 	}
 
 	GIM_CONTACT(const btVector3 &point, const btVector3 &normal,
-				btScalar depth, int feature1, int feature2) : m_point(point),
-															  m_normal(normal),
-															  m_depth(depth),
-															  m_feature1(feature1),
-															  m_feature2(feature2)
+				btScalar depth, btScalar unmodified_depth, int feature1, int feature2) : m_point(point),
+																						 m_normal(normal),
+																						 m_depth(depth),
+																						 m_unmodified_depth(unmodified_depth),
+																						 m_feature1(feature1),
+																						 m_feature2(feature2)
 	{
 	}
 

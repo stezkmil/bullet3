@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 ///This file was written by Erwin Coumans
 ///Separating axis rest based on work from Pierre Terdiman, see
 ///And contact clipping based on work from Simon Hobbs
@@ -397,7 +396,7 @@ bool btPolyhedralContactClipping::findSeparatingAxis(const btConvexPolyhedron& h
 			}
 			btVector3 ptOnB = witnessPointB + offsetB;
 			btScalar distance = nl;
-			resultOut.addContactPoint(ptsVector, ptOnB, -distance);
+			resultOut.addContactPoint(ptsVector, ptOnB, -distance, -distance);
 		}
 	}
 
@@ -502,7 +501,7 @@ void btPolyhedralContactClipping::clipFaceAgainstHull(const btVector3& separatin
 					printf("likely wrong separatingNormal passed in\n");
 				}
 #endif
-				resultOut.addContactPoint(separatingNormal, point, depth);
+				resultOut.addContactPoint(separatingNormal, point, depth, depth);
 #endif
 			}
 		}

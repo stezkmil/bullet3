@@ -1407,8 +1407,8 @@ public:
 		}
 	}
 
-	virtual void updateLastSafeWorldTransform();
-	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply, btScalar fraction);
+	virtual void updateLastSafeWorldTransform() override;
+	virtual void applyLastSafeWorldTransform(btScalar dist, int numContacts) override;
 };
 
 #endif  //_BT_SOFT_BODY_H

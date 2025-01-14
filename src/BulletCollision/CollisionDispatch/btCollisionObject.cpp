@@ -146,3 +146,22 @@ void btCollisionObject::serializeSingleObject(class btSerializer* serializer) co
 	const char* structType = serialize(chunk->m_oldPtr, serializer);
 	serializer->finalizeChunk(chunk, structType, BT_COLLISIONOBJECT_CODE, (void*)this);
 }
+
+void btCollisionObject::applyLastSafeWorldTransform(btScalar dist, int numContacts)
+{
+	constexpr btScalar maxApplySteps = 10;
+	// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
+	// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
+	btScalar fraction = getLastSafeApplyCounter() / maxApplySteps;
+	fraction = std::min(fraction, 1.0);
+
+	btTransform dst = getLastSafeWorldTransform();
+	btTransform src = getWorldTransform();
+
+	btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), fraction);
+	btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), fraction);
+	btTransform interp(interpRot, interpOrigin);
+	setWorldTransform(interp);
+	if (fraction < 1.0)
+		++m_lastSafeApplyCounter;
+}

@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_POINT_COLLECTOR_H
 #define BT_POINT_COLLECTOR_H
 
@@ -28,6 +27,7 @@ struct btPointCollector : public btDiscreteCollisionDetectorInterface::Result
 	btVector3 m_normalOnBInWorld;
 	btVector3 m_pointInWorld;
 	btScalar m_distance;  //negative means penetration
+	btScalar m_unmodified_distance;
 
 	bool m_hasResult;
 
@@ -47,7 +47,7 @@ struct btPointCollector : public btDiscreteCollisionDetectorInterface::Result
 		(void)index1;
 	}
 
-	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth)
+	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth) override
 	{
 		if (depth < m_distance)
 		{
@@ -56,6 +56,7 @@ struct btPointCollector : public btDiscreteCollisionDetectorInterface::Result
 			m_pointInWorld = pointInWorld;
 			//negative means penetration
 			m_distance = depth;
+			m_unmodified_distance = unmodified_depth;
 		}
 	}
 };

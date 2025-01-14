@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btSphereBoxCollisionAlgorithm.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "BulletCollision/CollisionShapes/btSphereShape.h"
@@ -75,7 +74,7 @@ void btSphereBoxCollisionAlgorithm::processCollision(const btCollisionObjectWrap
 	if (getSphereDistance(boxObjWrap, pOnBox, normalOnSurfaceB, penetrationDepth, sphereCenter, radius, maxContactDistance))
 	{
 		/// report a contact. internally this will be kept persistent, and contact reduction is done
-		resultOut->addContactPoint(normalOnSurfaceB, pOnBox, penetrationDepth);
+		resultOut->addContactPoint(normalOnSurfaceB, pOnBox, penetrationDepth, penetrationDepth);
 	}
 
 	if (m_ownManifold)

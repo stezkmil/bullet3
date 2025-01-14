@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_MANIFOLD_CONTACT_POINT_H
 #define BT_MANIFOLD_CONTACT_POINT_H
 
@@ -75,34 +74,35 @@ public:
 
 	btManifoldPoint(const btVector3& pointA, const btVector3& pointB,
 					const btVector3& normal,
-					btScalar distance) : m_localPointA(pointA),
-										 m_localPointB(pointB),
-										 m_positionWorldOnB(0,0,0),
-										 m_positionWorldOnA(0,0,0),
-										 m_normalWorldOnB(normal),
-										 m_distance1(distance),
-										 m_combinedFriction(btScalar(0.)),
-										 m_combinedRollingFriction(btScalar(0.)),
-										 m_combinedSpinningFriction(btScalar(0.)),
-										 m_combinedRestitution(btScalar(0.)),
-										 m_partId0(-1),
-										 m_partId1(-1),
-										 m_index0(-1),
-										 m_index1(-1),
-										 m_userPersistentData(0),
-										 m_contactPointFlags(0),
-										 m_appliedImpulse(0.f),
-										 m_prevRHS(0.f),
-										 m_appliedImpulseLateral1(0.f),
-										 m_appliedImpulseLateral2(0.f),
-										 m_contactMotion1(0.f),
-										 m_contactMotion2(0.f),
-										 m_contactCFM(0.f),
-										 m_contactERP(0.f),
-										 m_frictionCFM(0.f),
-										 m_lifeTime(0),
-										 m_lateralFrictionDir1(0,0,0),
-										 m_lateralFrictionDir2(0,0,0)
+					btScalar distance, btScalar unmodified_distance) : m_localPointA(pointA),
+																	   m_localPointB(pointB),
+																	   m_positionWorldOnB(0, 0, 0),
+																	   m_positionWorldOnA(0, 0, 0),
+																	   m_normalWorldOnB(normal),
+																	   m_distance1(distance),
+																	   m_unmodified_distance1(unmodified_distance),
+																	   m_combinedFriction(btScalar(0.)),
+																	   m_combinedRollingFriction(btScalar(0.)),
+																	   m_combinedSpinningFriction(btScalar(0.)),
+																	   m_combinedRestitution(btScalar(0.)),
+																	   m_partId0(-1),
+																	   m_partId1(-1),
+																	   m_index0(-1),
+																	   m_index1(-1),
+																	   m_userPersistentData(0),
+																	   m_contactPointFlags(0),
+																	   m_appliedImpulse(0.f),
+																	   m_prevRHS(0.f),
+																	   m_appliedImpulseLateral1(0.f),
+																	   m_appliedImpulseLateral2(0.f),
+																	   m_contactMotion1(0.f),
+																	   m_contactMotion2(0.f),
+																	   m_contactCFM(0.f),
+																	   m_contactERP(0.f),
+																	   m_frictionCFM(0.f),
+																	   m_lifeTime(0),
+																	   m_lateralFrictionDir1(0, 0, 0),
+																	   m_lateralFrictionDir2(0, 0, 0)
 	{
 	}
 
@@ -114,6 +114,7 @@ public:
 	btVector3 m_normalWorldOnB;
 
 	btScalar m_distance1;
+	btScalar m_unmodified_distance1;
 	btScalar m_combinedFriction;
 	btScalar m_combinedRollingFriction;   //torsional friction orthogonal to contact normal, useful to make spheres stop rolling forever
 	btScalar m_combinedSpinningFriction;  //torsional friction around contact normal, useful for grasping objects
@@ -136,12 +137,14 @@ public:
 	btScalar m_contactMotion1;
 	btScalar m_contactMotion2;
 
-	union {
+	union
+	{
 		btScalar m_contactCFM;
 		btScalar m_combinedContactStiffness1;
 	};
 
-	union {
+	union
+	{
 		btScalar m_contactERP;
 		btScalar m_combinedContactDamping1;
 	};
@@ -156,6 +159,10 @@ public:
 	btScalar getDistance() const
 	{
 		return m_distance1;
+	}
+	btScalar getUnmodifiedDistance() const
+	{
+		return m_unmodified_distance1;
 	}
 	int getLifeTime() const
 	{
@@ -176,6 +183,11 @@ public:
 	void setDistance(btScalar dist)
 	{
 		m_distance1 = dist;
+	}
+
+	void setUnmodifiedDistance(btScalar dist)
+	{
+		m_unmodified_distance1 = dist;
 	}
 
 	///this returns the most recent applied impulse, to satisfy contact constraints by the constraint solver

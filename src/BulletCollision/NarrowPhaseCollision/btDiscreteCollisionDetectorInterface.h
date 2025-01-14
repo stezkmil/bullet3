@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_DISCRETE_COLLISION_DETECTOR1_INTERFACE_H
 #define BT_DISCRETE_COLLISION_DETECTOR1_INTERFACE_H
 
@@ -38,7 +37,7 @@ struct btDiscreteCollisionDetectorInterface
 		///setShapeIdentifiersA/B provides experimental support for per-triangle material / custom material combiner
 		virtual void setShapeIdentifiersA(int partId0, int index0) = 0;
 		virtual void setShapeIdentifiersB(int partId1, int index1) = 0;
-		virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth) = 0;
+		virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth) = 0;
 	};
 
 	struct ClosestPointInput
@@ -66,7 +65,8 @@ struct btStorageResult : public btDiscreteCollisionDetectorInterface::Result
 {
 	btVector3 m_normalOnSurfaceB;
 	btVector3 m_closestPointInB;
-	btScalar m_distance;  //negative means penetration !
+	btScalar m_distance;             //negative means penetration !
+	btScalar m_unmodified_distance;  //negative means penetration !
 
 protected:
 	btStorageResult() : m_distance(btScalar(BT_LARGE_FLOAT))
@@ -76,13 +76,14 @@ protected:
 public:
 	virtual ~btStorageResult(){};
 
-	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth)
+	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth) override
 	{
 		if (depth < m_distance)
 		{
 			m_normalOnSurfaceB = normalOnBInWorld;
 			m_closestPointInB = pointInWorld;
 			m_distance = depth;
+			m_unmodified_distance = unmodified_depth;
 		}
 	}
 };

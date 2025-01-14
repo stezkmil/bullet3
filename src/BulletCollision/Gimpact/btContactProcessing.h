@@ -28,7 +28,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "LinearMath/btTransform.h"
 #include "LinearMath/btAlignedObjectArray.h"
 #include "btTriangleShapeEx.h"
@@ -44,9 +43,9 @@ public:
 
 	SIMD_FORCE_INLINE void push_contact(
 		const btVector3 &point, const btVector3 &normal,
-		btScalar depth, int feature1, int feature2)
+		btScalar depth, btScalar unmodified_depth, int feature1, int feature2)
 	{
-		push_back(GIM_CONTACT(point, normal, depth, feature1, feature2));
+		push_back(GIM_CONTACT(point, normal, depth, unmodified_depth, feature1, feature2));
 	}
 
 	SIMD_FORCE_INLINE void push_triangle_contacts(
@@ -58,7 +57,7 @@ public:
 			push_contact(
 				tricontact.m_points[i],
 				tricontact.m_separating_normal,
-				tricontact.m_penetration_depth, feature1, feature2);
+				tricontact.m_penetration_depth, tricontact.m_unmodified_depth, feature1, feature2);
 		}
 	}
 

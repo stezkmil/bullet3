@@ -446,6 +446,7 @@ public:
 			if (distances[2] > margin) return false;
 
 			contacts.m_penetration_depth = -distances[2] + margin;
+			contacts.m_unmodified_depth = contacts.m_penetration_depth;
 			contacts.m_points[0] = closest_point_v;
 			contacts.m_point_count = 1;
 			VEC_COPY(contacts.m_separating_normal, edge_edge_dir);

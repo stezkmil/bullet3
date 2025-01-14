@@ -25,7 +25,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_GIMPACT_BVH_CONCAVE_COLLISION_ALGORITHM_H
 #define BT_GIMPACT_BVH_CONCAVE_COLLISION_ALGORITHM_H
 
@@ -63,7 +62,6 @@ btGImpactCollisionAlgorithm::registerAlgorithm(dispatcher);
 class btGImpactCollisionAlgorithm : public btActivatingCollisionAlgorithm
 {
 protected:
-
 	btCollisionAlgorithm* m_convex_algorithm;
 	btPersistentManifold* m_manifoldPtr;
 	btManifoldResult* m_resultOut;
@@ -169,7 +167,7 @@ protected:
 						 const btCollisionObjectWrapper* body1Wrap,
 						 const btVector3& point,
 						 const btVector3& normal,
-						 btScalar distance);
+						 btScalar distance, btScalar unmodified_distance);
 
 	//! Collision routines
 	//!@{
@@ -181,23 +179,23 @@ protected:
 							   const int* pairs, int pair_count);
 
 	void collide_sat_triangles_pre(const btCollisionObjectWrapper* body0Wrap,
-							   const btCollisionObjectWrapper* body1Wrap,
-							   const btGImpactMeshShapePart* shape0,
+								   const btCollisionObjectWrapper* body1Wrap,
+								   const btGImpactMeshShapePart* shape0,
 								   const btGImpactMeshShapePart* shape1,
 								   btGimpactVsGimpactGroupedParams& grpParams);
 
 	void collide_sat_triangles_post(const ThreadLocalGImpactResult* perThreadIntermediateResults,
 									const std::list<btGImpactIntermediateResult>* intermediateResults,
-								   const btCollisionObjectWrapper* body0Wrap,
-								   const btCollisionObjectWrapper* body1Wrap,
-								   const btGImpactMeshShapePart* shape0,
-								   const btGImpactMeshShapePart* shape1);
+									const btCollisionObjectWrapper* body0Wrap,
+									const btCollisionObjectWrapper* body1Wrap,
+									const btGImpactMeshShapePart* shape0,
+									const btGImpactMeshShapePart* shape1);
 
 	void collide_sat_triangles_aux(const btCollisionObjectWrapper* body0Wrap,
-							   const btCollisionObjectWrapper* body1Wrap,
-							   const btGImpactMeshShapePart* shape0,
-							   const btGImpactMeshShapePart* shape1,
-							   const btPairSet& auxPairSet);
+								   const btCollisionObjectWrapper* body1Wrap,
+								   const btGImpactMeshShapePart* shape0,
+								   const btGImpactMeshShapePart* shape1,
+								   const btPairSet& auxPairSet);
 
 	void shape_vs_shape_collision(
 		const btCollisionObjectWrapper* body0,
@@ -283,9 +281,9 @@ public:
 							const btGImpactShapeInterface* shape1);
 
 	void gimpact_soft_vs_gimpact(const btCollisionObjectWrapper* softWrap,
-						  const btCollisionObjectWrapper* rigidWrap,
-						  const btGImpactShapeInterface* softShape,
-						  const btGImpactShapeInterface* rigidShape, bool swapped);
+								 const btCollisionObjectWrapper* rigidWrap,
+								 const btGImpactShapeInterface* softShape,
+								 const btGImpactShapeInterface* rigidShape, bool swapped);
 
 	void gimpact_soft_vs_gimpact_soft(const btCollisionObjectWrapper* soft0Wrap,
 									  const btCollisionObjectWrapper* soft1Wrap,

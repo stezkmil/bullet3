@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btMinkowskiPenetrationDepthSolver.h"
 #include "BulletCollision/NarrowPhaseCollision/btSubSimplexConvexCast.h"
 #include "BulletCollision/NarrowPhaseCollision/btVoronoiSimplexSolver.h"
@@ -45,6 +44,7 @@ bool btMinkowskiPenetrationDepthSolver::calcPenDepth(btSimplexSolverInterface& s
 		btVector3 m_normalOnBInWorld;
 		btVector3 m_pointInWorld;
 		btScalar m_depth;
+		btScalar m_unmodified_depth;
 		bool m_hasResult;
 
 		virtual void setShapeIdentifiersA(int partId0, int index0)
@@ -57,11 +57,12 @@ bool btMinkowskiPenetrationDepthSolver::calcPenDepth(btSimplexSolverInterface& s
 			(void)partId1;
 			(void)index1;
 		}
-		void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth)
+		void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth) override
 		{
 			m_normalOnBInWorld = normalOnBInWorld;
 			m_pointInWorld = pointInWorld;
 			m_depth = depth;
+			m_unmodified_depth = unmodified_depth;
 			m_hasResult = true;
 		}
 	};

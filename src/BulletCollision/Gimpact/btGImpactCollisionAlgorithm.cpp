@@ -211,12 +211,13 @@ void btGImpactCollisionAlgorithm::addContactPoint(const btCollisionObjectWrapper
 												  const btCollisionObjectWrapper* body1Wrap,
 												  const btVector3& point,
 												  const btVector3& normal,
-												  btScalar distance)
+												  btScalar distance,
+												  btScalar unmodified_distance)
 {
 	m_resultOut->setShapeIdentifiersA(m_part0, m_triface0);
 	m_resultOut->setShapeIdentifiersB(m_part1, m_triface1);
 	checkManifold(body0Wrap, body1Wrap);
-	m_resultOut->addContactPoint(normal, point, distance);
+	m_resultOut->addContactPoint(normal, point, distance, unmodified_distance);
 }
 
 void btGImpactCollisionAlgorithm::shape_vs_shape_collision(
@@ -604,7 +605,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 				addContactPoint(body0Wrap, body1Wrap,
 								ir.point,
 								ir.normal,
-								ir.depth);
+								ir.depth,
+								ir.unmodified_depth);
 			}
 		}
 	}
@@ -617,7 +619,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 			addContactPoint(body0Wrap, body1Wrap,
 							ir.point,
 							ir.normal,
-							ir.depth);
+							ir.depth,
+							ir.unmodified_depth);
 		}
 	}
 
@@ -1075,14 +1078,14 @@ void btGImpactCollisionAlgorithm::gimpacttrimeshpart_vs_plane_collision(
 				addContactPoint(body1Wrap, body0Wrap,
 								vertex,
 								-plane,
-								distance);
+								distance, distance);
 			}
 			else
 			{
 				addContactPoint(body0Wrap, body1Wrap,
 								vertex,
 								plane,
-								distance);
+								distance, distance);
 			}
 		}
 	}

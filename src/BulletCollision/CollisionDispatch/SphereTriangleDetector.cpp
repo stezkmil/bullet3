@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "LinearMath/btScalar.h"
 #include "SphereTriangleDetector.h"
 #include "BulletCollision/CollisionShapes/btTriangleShape.h"
@@ -50,11 +49,11 @@ void SphereTriangleDetector::getClosestPoints(const ClosestPointInput& input, Re
 			btVector3 normalOnB = transformB.getBasis() * normal;
 			btVector3 normalOnA = -normalOnB;
 			btVector3 pointOnA = transformB * point + normalOnB * depth;
-			output.addContactPoint(normalOnA, pointOnA, depth);
+			output.addContactPoint(normalOnA, pointOnA, depth, depth);
 		}
 		else
 		{
-			output.addContactPoint(transformB.getBasis() * normal, transformB * point, depth);
+			output.addContactPoint(transformB.getBasis() * normal, transformB * point, depth, depth);
 		}
 	}
 }

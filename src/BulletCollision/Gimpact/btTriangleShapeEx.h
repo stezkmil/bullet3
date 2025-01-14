@@ -40,6 +40,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 struct GIM_TRIANGLE_CONTACT
 {
 	btScalar m_penetration_depth;
+	btScalar m_unmodified_depth;
 	int m_point_count;
 	btVector4 m_separating_normal;
 	btVector3 m_points[MAX_TRI_CLIPPING];
@@ -47,6 +48,7 @@ struct GIM_TRIANGLE_CONTACT
 	SIMD_FORCE_INLINE void copy_from(const GIM_TRIANGLE_CONTACT& other)
 	{
 		m_penetration_depth = other.m_penetration_depth;
+		m_unmodified_depth = other.m_unmodified_depth;
 		m_separating_normal = other.m_separating_normal;
 		m_point_count = other.m_point_count;
 		int i = m_point_count;

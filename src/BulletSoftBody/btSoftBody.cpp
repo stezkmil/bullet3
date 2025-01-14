@@ -5242,101 +5242,61 @@ bool btSoftBody::wantsSleeping()
 
 void btSoftBody::updateLastSafeWorldTransform()
 {
+	fprintf(stderr, "update\n");
 	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
-		m_nodes[i].m_safe.m_x = m_nodes[i].m_x;
-		m_nodes[i].m_safe.m_q = m_nodes[i].m_q;
-		m_nodes[i].m_safe.m_v = m_nodes[i].m_v;
-		m_nodes[i].m_safe.m_vn = m_nodes[i].m_vn;
-		m_nodes[i].m_safe.m_f = m_nodes[i].m_f;
-		m_nodes[i].m_safe.m_n = m_nodes[i].m_n;
-		m_nodes[i].m_safe.m_im = m_nodes[i].m_im;
-		m_nodes[i].m_safe.m_area = m_nodes[i].m_area;
-		m_nodes[i].m_safe.m_splitv = m_nodes[i].m_splitv;
-		m_nodes[i].m_safe.m_effectiveMass = m_nodes[i].m_effectiveMass;
-		m_nodes[i].m_safe.m_effectiveMass_inv = m_nodes[i].m_effectiveMass_inv;
+		const auto& src = m_nodes[i];
+		auto& dst = m_nodes[i].m_safe;
+		dst.m_x = src.m_x;
+		dst.m_q = src.m_q;
+		dst.m_v = src.m_v;
+		dst.m_vn = src.m_vn;
+		dst.m_f = src.m_f;
+		dst.m_n = src.m_n;
+		dst.m_im = src.m_im;
+		dst.m_area = src.m_area;
+		dst.m_splitv = src.m_splitv;
+		dst.m_effectiveMass = src.m_effectiveMass;
+		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;
 	}
 }
 
-void btSoftBody::applyLastSafeWorldTransform(const std::set<int>* partialApply, btScalar fraction)
+void btSoftBody::applyLastSafeWorldTransform(btScalar dist, int numContacts)
 {
-	if (partialApply)
-	{
-		for (auto tetra : *partialApply)
-		{
-			for (auto i = 0; i < 4; ++i)
-			{
-				auto node = m_tetras[tetra].m_n[i];
-				/*node->m_x = node->m_x.lerp(node->m_safe.m_x, speedOfConvergenceToSafe);
-				node->m_q = node->m_q.lerp(node->m_safe.m_q, speedOfConvergenceToSafe);
-				node->m_v = node->m_v.lerp(node->m_safe.m_v, speedOfConvergenceToSafe);
-				node->m_vn = node->m_vn.lerp(node->m_safe.m_vn, speedOfConvergenceToSafe);
-				node->m_f = node->m_f.lerp(node->m_safe.m_f, speedOfConvergenceToSafe);
-				node->m_n = node->m_n.lerp(node->m_safe.m_n, speedOfConvergenceToSafe);*/
+	// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
+	// values. If we got to high fraction values close to 1.0, then the soft would be unresponsive.
+	// Disadvantage is that it will never truly reach the safe destination, just approach it.
 
-				//m_nodes[i].m_im = m_nodes[i].m_im.lerp(m_nodes[i].m_ims, speedOfConvergenceToSafe);
+	constexpr btScalar maxFraction = 0.1;
 
-				//m_nodes[i].m_x = m_nodes[i].m_xs;
-				//m_nodes[i].m_q = m_nodes[i].m_qs;
-				//m_nodes[i].m_v = m_nodes[i].m_vs;
-				//m_nodes[i].m_vn = m_nodes[i].m_vns;
-				//m_nodes[i].m_f = m_nodes[i].m_fs;
-				//m_nodes[i].m_n = m_nodes[i].m_ns;
-				//m_nodes[i].m_im = m_nodes[i].m_ims;
-				//m_nodes[i].m_area = m_nodes[i].m_areas;
-				//m_nodes[i].m_splitv = m_nodes[i].m_splitvs;
-				//m_nodes[i].m_effectiveMass = m_nodes[i].m_effectiveMasss;
-				//m_nodes[i].m_effectiveMass_inv = m_nodes[i].m_effectiveMass_invs;
+	/*numContacts = numContacts - 50;
+	numContacts = std::max(numContacts, 0);
+	auto normedNumContacts = numContacts / 50.0;
+	normedNumContacts = std::min(normedNumContacts, 1.0);
+	normedNumContacts = std::max(normedNumContacts, 0.0);*/
 
-				//m_tetras[tetra].m_n[i]->m_q = m_tetras[tetra].m_n[i]->m_x;
-				//m_tetras[tetra].m_n[i]->m_v.setZero();
-				//m_tetras[tetra].m_n[i]->m_vn.setZero();
-				//m_tetras[tetra].m_n[i]->m_f.setZero();
-				//m_tetras[tetra].m_n[i]->m_splitv.setZero();
+	dist = dist / 10.0;
+	auto normedDist = std::min(dist, 1.0);
+	normedDist = std::max(normedDist, 0.0);
 
-				/*node->m_x = node->m_x.lerp(node->m_safe.m_x, speedOfConvergenceToSafe);
-				node->m_q = node->m_q.lerp(node->m_safe.m_q, speedOfConvergenceToSafe);
-				node->m_v = node->m_v.lerp(node->m_safe.m_v, speedOfConvergenceToSafe);
-				node->m_vn = node->m_vn.lerp(node->m_safe.m_vn, speedOfConvergenceToSafe);
-				node->m_f = node->m_f.lerp(node->m_safe.m_f, speedOfConvergenceToSafe);
-				node->m_n = node->m_n.lerp(node->m_safe.m_n, speedOfConvergenceToSafe);
-				node->m_splitv = node->m_splitv.lerp(node->m_safe.m_splitv, speedOfConvergenceToSafe);
-				node->m_im = node->m_safe.m_im;
-				node->m_area = node->m_safe.m_area;
-				node->m_effectiveMass = node->m_safe.m_effectiveMass;
-				node->m_effectiveMass_inv = node->m_safe.m_effectiveMass_inv;*/
-			}
-		}
-	}
-	else
-	{
-		btAssert(false);
-		/*for (auto i = 0; i < m_nodes.size(); ++i)
-		{
-			m_nodes[i].m_x = m_nodes[i].m_xs;
-			m_nodes[i].m_q = m_nodes[i].m_xs;
-			m_nodes[i].m_v.setZero();
-			m_nodes[i].m_vn.setZero();
-			m_nodes[i].m_f.setZero();
-			m_nodes[i].m_splitv.setZero();
-		}*/
-	}
+	auto fraction = maxFraction * normedDist /*maxFraction * normedNumContacts*/;
+	fprintf(stderr, "fraction %f\n", fraction);
 
 	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
-		m_nodes[i].m_x = m_nodes[i].m_x.lerp(m_nodes[i].m_safe.m_x, fraction);
-		m_nodes[i].m_q = m_nodes[i].m_q.lerp(m_nodes[i].m_safe.m_q, fraction);
-		m_nodes[i].m_v = m_nodes[i].m_v.lerp(m_nodes[i].m_safe.m_v, fraction);
-		m_nodes[i].m_vn = m_nodes[i].m_vn.lerp(m_nodes[i].m_safe.m_vn, fraction);
-		m_nodes[i].m_f = m_nodes[i].m_f.lerp(m_nodes[i].m_safe.m_f, fraction);
-		m_nodes[i].m_n = m_nodes[i].m_n.lerp(m_nodes[i].m_safe.m_n, fraction);
-		m_nodes[i].m_splitv = m_nodes[i].m_splitv.lerp(m_nodes[i].m_safe.m_splitv, fraction);
-		m_nodes[i].m_im = m_nodes[i].m_safe.m_im;
-		m_nodes[i].m_area = m_nodes[i].m_safe.m_area;
+		const auto& src = m_nodes[i].m_safe;
+		auto& dst = m_nodes[i];
+		dst.m_x = dst.m_x.lerp(src.m_x, fraction);
+		//dst.m_q = dst.m_q.lerp(src.m_q, fraction);
+		/*dst.m_v = dst.m_v.lerp(src.m_v, fraction);
+		dst.m_vn = dst.m_vn.lerp(src.m_vn, fraction);
+		dst.m_f = dst.m_f.lerp(src.m_f, fraction);
+		dst.m_n = dst.m_n.lerp(src.m_n, fraction);
+		dst.m_splitv = dst.m_splitv.lerp(src.m_splitv, fraction);
+		dst.m_im = dst.m_im * (1.0 - fraction) + src.m_im * fraction;
+		dst.m_area = dst.m_area * (1.0 - fraction) + src.m_area * fraction;
 
-		m_nodes[i].m_effectiveMass = m_nodes[i].m_safe.m_effectiveMass;
-		m_nodes[i].m_effectiveMass_inv = m_nodes[i].m_safe.m_effectiveMass_inv;
+		dst.m_effectiveMass = src.m_effectiveMass;
+		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
 	}
-	if (fraction < 1.0)
-		++m_lastSafeApplyCounter;
 }

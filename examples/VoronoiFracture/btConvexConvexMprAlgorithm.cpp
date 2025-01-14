@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btConvexConvexMprAlgorithm.h"
 
 //#include <stdio.h>
@@ -193,7 +192,7 @@ void btConvexConvexMprAlgorithm ::processCollision(const btCollisionObjectWrappe
 
 			if (distInfo.m_distance <= 0)
 			{
-				resultOut->addContactPoint(distInfo.m_normalBtoA, distInfo.m_pointOnB, distInfo.m_distance);
+				resultOut->addContactPoint(distInfo.m_normalBtoA, distInfo.m_pointOnB, distInfo.m_distance, distInfo.m_distance);
 			}
 			//ASSERT_EQ(0,result);
 			//ASSERT_NEAR(btFabs(btScalar(i-z))-btScalar(j)-ssd.m_radiusB, distInfo.m_distance, abs_error);

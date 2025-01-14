@@ -43,9 +43,9 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 					if (insert)
 					{
 						if (perThreadIntermediateResults)
-							perThreadIntermediateResults->local().push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth, pair.m_index1, pair.m_index2});
+							perThreadIntermediateResults->local().push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth, contact_data.m_unmodified_depth, pair.m_index1, pair.m_index2});
 						if (intermediateResults)
-							intermediateResults->push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth, pair.m_index1, pair.m_index2});
+							intermediateResults->push_back({contact_data.m_points[0], contact_data.m_separating_normal, -contact_data.m_penetration_depth, contact_data.m_unmodified_depth, pair.m_index1, pair.m_index2});
 					}
 					return contact_data.m_penetration_depth < 0.0;
 				}

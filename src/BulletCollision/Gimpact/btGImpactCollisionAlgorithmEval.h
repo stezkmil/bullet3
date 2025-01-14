@@ -25,7 +25,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_GIMPACT_BVH_CONCAVE_COLLISION_ALGORITHM_EVAL_H
 #define BT_GIMPACT_BVH_CONCAVE_COLLISION_ALGORITHM_EVAL_H
 
@@ -41,6 +40,7 @@ struct btGImpactIntermediateResult
 	btVector3 point;
 	btVector3 normal;
 	btScalar depth;
+	btScalar unmodified_depth;
 	int index0, index1;
 };
 

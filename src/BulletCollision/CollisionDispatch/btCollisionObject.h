@@ -371,7 +371,8 @@ public:
 		// Setting the tolerance to none is a risky operation for bodies in tight places. Such body will be in a margin zone, so a force
 		// will be generated, which can push it into a stuck state in the opposite direction. Stuck states can cause severe slowdowns (to such extent that it is a TODO to investigate why they are so bad)
 		// in such places, so a stuck check counter is set - it is checked in btDiscreteDynamicsWorld::processLastSafeTransforms
-		constexpr auto stuckCheckCounter = 25;
+		// TODO try to find a use case to check if it is still valid. Remove if not.
+		constexpr auto stuckCheckCounter = 2;
 		setUserIndex2(stuckCheckCounter);
 		// When the toleration is done, this returns the activation state to normal
 		// Update: Ever since using m_deferedcollide = true, this should not be a problem anymore
@@ -531,18 +532,7 @@ public:
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(const std::set<int>* partialApply, btScalar fraction)
-	{
-		btTransform dst = getLastSafeWorldTransform();
-		btTransform src = getWorldTransform();
-
-		btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), fraction);
-		btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), fraction);
-		btTransform interp(interpRot, interpOrigin);
-		setWorldTransform(interp);
-		if (fraction < 1.0)
-			++m_lastSafeApplyCounter;
-	}
+	virtual void applyLastSafeWorldTransform(btScalar dist, int numContacts);
 
 	void resetLastSafeApplyCounter()
 	{

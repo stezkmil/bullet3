@@ -44,6 +44,7 @@ email: projectileman@yahoo.com
 struct GIM_TRIANGLE_CONTACT_DATA
 {
 	GREAL m_penetration_depth;
+	GREAL m_unmodified_depth;
 	GUINT m_point_count;
 	btVector4 m_separating_normal;
 	btVector3 m_points[MAX_TRI_CLIPPING];
@@ -51,6 +52,7 @@ struct GIM_TRIANGLE_CONTACT_DATA
 	SIMD_FORCE_INLINE void copy_from(const GIM_TRIANGLE_CONTACT_DATA &other)
 	{
 		m_penetration_depth = other.m_penetration_depth;
+		m_unmodified_depth = other.m_unmodified_depth;
 		m_separating_normal = other.m_separating_normal;
 		m_point_count = other.m_point_count;
 		GUINT i = m_point_count;
@@ -76,6 +78,7 @@ struct GIM_TRIANGLE_CONTACT_DATA
 	{
 		m_point_count = 0;
 		m_penetration_depth = -1000.0f;
+		m_unmodified_depth = -1000.0f;
 
 		GUINT point_indices[MAX_TRI_CLIPPING];
 
@@ -90,6 +93,7 @@ struct GIM_TRIANGLE_CONTACT_DATA
 				if (_dist > m_penetration_depth)
 				{
 					m_penetration_depth = _dist;
+					m_unmodified_depth = _dist;
 					point_indices[0] = _k;
 					m_point_count = 1;
 				}

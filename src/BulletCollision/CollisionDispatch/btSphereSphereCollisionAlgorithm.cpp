@@ -91,7 +91,7 @@ void btSphereSphereCollisionAlgorithm::processCollision(const btCollisionObjectW
 
 	/// report a contact. internally this will be kept persistent, and contact reduction is done
 
-	resultOut->addContactPoint(normalOnSurfaceB, pos1, dist);
+	resultOut->addContactPoint(normalOnSurfaceB, pos1, dist, dist);
 
 #ifndef CLEAR_MANIFOLD
 	resultOut->refreshContactPoints();

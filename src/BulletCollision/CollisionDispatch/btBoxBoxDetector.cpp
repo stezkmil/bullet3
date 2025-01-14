@@ -20,7 +20,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 ///ODE box-box collision detection is adapted to work with Bullet
 
 #include "btBoxBoxDetector.h"
@@ -471,9 +470,9 @@ int dBoxBox2(const btVector3& p1, const dMatrix3 R1,
 #ifdef USE_CENTER_POINT
 			for (i = 0; i < 3; i++)
 				pointInWorld[i] = (pa[i] + pb[i]) * btScalar(0.5);
-			output.addContactPoint(-normal, pointInWorld, -*depth);
+			output.addContactPoint(-normal, pointInWorld, -*depth, -*depth);
 #else
-			output.addContactPoint(-normal, pb, -*depth);
+			output.addContactPoint(-normal, pb, -*depth, -*depth);
 
 #endif  //
 			*return_code = code;
@@ -673,7 +672,7 @@ int dBoxBox2(const btVector3& p1, const dMatrix3 R1,
 				btVector3 pointInWorld;
 				for (i = 0; i < 3; i++)
 					pointInWorld[i] = point[j * 3 + i] + pa[i];
-				output.addContactPoint(-normal, pointInWorld, -dep[j]);
+				output.addContactPoint(-normal, pointInWorld, -dep[j], -dep[j]);
 			}
 		}
 		else
@@ -685,7 +684,7 @@ int dBoxBox2(const btVector3& p1, const dMatrix3 R1,
 				for (i = 0; i < 3; i++)
 					pointInWorld[i] = point[j * 3 + i] + pa[i] - normal[i] * dep[j];
 				//pointInWorld[i] = point[j*3+i] + pa[i];
-				output.addContactPoint(-normal, pointInWorld, -dep[j]);
+				output.addContactPoint(-normal, pointInWorld, -dep[j], -dep[j]);
 			}
 		}
 	}
@@ -718,11 +717,11 @@ int dBoxBox2(const btVector3& p1, const dMatrix3 R1,
 				posInWorld[i] = point[iret[j] * 3 + i] + pa[i];
 			if (code < 4)
 			{
-				output.addContactPoint(-normal, posInWorld, -dep[iret[j]]);
+				output.addContactPoint(-normal, posInWorld, -dep[iret[j]], -dep[iret[j]]);
 			}
 			else
 			{
-				output.addContactPoint(-normal, posInWorld - normal * dep[iret[j]], -dep[iret[j]]);
+				output.addContactPoint(-normal, posInWorld - normal * dep[iret[j]], -dep[iret[j]], -dep[iret[j]]);
 			}
 		}
 		cnum = maxc;

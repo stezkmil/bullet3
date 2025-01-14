@@ -34,6 +34,7 @@ void GIM_TRIANGLE_CONTACT::merge_points(const btVector4& plane,
 {
 	m_point_count = 0;
 	m_penetration_depth = -1000.0f;
+	m_unmodified_depth = 1000.0f;
 
 	int point_indices[MAX_TRI_CLIPPING];
 
@@ -48,6 +49,7 @@ void GIM_TRIANGLE_CONTACT::merge_points(const btVector4& plane,
 			if (_dist > m_penetration_depth)
 			{
 				m_penetration_depth = _dist;
+				m_unmodified_depth = _dist;
 				point_indices[0] = _k;
 				m_point_count = 1;
 			}
@@ -388,6 +390,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method(const btPrimitiveTr
 		GIM_TRIANGLE_CONTACT contact;
 		contact.m_separating_normal = this->m_plane;
 		contact.m_penetration_depth = (endPoint - startPoint).length() * 2.0f;
+		contact.m_unmodified_depth = contact.m_penetration_depth;
 		contact.m_point_count = 2;
 		contact.m_points[0] = startPoint;
 		contact.m_points[1] = endPoint;
@@ -839,7 +842,10 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		contacts.m_points[0] = a_closest_out;
 		contacts.m_separating_normal = btVector4(dir.x(), dir.y(), dir.z(), 1.0);
 		if (fabs(margin) < SIMD_EPSILON /*|| !depthModified*/)
+		{
 			contacts.m_penetration_depth = dist;
+			contacts.m_unmodified_depth = dist;
+		}
 		else
 		{
 			// Inversion so that smaller distance means bigger impulse, up to the maxDepth when distance is 0. Margin distance - marginEpsilon means 0 depth.
@@ -848,6 +854,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			// which would then result in 0 manifolds, so a much bigger impulse would be generated, which would create a noticeable jerk in motion back into the
 			// margin. This discontinuity would happen periodically. Observed on the Lemovka scene.
 			contacts.m_penetration_depth = std::max(-dist * ((1.0 / (margin - marginEpsilon)) * maxDepth) + maxDepth, 0.0);
+			contacts.m_unmodified_depth = dist;
 		}
 	};
 
@@ -909,6 +916,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			auto otherCentroidDistToSafe = (otherCentroid - otherSafeCentroid).length();
 
 			auto centroidDistSum = thisCentroidDistToSafe + otherCentroidDistToSafe;
+			contacts.m_unmodified_depth = centroidDistSum;
 			centroidDistSum = std::min(centroidDistSum, maxDepthPenetration);
 			centroidDistSum = std::max(centroidDistSum, maxDepth);
 			// Mark it as penetration by making it negative. At least MaxDepth (beacuse that is the max pushback when in the margin zone with 0 dist).

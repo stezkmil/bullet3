@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btConvexPlaneCollisionAlgorithm.h"
 
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
@@ -90,7 +89,7 @@ void btConvexPlaneCollisionAlgorithm::collideSingleContact(const btQuaternion& p
 		/// report a contact. internally this will be kept persistent, and contact reduction is done
 		btVector3 normalOnSurfaceB = planeObjWrap->getWorldTransform().getBasis() * planeNormal;
 		btVector3 pOnB = vtxInPlaneWorld;
-		resultOut->addContactPoint(normalOnSurfaceB, pOnB, distance);
+		resultOut->addContactPoint(normalOnSurfaceB, pOnB, distance, distance);
 	}
 }
 
@@ -121,14 +120,14 @@ void btConvexPlaneCollisionAlgorithm::processCollision(const btCollisionObjectWr
 	btVector3 vtxInPlaneProjected = vtxInPlane - distance * planeNormal;
 	btVector3 vtxInPlaneWorld = planeObjWrap->getWorldTransform() * vtxInPlaneProjected;
 
-	hasCollision = distance < m_manifoldPtr->getContactBreakingThreshold()+ resultOut->m_closestPointDistanceThreshold;
+	hasCollision = distance < m_manifoldPtr->getContactBreakingThreshold() + resultOut->m_closestPointDistanceThreshold;
 	resultOut->setPersistentManifold(m_manifoldPtr);
 	if (hasCollision)
 	{
 		/// report a contact. internally this will be kept persistent, and contact reduction is done
 		btVector3 normalOnSurfaceB = planeObjWrap->getWorldTransform().getBasis() * planeNormal;
 		btVector3 pOnB = vtxInPlaneWorld;
-		resultOut->addContactPoint(normalOnSurfaceB, pOnB, distance);
+		resultOut->addContactPoint(normalOnSurfaceB, pOnB, distance, distance);
 	}
 
 	//the perturbation algorithm doesn't work well with implicit surfaces such as spheres, cylinder and cones:

@@ -102,7 +102,7 @@ btManifoldResult::btManifoldResult(const btCollisionObjectWrapper* body0Wrap, co
 {
 }
 
-void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth)
+void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth)
 {
 	btAssert(m_manifoldPtr);
 	//order in manifold needs to match
@@ -137,7 +137,7 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 		localB = m_body1Wrap->getCollisionObject()->getWorldTransform().invXform(pointInWorld);
 	}
 
-	btManifoldPoint newPt(localA, localB, normalOnBInWorld, depth);
+	btManifoldPoint newPt(localA, localB, normalOnBInWorld, depth, unmodified_depth);
 	newPt.m_positionWorldOnA = pointA;
 	newPt.m_positionWorldOnB = pointInWorld;
 	if (penetration)

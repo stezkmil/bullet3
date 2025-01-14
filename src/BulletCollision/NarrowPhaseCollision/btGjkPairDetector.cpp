@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btGjkPairDetector.h"
 #include "BulletCollision/CollisionShapes/btConvexShape.h"
 #include "BulletCollision/NarrowPhaseCollision/btSimplexSolverInterface.h"
@@ -40,7 +39,6 @@ btScalar gGjkEpaPenetrationTolerance = 1.0e-12;
 #define REL_ERROR2 btScalar(1.0e-6)
 btScalar gGjkEpaPenetrationTolerance = 0.001;
 #endif
-
 
 btGjkPairDetector::btGjkPairDetector(const btConvexShape *objectA, const btConvexShape *objectB, btSimplexSolverInterface *simplexSolver, btConvexPenetrationDepthSolver *penetrationDepthSolver)
 	: m_cachedSeparatingAxis(btScalar(0.), btScalar(1.), btScalar(0.)),
@@ -710,7 +708,6 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 	btScalar marginA = m_marginA;
 	btScalar marginB = m_marginB;
 
-
 	//for CCD we don't use margins
 	if (m_ignoreMargin)
 	{
@@ -1179,7 +1176,7 @@ void btGjkPairDetector::getClosestPointsNonVirtual(const ClosestPointInput &inpu
 		output.addContactPoint(
 			normalInB,
 			pointOnB + positionOffset,
-			distance);
+			distance, distance);
 	}
 	else
 	{

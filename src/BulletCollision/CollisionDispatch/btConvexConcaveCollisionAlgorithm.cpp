@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btConvexConcaveCollisionAlgorithm.h"
 #include "LinearMath/btQuickprof.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObject.h"
@@ -109,43 +108,43 @@ void btConvexTriangleCallback::processTriangle(btVector3* triangle, int partId, 
 	if (m_convexBodyWrap->getCollisionShape()->isConvex())
 	{
 #ifdef BT_ENABLE_CONVEX_CONCAVE_EARLY_OUT
-    //todo: check this issue https://github.com/bulletphysics/bullet3/issues/4263
+		//todo: check this issue https://github.com/bulletphysics/bullet3/issues/4263
 		//an early out optimisation if the object is separated from the triangle
 		//projected on the triangle normal)
 		{
-			const btVector3 v0 = m_triBodyWrap->getWorldTransform()*triangle[0];
-			const btVector3 v1 = m_triBodyWrap->getWorldTransform()*triangle[1];
-			const btVector3 v2 = m_triBodyWrap->getWorldTransform()*triangle[2];
+			const btVector3 v0 = m_triBodyWrap->getWorldTransform() * triangle[0];
+			const btVector3 v1 = m_triBodyWrap->getWorldTransform() * triangle[1];
+			const btVector3 v2 = m_triBodyWrap->getWorldTransform() * triangle[2];
 
-			btVector3 triangle_normal_world = ( v1 - v0).cross(v2 - v0);
+			btVector3 triangle_normal_world = (v1 - v0).cross(v2 - v0);
 			triangle_normal_world.normalize();
 
-		    btConvexShape* convex = (btConvexShape*)m_convexBodyWrap->getCollisionShape();
-			
-			btVector3 localPt = convex->localGetSupportingVertex(m_convexBodyWrap->getWorldTransform().getBasis().inverse()*triangle_normal_world);
-			btVector3 worldPt = m_convexBodyWrap->getWorldTransform()*localPt;
+			btConvexShape* convex = (btConvexShape*)m_convexBodyWrap->getCollisionShape();
+
+			btVector3 localPt = convex->localGetSupportingVertex(m_convexBodyWrap->getWorldTransform().getBasis().inverse() * triangle_normal_world);
+			btVector3 worldPt = m_convexBodyWrap->getWorldTransform() * localPt;
 			//now check if this is fully on one side of the triangle
 			btScalar proj_distPt = triangle_normal_world.dot(worldPt);
 			btScalar proj_distTr = triangle_normal_world.dot(v0);
-			btScalar contact_threshold = m_manifoldPtr->getContactBreakingThreshold()+ m_resultOut->m_closestPointDistanceThreshold;
+			btScalar contact_threshold = m_manifoldPtr->getContactBreakingThreshold() + m_resultOut->m_closestPointDistanceThreshold;
 			btScalar dist = proj_distTr - proj_distPt;
 			if (dist > contact_threshold)
 				return;
 
 			//also check the other side of the triangle
-			triangle_normal_world*=-1;
+			triangle_normal_world *= -1;
 
-			localPt = convex->localGetSupportingVertex(m_convexBodyWrap->getWorldTransform().getBasis().inverse()*triangle_normal_world);
-			worldPt = m_convexBodyWrap->getWorldTransform()*localPt;
+			localPt = convex->localGetSupportingVertex(m_convexBodyWrap->getWorldTransform().getBasis().inverse() * triangle_normal_world);
+			worldPt = m_convexBodyWrap->getWorldTransform() * localPt;
 			//now check if this is fully on one side of the triangle
 			proj_distPt = triangle_normal_world.dot(worldPt);
 			proj_distTr = triangle_normal_world.dot(v0);
-			
+
 			dist = proj_distTr - proj_distPt;
 			if (dist > contact_threshold)
 				return;
-        }
-#endif //BT_ENABLE_CONVEX_CONCAVE_EARLY_OUT
+		}
+#endif  //BT_ENABLE_CONVEX_CONCAVE_EARLY_OUT
 
 		btTriangleShape tm(triangle[0], triangle[1], triangle[2]);
 		tm.setMargin(m_collisionMarginTriangle);
@@ -285,7 +284,7 @@ void btConvexConcaveCollisionAlgorithm::processCollision(const btCollisionObject
 									dist -= sphere->getRadius();
 									vtxWorldSpace -= sphere->getRadius() * normal;
 								}
-								resultOut->addContactPoint(normal, vtxWorldSpace - normal * dist, dist);
+								resultOut->addContactPoint(normal, vtxWorldSpace - normal * dist, dist, dist);
 							}
 						}
 					}

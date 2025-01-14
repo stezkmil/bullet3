@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_MANIFOLD_RESULT_H
 #define BT_MANIFOLD_RESULT_H
 
@@ -107,7 +106,7 @@ public:
 		m_index1 = index1;
 	}
 
-	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth);
+	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth) override;
 
 	SIMD_FORCE_INLINE void refreshContactPoints()
 	{

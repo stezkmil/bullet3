@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btContinuousConvexCollision.h"
 #include "BulletCollision/CollisionShapes/btConvexShape.h"
 #include "BulletCollision/NarrowPhaseCollision/btSimplexSolverInterface.h"
@@ -88,7 +87,7 @@ void btContinuousConvexCollision::computeClosestPoints(const btTransform& transA
 		pointCollector.addContactPoint(
 			normalOnSurfaceB,
 			vtxInPlaneWorld,
-			distance);
+			distance, distance);
 	}
 }
 

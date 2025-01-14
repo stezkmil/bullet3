@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 ///btBox2dBox2dCollisionAlgorithm, with modified b2CollidePolygons routines from the Box2D library.
 ///The modifications include: switching from b2Vec to btVector3, redefinition of b2Dot, b2Cross
 
@@ -404,7 +403,7 @@ void b2CollidePolygons(btManifoldResult* manifold,
 			//cp->localPoint1 = b2MulT(xfA, clipPoints2[i].v);
 			//cp->localPoint2 = b2MulT(xfB, clipPoints2[i].v);
 
-			manifold->addContactPoint(-manifoldNormal, clipPoints2[i].v, separation);
+			manifold->addContactPoint(-manifoldNormal, clipPoints2[i].v, separation, separation);
 
 			//			cp->id = clipPoints2[i].id;
 			//			cp->id.features.flip = flip;
