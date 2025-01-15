@@ -1408,7 +1408,7 @@ public:
 	}
 
 	virtual void updateLastSafeWorldTransform() override;
-	virtual void applyLastSafeWorldTransform(btScalar dist, int numContacts) override;
+	virtual void applyLastSafeWorldTransform(btScalar dist) override;
 };
 
 #endif  //_BT_SOFT_BODY_H

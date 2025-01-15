@@ -147,7 +147,7 @@ void btCollisionObject::serializeSingleObject(class btSerializer* serializer) co
 	serializer->finalizeChunk(chunk, structType, BT_COLLISIONOBJECT_CODE, (void*)this);
 }
 
-void btCollisionObject::applyLastSafeWorldTransform(btScalar dist, int numContacts)
+void btCollisionObject::applyLastSafeWorldTransform(btScalar dist)
 {
 	constexpr btScalar maxApplySteps = 10;
 	// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of

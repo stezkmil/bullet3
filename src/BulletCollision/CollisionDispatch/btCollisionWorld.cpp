@@ -1329,7 +1329,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		btPersistentManifold* contactManifold = getDispatcher()->getManifoldByIndexInternal(i);
 
 		int numContacts = contactManifold->getNumContacts();
-		fprintf(stderr, "numContacts %d\n", numContacts);
+		//fprintf(stderr, "numContacts %d\n", numContacts);
 		for (int j = 0; j < numContacts; ++j)
 		{
 			const auto& cp = contactManifold->getContactPoint(j);
@@ -1357,7 +1357,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 						};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody0()), val});
 					}
-					else if (body0IsSoft)
+					else
 					{
 						//	body0Iter->second.partialUnstuckIndex.insert(contactManifold->getBody0()->getCollisionShape()->getMapping({cp.m_partId0, cp.m_index0}));
 						body0Iter->second.distance = max(body0Iter->second.distance, cp.getUnmodifiedDistance());
@@ -1380,7 +1380,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 						};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody1()), val});
 					}
-					else if (body1IsSoft)
+					else
 					{
 						//	body1Iter->second.partialUnstuckIndex.insert(contactManifold->getBody1()->getCollisionShape()->getMapping({cp.m_partId1, cp.m_index1}));
 						body1Iter->second.distance = max(body1Iter->second.distance, cp.getUnmodifiedDistance());
@@ -1397,7 +1397,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			continue;
 		if (!penetratingColliders.contains(body))
 		{
-			fprintf(stderr, "no pen\n");
+			//fprintf(stderr, "no pen\n");
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
 			auto stuckTestCounter = body->getUserIndex2();
 			if (stuckTestCounter > 0)
@@ -1413,7 +1413,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			continue;
 		if (!penetratingColliders.contains(body))
 		{
-			fprintf(stderr, "no pen\n");
+			//fprintf(stderr, "no pen\n");
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
 			auto stuckTestCounter = body->getUserIndex2();
 			if (stuckTestCounter > 0)
@@ -1471,9 +1471,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			if (!(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING))
 				body->resetLastSafeApplyCounter();
 
-			fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
+			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
 			if (!bothSoft)  // Currently not done for soft vs soft. Will have to come up with something later for this case. Currently applyLastSafeWorldTransform does not work so great for this case.
-				body->applyLastSafeWorldTransform(dist, numContacts);
+				body->applyLastSafeWorldTransform(dist);
 			if (!isSoft && !m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
 
@@ -1487,7 +1487,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 				getDispatcher()->addInitialCollisionParticipant({body, opposingBody});
 			}
 		}
-		fprintf(stderr, "pen\n");
+		//fprintf(stderr, "pen\n");
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_IS_PENETRATING);
 	}
 

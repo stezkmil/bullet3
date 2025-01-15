@@ -532,7 +532,7 @@ public:
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(btScalar dist, int numContacts);
+	virtual void applyLastSafeWorldTransform(btScalar dist);
 
 	void resetLastSafeApplyCounter()
 	{
