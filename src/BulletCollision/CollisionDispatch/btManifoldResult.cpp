@@ -121,7 +121,7 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 	bool isSwapped = m_manifoldPtr->getBody0() != m_body0Wrap->getCollisionObject();
 	bool isNewCollision = m_manifoldPtr->getNumContacts() == 0;
 
-	btVector3 pointA = pointInWorld + normalOnBInWorld * depth;
+	btVector3 pointA = pointInWorld - normalOnBInWorld * unmodified_depth;
 
 	btVector3 localA;
 	btVector3 localB;

@@ -113,8 +113,8 @@ public:
 	btVector3 m_positionWorldOnA;
 	btVector3 m_normalWorldOnB;
 
-	btScalar m_distance1;
-	btScalar m_unmodified_distance1;
+	btScalar m_distance1;             // TODO this should be named depth (as in penetration depth)
+	btScalar m_unmodified_distance1;  // TODO this should be named distance (as in distance to triangles when they are not colliding)
 	btScalar m_combinedFriction;
 	btScalar m_combinedRollingFriction;   //torsional friction orthogonal to contact normal, useful to make spheres stop rolling forever
 	btScalar m_combinedSpinningFriction;  //torsional friction around contact normal, useful for grasping objects
