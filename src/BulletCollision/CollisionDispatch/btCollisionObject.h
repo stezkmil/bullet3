@@ -539,7 +539,7 @@ public:
 		m_lastSafeApplyCounter = 1;
 	}
 
-	btScalar getLastSafeApplyCounter() const
+	int getLastSafeApplyCounter() const
 	{
 		return m_lastSafeApplyCounter;
 	}
