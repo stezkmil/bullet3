@@ -15625,7 +15625,7 @@ bool PhysicsServerCommandProcessor::pickBody(const btVector3& rayFromWorld, cons
 							m_data->m_pickedSoftBody = psb;
 							psb->setActivationState(DISABLE_DEACTIVATION);
 							const btSoftBody::Face& f = psb->m_faces[face_id];
-							btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(100, 0, &f, nullptr, btVector4(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0), pickPos, m_data->m_maxPickingForce);
+							btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(100, 0, &f, nullptr, btVector4(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0), btTransform(btMatrix3x3::getIdentity(), pickPos), m_data->m_maxPickingForce);
 							m_data->m_mouseForce = mouse_force;
 
 							deformWorld->addForce(psb, mouse_force);
@@ -15687,7 +15687,7 @@ bool PhysicsServerCommandProcessor::movePickedBody(const btVector3& rayFromWorld
 			dir.normalize();
 			dir *= m_data->m_oldPickingDist;
 			newPivot = rayFromWorld + dir;
-			m_data->m_mouseForce->setMousePos(newPivot);
+			m_data->m_mouseForce->setDesiredTransform(btTransform(btMatrix3x3::getIdentity(), newPivot));
 		}
 	}
 #endif

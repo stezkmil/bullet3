@@ -1,4 +1,4 @@
-/*
+﻿/*
  Written by Xuchen Han <xuchenhan2015@u.northwestern.edu>
  
  Bullet Continuous Collision Detection and Physics Library
@@ -27,8 +27,16 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 	const btSoftBody::Face* m_face;
 	const btSoftBody::Tetra* m_tetra;
 	btVector4 m_barycenter;
-	btVector3 m_mouse_pos;
 	btScalar m_maxForce;
+
+	// We store the initial local positions of the nodes relative to the
+	// element's centroid/orientation. We'll transform these to get
+	// the current "desired" node positions in world space.
+	btAlignedObjectArray<btVector3> m_initialLocalPositions_x, m_initialLocalPositions_q;
+
+	// The current (desired) transform the user wants to impose (rotation + translation).
+	// This is updated every frame (e.g., as the mouse is moved/rotated).
+	btTransform m_desiredTransform;
 
 	const btSoftBody::Node* getNode(int i) const
 	{
@@ -71,8 +79,26 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 
 public:
 	typedef btAlignedObjectArray<btVector3> TVStack;
-	btDeformableMousePickingForce(btScalar k, btScalar d, const btSoftBody::Face* face, const btSoftBody::Tetra* tetra, const btVector4& barycenter, const btVector3& mouse_pos, btScalar maxForce = 0.3) : m_elasticStiffness(k), m_dampingStiffness(d), m_face(face), m_tetra(tetra), m_barycenter(barycenter), m_mouse_pos(mouse_pos), m_maxForce(maxForce)
+	btDeformableMousePickingForce(btScalar k, btScalar d, const btSoftBody::Face* face, const btSoftBody::Tetra* tetra, const btVector4& barycenter, const btTransform& initialTransform, btScalar maxForce = 0.3) : m_elasticStiffness(k), m_dampingStiffness(d), m_face(face), m_tetra(tetra), m_barycenter(barycenter), m_maxForce(maxForce), m_desiredTransform(initialTransform)
 	{
+		// Precompute the local positions of each node relative to the centroid
+		// (and possibly orientation, if you want to do local frames).
+		btVector3 picked_pos_x = getPickedPos(false);
+		btVector3 picked_pos_q = getPickedPos(true);
+		int count = getIndexCount();
+		m_initialLocalPositions_x.resize(count);
+		m_initialLocalPositions_q.resize(count);
+
+		for (int i = 0; i < count; ++i)
+		{
+			btVector3 worldPos = getNode(i)->m_x;
+			// local position relative to centroid
+			m_initialLocalPositions_x[i] = worldPos - picked_pos_x;
+
+			worldPos = getNode(i)->m_q;
+			// local position relative to centroid
+			m_initialLocalPositions_q[i] = worldPos - picked_pos_q;
+		}
 	}
 
 	virtual void addScaledForces(btScalar scale, TVStack& force)
@@ -88,49 +114,91 @@ public:
 
 	virtual void addScaledDampingForce(btScalar scale, TVStack& force)
 	{
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		btVector3 dir = diff.normalized();
-		for (int i = 0; i < getIndexCount(); ++i)
+		btScalar scaledDamp = m_dampingStiffness * scale;
+
+		int count = getIndexCount();
+		if (count == 0) return;
+
+		// For each node, compute velocity damping in the direction
+		// of the 'spring' to the target.
+		for (int i = 0; i < count; ++i)
 		{
-			btVector3 v_diff = getNode(i)->m_v;
-			btVector3 scaled_force = scale * m_dampingStiffness * v_diff;
-			if (diff.norm() > SIMD_EPSILON)
-			{
-				scaled_force = scale * m_dampingStiffness * v_diff.dot(dir) * dir;
-			}
-			force[getNode(i)->index] -= scaled_force;
+			const btSoftBody::Node* node = getNode(i);
+			btVector3 v = node->m_v;  // velocity
+			// Desired (target) position for this node
+			btVector3 desiredPos = m_desiredTransform * m_initialLocalPositions_x[i];
+			// Current position
+			btVector3 currPos = node->m_x;
+			// Spring direction
+			btVector3 diff = currPos - desiredPos;
+			btScalar length = diff.length();
+			btVector3 dir = length > SIMD_EPSILON ? diff.normalized() : btVector3(0, 0, 0);
+
+			// Project velocity along the spring direction if you like,
+			// or simply damp full velocity
+			// This matches your original pattern: v_diff.dot(dir)*dir
+			btVector3 dampingForce = scaledDamp * (v.dot(dir)) * dir;
+
+			// Subtract from net force
+			force[node->index] -= dampingForce;
 		}
 	}
 
 	virtual void addScaledElasticForce(btScalar scale, TVStack& force)
 	{
-		btScalar scaled_stiffness = scale * m_elasticStiffness;
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		for (int i = 0; i < getIndexCount(); ++i)
+		btScalar scaled_stiffness = m_elasticStiffness * scale;
+
+		int count = getIndexCount();
+		if (count == 0) return;
+
+		for (int i = 0; i < count; ++i)
 		{
-			btVector3 scaled_force = scaled_stiffness * diff;
-			if (scaled_force.safeNorm() > m_maxForce)
+			const btSoftBody::Node* node = getNode(i);
+			// Desired (target) position
+			btVector3 desiredPos = m_desiredTransform * m_initialLocalPositions_x[i];
+			// Current position
+			btVector3 currPos = node->m_x;
+			// Displacement
+			btVector3 diff = currPos - desiredPos;
+
+			// Force = -k * diff
+			btVector3 springForce = -scaled_stiffness * diff;
+
+			// Clamp to max force if desired
+			if (m_maxForce > btScalar(0) && springForce.safeNorm() > m_maxForce)
 			{
-				scaled_force.safeNormalize();
-				scaled_force *= m_maxForce;
+				springForce.safeNormalize();
+				springForce *= m_maxForce;
 			}
-			force[getNode(i)->index] -= scaled_force;
+
+			// Add to the net force array
+			force[node->index] += springForce;
 		}
 	}
 
 	virtual void addScaledDampingForceDifferential(btScalar scale, const TVStack& dv, TVStack& df)
 	{
-		btScalar scaled_k_damp = m_dampingStiffness * scale;
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		btVector3 dir = diff.normalized();
-		for (int i = 0; i < getIndexCount(); ++i)
+		// Typically for a picking transform, you might do something similar
+		// to the above. This is left as an exercise if you need full implicit
+		// damping coupling. For simplicity, we can either omit or do a partial version:
+		btScalar scaledDamp = m_dampingStiffness * scale;
+
+		int count = getIndexCount();
+		if (count == 0) return;
+
+		for (int i = 0; i < count; ++i)
 		{
-			btVector3 local_scaled_df = scaled_k_damp * dv[getNode(i)->index];
-			if ((getNode(i)->m_x - m_mouse_pos).norm() > SIMD_EPSILON)
-			{
-				local_scaled_df = scaled_k_damp * dv[getNode(i)->index].dot(dir) * dir;
-			}
-			df[getNode(i)->index] -= local_scaled_df;
+			const btSoftBody::Node* node = getNode(i);
+			// Get direction of spring at current state:
+			btVector3 desiredPos = m_desiredTransform * m_initialLocalPositions_x[i];
+			btVector3 currPos = node->m_x;
+			btVector3 diff = currPos - desiredPos;
+			btScalar length = diff.length();
+			btVector3 dir = (length > SIMD_EPSILON) ? diff.normalized() : btVector3(0, 0, 0);
+
+			// Project velocity differential along that direction
+			btVector3 local_df = scaledDamp * (dv[node->index].dot(dir)) * dir;
+			df[node->index] -= local_df;
 		}
 	}
 
@@ -138,16 +206,23 @@ public:
 
 	virtual double totalElasticEnergy(btScalar dt)
 	{
-		double energy = 0;
-		btVector3 diff = getPickedPos(true) - m_mouse_pos;
-		for (int i = 0; i < getIndexCount(); ++i)
+		double energy = 0.0;
+		int count = getIndexCount();
+		if (count == 0) return energy;
+
+		for (int i = 0; i < count; ++i)
 		{
-			btVector3 scaled_force = m_elasticStiffness * diff;
-			if (scaled_force.safeNorm() > m_maxForce)
+			const btSoftBody::Node* node = getNode(i);
+			btVector3 desiredPos = m_desiredTransform * m_initialLocalPositions_q[i];
+			btVector3 diff = node->m_q - desiredPos;
+			// Force magnitude (if below max, otherwise clamp)
+			btVector3 scaled_force = m_elasticStiffness * (-diff);
+			if (m_maxForce > btScalar(0) && scaled_force.safeNorm() > m_maxForce)
 			{
 				scaled_force.safeNormalize();
 				scaled_force *= m_maxForce;
 			}
+			// Energy = 0.5 * F • displacement
 			energy += 0.5 * scaled_force.dot(diff);
 		}
 		return energy;
@@ -155,18 +230,22 @@ public:
 
 	virtual double totalDampingEnergy(btScalar dt)
 	{
-		double energy = 0;
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		btVector3 dir = diff.normalized();
-		for (int i = 0; i < getIndexCount(); ++i)
+		double energy = 0.0;
+		int count = getIndexCount();
+		if (count == 0) return energy;
+
+		for (int i = 0; i < count; ++i)
 		{
-			btVector3 v_diff = getNode(i)->m_v;
-			btVector3 scaled_force = m_dampingStiffness * v_diff;
-			if (diff.norm() > SIMD_EPSILON)
-			{
-				scaled_force = m_dampingStiffness * v_diff.dot(dir) * dir;
-			}
-			energy -= scaled_force.dot(getNode(i)->m_v) / dt;
+			const btSoftBody::Node* node = getNode(i);
+			// Same pattern as addScaledDampingForce
+			btVector3 v = node->m_v;
+			btVector3 desiredPos = m_desiredTransform * m_initialLocalPositions_x[i];
+			btVector3 diff = node->m_x - desiredPos;
+			btVector3 dir = diff.length() > SIMD_EPSILON ? diff.normalized() : btVector3(0, 0, 0);
+			btVector3 dampingForce = m_dampingStiffness * (v.dot(dir)) * dir;
+
+			// Damping energy = - F • v * dt
+			energy -= dampingForce.dot(v) / dt;
 		}
 		return energy;
 	}
@@ -174,12 +253,15 @@ public:
 	virtual void addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df)
 	{
 		btScalar scaled_stiffness = scale * m_elasticStiffness;
-		btVector3 diff = getPickedPos(true) - m_mouse_pos;
-		btScalar dir_norm = diff.norm();
-		btVector3 dir_normalized = (dir_norm > SIMD_EPSILON) ? diff.normalized() : btVector3(0, 0, 0);
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
-			int id = getNode(i)->index;
+			const btSoftBody::Node* node = getNode(i);
+			btVector3 desiredPos = m_desiredTransform * m_initialLocalPositions_q[i];
+			btVector3 diff = node->m_q - desiredPos;
+			btScalar dir_norm = diff.norm();
+			btVector3 dir_normalized = (dir_norm > SIMD_EPSILON) ? diff.normalized() : btVector3(0, 0, 0);
+
+			int id = node->index;
 			btVector3 dx_diff = dx[id];
 			btScalar r = 0;  // rest length is 0 for picking spring
 			btVector3 scaled_df = btVector3(0, 0, 0);
@@ -193,9 +275,9 @@ public:
 		}
 	}
 
-	void setMousePos(const btVector3& p)
+	void setDesiredTransform(const btTransform& t)
 	{
-		m_mouse_pos = p;
+		m_desiredTransform = t;
 	}
 
 	void setMaxForce(btScalar maxForce)
@@ -219,4 +301,4 @@ public:
 	}
 };
 
-#endif /* btMassSpring_h */
+#endif

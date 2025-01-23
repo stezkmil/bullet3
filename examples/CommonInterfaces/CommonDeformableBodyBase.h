@@ -117,7 +117,7 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 					m_pickedSoftBody = psb;
 					psb->setActivationState(DISABLE_DEACTIVATION);
 					const btSoftBody::Face& f = psb->m_faces[face_id];
-					btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, &f, nullptr, btVector4(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0), m_hitPos, m_maxPickingForce);
+					btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, &f, nullptr, btVector4(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0), btTransform(btMatrix3x3::getIdentity(), m_hitPos), m_maxPickingForce);
 					m_mouseForce = mouse_force;
 					getDeformableDynamicsWorld()->addForce(psb, mouse_force);
 				}
@@ -181,7 +181,7 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 			dir.normalize();
 			dir *= m_oldPickingDist;
 			newPivot = rayFromWorld + dir;
-			m_mouseForce->setMousePos(newPivot);
+			m_mouseForce->setDesiredTransform(btTransform(btMatrix3x3::getIdentity(), newPivot));
 		}
 		return false;
 	}
