@@ -1492,7 +1492,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 	}
 
 	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state.
-	// TODO some "clusterisation" could be done so that each "cluster" of close bodies has its own nothingStuck. Clusters would be based on AABB collisions of all bodies.
+	// TODO some "clusterisation" could be done so that each "cluster" of close bodies has its own nothingStuck. This should be based on island ids, which are already available.
 	if (nothingStuck)
 	{
 		for (int i = 0; i < numBodies; i++)
