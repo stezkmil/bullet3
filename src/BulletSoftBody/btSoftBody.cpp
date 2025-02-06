@@ -4371,8 +4371,8 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating)
 {
-	constexpr btScalar offsetMagnitudeFactor = 0.5;  // TODO obviously it would be best if such an ad hoc magical value was not needed
-	distance *= offsetMagnitudeFactor;
+	//constexpr btScalar offsetMagnitudeFactor = 1.0;  // TODO obviously it would be best if such an ad hoc magical value was not needed
+	//distance *= offsetMagnitudeFactor;
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 

@@ -18,7 +18,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "LinearMath/btScalar.h"
 #include "btSimulationIslandManager.h"
 #include "BulletCollision/BroadphaseCollision/btDispatcher.h"
@@ -42,8 +41,33 @@ void btSimulationIslandManager::initUnionFind(int n)
 	m_unionFind.reset(n);
 }
 
-void btSimulationIslandManager::findUnions(btDispatcher* /* dispatcher */, btCollisionWorld* colWorld)
+// This is useful when body activations have to be kept to a bare minimum (when the bodies are very detailed and the collision detection which follows after a wakeup is very costly)
+#define NARROW_PHASE_BASED_UNIONS 1
+
+void btSimulationIslandManager::findUnions(btDispatcher* dispatcher, btCollisionWorld* colWorld)
 {
+#ifdef NARROW_PHASE_BASED_UNIONS
+	int i;
+	int maxNumManifolds = dispatcher->getNumManifolds();
+
+	// Note that unions based on constraints are handled in btDiscreteDynamicsWorld::calculateSimulationIslands(), so they don't have to be here
+	for (i = 0; i < maxNumManifolds; i++)
+	{
+		btPersistentManifold* manifold = dispatcher->getManifoldByIndexInternal(i);
+		if (manifold->getNumContacts() == 0)
+			continue;
+
+		const btCollisionObject* colObj0 = manifold->getBody0();
+		const btCollisionObject* colObj1 = manifold->getBody1();
+
+		if ((colObj0 && colObj0->mergesSimulationIslands()) &&
+			(colObj1 && colObj1->mergesSimulationIslands()))
+		{
+			m_unionFind.unite(colObj0->getIslandTag(),
+							  colObj1->getIslandTag());
+		}
+	}
+#else
 	{
 		btOverlappingPairCache* pairCachePtr = colWorld->getPairCache();
 		const int numOverlappingPairs = pairCachePtr->getNumOverlappingPairs();
@@ -66,6 +90,7 @@ void btSimulationIslandManager::findUnions(btDispatcher* /* dispatcher */, btCol
 			}
 		}
 	}
+#endif
 }
 
 #ifdef STATIC_SIMULATION_ISLAND_OPTIMIZATION
@@ -238,7 +263,7 @@ void btSimulationIslandManager::buildIslands(btDispatcher* dispatcher, btCollisi
 				//				printf("error in island management\n");
 			}
 
-            btAssert((colObj0->getIslandTag() == islandId) || (colObj0->getIslandTag() == -1));
+			btAssert((colObj0->getIslandTag() == islandId) || (colObj0->getIslandTag() == -1));
 			if (colObj0->getIslandTag() == islandId)
 			{
 				if (colObj0->getActivationState() == ACTIVE_TAG ||
@@ -262,7 +287,7 @@ void btSimulationIslandManager::buildIslands(btDispatcher* dispatcher, btCollisi
 					//					printf("error in island management\n");
 				}
 
-                btAssert((colObj0->getIslandTag() == islandId) || (colObj0->getIslandTag() == -1));
+				btAssert((colObj0->getIslandTag() == islandId) || (colObj0->getIslandTag() == -1));
 
 				if (colObj0->getIslandTag() == islandId)
 				{
@@ -283,8 +308,7 @@ void btSimulationIslandManager::buildIslands(btDispatcher* dispatcher, btCollisi
 					//					printf("error in island management\n");
 				}
 
-                 btAssert((colObj0->getIslandTag() == islandId) || (colObj0->getIslandTag() == -1));
-
+				btAssert((colObj0->getIslandTag() == islandId) || (colObj0->getIslandTag() == -1));
 
 				if (colObj0->getIslandTag() == islandId)
 				{
@@ -343,17 +367,16 @@ void btSimulationIslandManager::buildIslands(btDispatcher* dispatcher, btCollisi
 	}
 }
 
-
 ///@todo: this is random access, it can be walked 'cache friendly'!
 void btSimulationIslandManager::buildAndProcessIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback)
 {
 	buildIslands(dispatcher, collisionWorld);
-    processIslands(dispatcher, collisionWorld, callback);
+	processIslands(dispatcher, collisionWorld, callback);
 }
 
 void btSimulationIslandManager::processIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback)
 {
-    btCollisionObjectArray& collisionObjects = collisionWorld->getCollisionObjectArray();
+	btCollisionObjectArray& collisionObjects = collisionWorld->getCollisionObjectArray();
 	int endIslandIndex = 1;
 	int startIslandIndex;
 	int numElem = getUnionFind().getNumElements();
