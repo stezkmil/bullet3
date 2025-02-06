@@ -27,6 +27,13 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 	const btSoftBody::Face* m_face;
 	const btSoftBody::Tetra* m_tetra;
 	btVector4 m_barycenter;
+	// To grab not only by the positional DOFs, but also by the rotational DOFs, thus making the body retain its original orientation when it was first grabbed,
+	// we use all the vertices of the grabbed primitive, be it triangle or a tetra. The m_vertex_to_barycenter is remembered when first grabbed and then when the
+	// mouse is moving, these offsets are added to the new mouse pos. This creates forces which push the vertices of the primitive, so that the original orientation
+	// is achieved. This has a side effect that the grabbed primitive resists deformation. Remains to be seen if that is a problem.
+	// TODO it is theorised that if vertices from other more distant tetras were used to retain orientation, the stabilizing effect would be much stronger.
+	btVector3 m_vertex_to_barycenter_x[4];
+	btVector3 m_vertex_to_barycenter_q[4];
 	btVector3 m_mouse_pos;
 	btScalar m_maxForce;
 
@@ -46,6 +53,17 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 		else if (m_tetra)
 			return 4;
 		return 0;
+	}
+
+	void calculateVertexToBarycenter()
+	{
+		auto picked_pos_x = getPickedPos(false);
+		auto picked_pos_q = getPickedPos(true);
+		for (int i = 0; i < getIndexCount(); ++i)
+		{
+			m_vertex_to_barycenter_x[i] = getNode(i)->m_x - picked_pos_x;
+			m_vertex_to_barycenter_q[i] = getNode(i)->m_q - picked_pos_q;
+		}
 	}
 
 	btVector3 getPickedPos(bool use_q) const
@@ -73,6 +91,7 @@ public:
 	typedef btAlignedObjectArray<btVector3> TVStack;
 	btDeformableMousePickingForce(btScalar k, btScalar d, const btSoftBody::Face* face, const btSoftBody::Tetra* tetra, const btVector4& barycenter, const btVector3& mouse_pos, btScalar maxForce = 0.3) : m_elasticStiffness(k), m_dampingStiffness(d), m_face(face), m_tetra(tetra), m_barycenter(barycenter), m_mouse_pos(mouse_pos), m_maxForce(maxForce)
 	{
+		calculateVertexToBarycenter();
 	}
 
 	virtual void addScaledForces(btScalar scale, TVStack& force)
@@ -88,13 +107,13 @@ public:
 
 	virtual void addScaledDampingForce(btScalar scale, TVStack& force)
 	{
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		btVector3 dir = diff.normalized();
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
+			btVector3 diffForVert = -(m_mouse_pos + m_vertex_to_barycenter_x[i] - getNode(i)->m_x);
+			btVector3 dir = diffForVert.normalized();
 			btVector3 v_diff = getNode(i)->m_v;
 			btVector3 scaled_force = scale * m_dampingStiffness * v_diff;
-			if (diff.norm() > SIMD_EPSILON)
+			if (diffForVert.norm() > SIMD_EPSILON)
 			{
 				scaled_force = scale * m_dampingStiffness * v_diff.dot(dir) * dir;
 			}
@@ -105,10 +124,10 @@ public:
 	virtual void addScaledElasticForce(btScalar scale, TVStack& force)
 	{
 		btScalar scaled_stiffness = scale * m_elasticStiffness;
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
-			btVector3 scaled_force = scaled_stiffness * diff;
+			btVector3 diffForVert = -(m_mouse_pos + m_vertex_to_barycenter_x[i] - getNode(i)->m_x);
+			btVector3 scaled_force = scaled_stiffness * diffForVert;
 			if (scaled_force.safeNorm() > m_maxForce)
 			{
 				scaled_force.safeNormalize();
@@ -121,10 +140,10 @@ public:
 	virtual void addScaledDampingForceDifferential(btScalar scale, const TVStack& dv, TVStack& df)
 	{
 		btScalar scaled_k_damp = m_dampingStiffness * scale;
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		btVector3 dir = diff.normalized();
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
+			btVector3 diffForVert = -(m_mouse_pos + m_vertex_to_barycenter_x[i] - getNode(i)->m_x);
+			btVector3 dir = diffForVert.normalized();
 			btVector3 local_scaled_df = scaled_k_damp * dv[getNode(i)->index];
 			if ((getNode(i)->m_x - m_mouse_pos).norm() > SIMD_EPSILON)
 			{
@@ -139,16 +158,16 @@ public:
 	virtual double totalElasticEnergy(btScalar dt)
 	{
 		double energy = 0;
-		btVector3 diff = getPickedPos(true) - m_mouse_pos;
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
-			btVector3 scaled_force = m_elasticStiffness * diff;
+			btVector3 diffForVert = -(m_mouse_pos + m_vertex_to_barycenter_q[i] - getNode(i)->m_q);
+			btVector3 scaled_force = m_elasticStiffness * diffForVert;
 			if (scaled_force.safeNorm() > m_maxForce)
 			{
 				scaled_force.safeNormalize();
 				scaled_force *= m_maxForce;
 			}
-			energy += 0.5 * scaled_force.dot(diff);
+			energy += 0.5 * scaled_force.dot(diffForVert);
 		}
 		return energy;
 	}
@@ -156,13 +175,13 @@ public:
 	virtual double totalDampingEnergy(btScalar dt)
 	{
 		double energy = 0;
-		btVector3 diff = getPickedPos(false) - m_mouse_pos;
-		btVector3 dir = diff.normalized();
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
+			btVector3 diffForVert = -(m_mouse_pos + m_vertex_to_barycenter_x[i] - getNode(i)->m_x);
+			btVector3 dir = diffForVert.normalized();
 			btVector3 v_diff = getNode(i)->m_v;
 			btVector3 scaled_force = m_dampingStiffness * v_diff;
-			if (diff.norm() > SIMD_EPSILON)
+			if (diffForVert.norm() > SIMD_EPSILON)
 			{
 				scaled_force = m_dampingStiffness * v_diff.dot(dir) * dir;
 			}
@@ -174,11 +193,11 @@ public:
 	virtual void addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df)
 	{
 		btScalar scaled_stiffness = scale * m_elasticStiffness;
-		btVector3 diff = getPickedPos(true) - m_mouse_pos;
-		btScalar dir_norm = diff.norm();
-		btVector3 dir_normalized = (dir_norm > SIMD_EPSILON) ? diff.normalized() : btVector3(0, 0, 0);
 		for (int i = 0; i < getIndexCount(); ++i)
 		{
+			btVector3 diffForVert = -(m_mouse_pos + m_vertex_to_barycenter_q[i] - getNode(i)->m_q);
+			btScalar dir_norm = diffForVert.norm();
+			btVector3 dir_normalized = (dir_norm > SIMD_EPSILON) ? diffForVert.normalized() : btVector3(0, 0, 0);
 			int id = getNode(i)->index;
 			btVector3 dx_diff = dx[id];
 			btScalar r = 0;  // rest length is 0 for picking spring
