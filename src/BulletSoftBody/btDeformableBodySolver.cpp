@@ -51,6 +51,9 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			computeStep(x, rhs);
 			for (int i = 0; i < m_dv.size(); ++i)
 			{
+				fprintf(stderr, "rhs %f %f %f\n", rhs[i].x(), rhs[i].y(), rhs[i].z());
+				if (x[i].length2() > 0.1)
+					int dbg = 0;
 				m_dv[i] = x[i];
 			}
 		}
@@ -275,6 +278,9 @@ void btDeformableBodySolver::updateVelocity()
 		}
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
+			if (m_dv[counter].x() > 0.01)
+				int dbg = 0;
+			fprintf(stderr, "dv %d %f %f %f\n", j, m_dv[counter].x(), m_dv[counter].y(), m_dv[counter].z());
 			// set NaN to zero;
 			if (m_dv[counter] != m_dv[counter])
 			{
@@ -517,11 +523,13 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
+		//fprintf(stderr, "framestart()\n");
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
 			btSoftBody::Node& node = psb->m_nodes[j];
 			btScalar maxDisplacement = psb->getWorldInfo()->m_maxDisplacement;
 			btScalar clampDeltaV = maxDisplacement / timeStep;
+			//fprintf(stderr, "v %d %f %f %f\n", j, node.m_v.x(), node.m_v.y(), node.m_v.z());
 			for (int c = 0; c < 3; c++)
 			{
 				if (node.m_v[c] > clampDeltaV)
@@ -542,7 +550,11 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 		{
 			btSoftBody::DeformableNodeRigidAnchor& a = psb->m_deformableAnchors[j];
 			btSoftBody::Node* n = a.m_node;
+			//fprintf(stderr, "a.m_local %d %f %f %f\n", j, a.m_local.x(), a.m_local.y(), a.m_local.z());
+			//fprintf(stderr, "n->m_x orig %d %f %f %f\n", j, n->m_x.x(), n->m_x.y(), n->m_x.z());
+			//fprintf(stderr, "getWorldTransform %d %f %f %f\n", j, a.m_cti.m_colObj->getWorldTransform().getOrigin().x(), a.m_cti.m_colObj->getWorldTransform().getOrigin().y(), a.m_cti.m_colObj->getWorldTransform().getOrigin().z());
 			n->m_x = a.m_cti.m_colObj->getWorldTransform() * a.m_local;
+			//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", j, n->m_x.x(), n->m_x.y(), n->m_x.z());
 
 			// update multibody anchor info
 			if (a.m_cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
@@ -589,6 +601,7 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 				}
 			}
 		}
+		//fprintf(stderr, "frameend()\n");
 		psb->interpolateRenderMesh();
 	}
 }

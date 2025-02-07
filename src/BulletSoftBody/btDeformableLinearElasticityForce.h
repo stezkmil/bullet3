@@ -139,6 +139,7 @@ public:
 				force[id1] -= scale1 * df_on_node123.getColumn(0);
 				force[id2] -= scale1 * df_on_node123.getColumn(1);
 				force[id3] -= scale1 * df_on_node123.getColumn(2);
+				fprintf(stderr, "force[id0] %d %f %f %f scale1 %f df_on_node0 %f %f %f\n", j, force[id0].x(), force[id0].y(), force[id0].z(), scale1, df_on_node0.x(), df_on_node0.y(), df_on_node0.z());
 			}
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
@@ -148,6 +149,7 @@ public:
 				{
 					force[id] -= scale * node.m_v / node.m_im * m_damping_alpha;
 				}
+				//fprintf(stderr, "force[id] %d %f %f %f scale %f node.m_v %f %f %f node.m_im %f m_damping_alpha %f\n", j, force[id].x(), force[id].y(), force[id].z(), scale, node.m_v.x(), node.m_v.y(), node.m_v.z(), node.m_im, m_damping_alpha);
 			}
 		}
 	}
