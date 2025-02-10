@@ -51,9 +51,6 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			computeStep(x, rhs);
 			for (int i = 0; i < m_dv.size(); ++i)
 			{
-				fprintf(stderr, "rhs %f %f %f\n", rhs[i].x(), rhs[i].y(), rhs[i].z());
-				if (x[i].length2() > 0.1)
-					int dbg = 0;
 				m_dv[i] = x[i];
 			}
 		}
@@ -278,9 +275,6 @@ void btDeformableBodySolver::updateVelocity()
 		}
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
-			if (m_dv[counter].x() > 0.01)
-				int dbg = 0;
-			fprintf(stderr, "dv %d %f %f %f\n", j, m_dv[counter].x(), m_dv[counter].y(), m_dv[counter].z());
 			// set NaN to zero;
 			if (m_dv[counter] != m_dv[counter])
 			{
