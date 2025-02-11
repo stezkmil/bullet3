@@ -5263,38 +5263,40 @@ void btSoftBody::updateLastSafeWorldTransform()
 
 void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 {
-	// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
-	// values. If we got to high fraction values close to 1.0, then the soft would be unresponsive.
-	// Disadvantage is that it will never truly reach the safe destination, just approach it.
+	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
+	{
+		// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
+		// values. If we got to high fraction values close to 1.0, then the soft would be unresponsive.
+		// Disadvantage is that it will never truly reach the safe destination, just approach it.
 
-	// Naturally, I am not happy with this heuristic. It would be best to just calculate the impulses so that this unstuck is never needed, but I was not able to do this.
-	// It can happen that a soft does not have its safe position updated in a long time, so this partial application of the safe position can cause noticeable
-	// stoppage of the soft body.
+		// Naturally, I am not happy with this heuristic. It would be best to just calculate the impulses so that this unstuck is never needed, but I was not able to do this.
+		// It can happen that a soft does not have its safe position updated in a long time, so this partial application of the safe position can cause noticeable
+		// stoppage of the soft body.
 
-	constexpr btScalar maxFraction = 0.1;
-	constexpr btScalar distForMaxFraction = 100.0;
+		constexpr btScalar maxFraction = 0.1;
+		constexpr btScalar distForMaxFraction = 100.0;
 
-	/*numContacts = numContacts - 50;
+		/*numContacts = numContacts - 50;
 	numContacts = std::max(numContacts, 0);
 	auto normedNumContacts = numContacts / 50.0;
 	normedNumContacts = std::min(normedNumContacts, 1.0);
 	normedNumContacts = std::max(normedNumContacts, 0.0);*/
 
-	dist = dist / distForMaxFraction;
-	auto normedDist = std::min(dist, 1.0);
-	normedDist = std::max(normedDist, 0.0);
+		dist = dist / distForMaxFraction;
+		auto normedDist = std::min(dist, 1.0);
+		normedDist = std::max(normedDist, 0.0);
 
-	auto fraction = maxFraction * normedDist /*maxFraction * normedNumContacts*/;
-	//fprintf(stderr, "fraction %f\n", fraction);
-	//fprintf(stderr, "apply\n");
+		auto fraction = maxFraction * normedDist /*maxFraction * normedNumContacts*/;
+		//fprintf(stderr, "fraction %f\n", fraction);
+		//fprintf(stderr, "apply\n");
 
-	for (auto i = 0; i < m_nodes.size(); ++i)
-	{
-		const auto& src = m_nodes[i].m_safe;
-		auto& dst = m_nodes[i];
-		dst.m_x = dst.m_x.lerp(src.m_x, fraction);
-		//dst.m_q = dst.m_q.lerp(src.m_q, fraction);
-		/*dst.m_v = dst.m_v.lerp(src.m_v, fraction);
+		for (auto i = 0; i < m_nodes.size(); ++i)
+		{
+			const auto& src = m_nodes[i].m_safe;
+			auto& dst = m_nodes[i];
+			dst.m_x = dst.m_x.lerp(src.m_x, fraction);
+			//dst.m_q = dst.m_q.lerp(src.m_q, fraction);
+			/*dst.m_v = dst.m_v.lerp(src.m_v, fraction);
 		dst.m_vn = dst.m_vn.lerp(src.m_vn, fraction);
 		dst.m_f = dst.m_f.lerp(src.m_f, fraction);
 		dst.m_n = dst.m_n.lerp(src.m_n, fraction);
@@ -5304,5 +5306,6 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
+		}
 	}
 }

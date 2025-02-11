@@ -155,6 +155,7 @@ public:
 		CF_HAS_COLLISION_SOUND_TRIGGER = 1024,
 		CF_IS_PENETRATING = 2048,
 		CF_DO_UNSTUCK = 4096,
+		CF_APPLY_LAST_SAFE = 8192,
 	};
 
 	enum CollisionObjectTypes
