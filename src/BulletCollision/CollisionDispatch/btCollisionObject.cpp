@@ -166,5 +166,7 @@ void btCollisionObject::applyLastSafeWorldTransform(btScalar dist)
 		setWorldTransform(interp);
 		if (fraction < 1.0)
 			++m_lastSafeApplyCounter;
+		// Would it be possible to develop a velocity based unstuck for btRigidBody, where position would be overwritten, but also a linear and angular velocity would be added
+		// for one simulation step, which would make it easier for the solvers (the deformable soft body constraint solver in particular) to cope without explosions?
 	}
 }
