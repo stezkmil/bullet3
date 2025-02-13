@@ -46,7 +46,7 @@ protected:
 	int m_maxNewtonIterations;                                     // max number of newton iterations
 	btScalar m_newtonTolerance;                                    // stop newton iterations if f(x) < m_newtonTolerance
 	bool m_lineSearch;                                             // If true, use newton's method with line search under implicit scheme
-	bool m_reducedSolver;																					 // flag for reduced soft body solver
+	bool m_reducedSolver;                                          // flag for reduced soft body solver
 public:
 	// handles data related to objective function
 	btDeformableBackwardEulerObjective* m_objective;
@@ -113,12 +113,12 @@ public:
 	virtual void copySoftBodyToVertexBuffer(const btSoftBody* const softBody, btVertexBufferDescriptor* vertexBuffer) {}
 
 	// process collision between deformable and rigid
-	virtual void processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, const btManifoldResultForSkin* resultOut);
+	virtual void processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, btManifoldResultForSkin* resultOut);
 
 	// process collision between deformable and deformable
 	virtual void processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody);
 
-	virtual void processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, const btManifoldResultForSkin* resultOut);
+	virtual void processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, btManifoldResultForSkin* resultOut);
 
 	// If true, implicit time stepping scheme is used.
 	// Otherwise, explicit time stepping scheme is used
@@ -176,7 +176,7 @@ public:
 			case btDeformableBackwardEulerObjective::KKT_preconditioner:
 				m_objective->m_preconditioner = m_objective->m_KKTPreconditioner;
 				break;
-			
+
 			default:
 				btAssert(false);
 				break;
@@ -207,7 +207,7 @@ public:
 	{
 		return m_reducedSolver;
 	}
-	
+
 	virtual void deformableBodyInternalWriteBack() {}
 
 	// unused functions

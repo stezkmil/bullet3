@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_SOFT_BODY_DEFAULT_SOLVER_H
 #define BT_SOFT_BODY_DEFAULT_SOLVER_H
 
@@ -57,11 +56,11 @@ public:
 
 	virtual void copySoftBodyToVertexBuffer(const btSoftBody *const softBody, btVertexBufferDescriptor *vertexBuffer);
 
-	virtual void processCollision(btSoftBody *, const btCollisionObjectWrapper *, const btManifoldResultForSkin *);
+	virtual void processCollision(btSoftBody *, const btCollisionObjectWrapper *, btManifoldResultForSkin *);
 
 	virtual void processCollision(btSoftBody *, btSoftBody *);
 
-	virtual void processCollision(btSoftBody *, btSoftBody *, const btManifoldResultForSkin *);
+	virtual void processCollision(btSoftBody *, btSoftBody *, btManifoldResultForSkin *);
 };
 
 #endif  // #ifndef BT_ACCELERATED_SOFT_BODY_CPU_SOLVER_H

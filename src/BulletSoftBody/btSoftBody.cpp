@@ -4369,7 +4369,7 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 }
 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-											   btScalar distance, const bool penetrating)
+											   btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	//constexpr btScalar offsetMagnitudeFactor = 1.0;  // TODO obviously it would be best if such an ad hoc magical value was not needed
 	//distance *= offsetMagnitudeFactor;
@@ -4419,6 +4419,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		c.m_cti.m_colObj = rigidBody;
 		c.m_cti.m_normal = contactNormalOnSoftCollisionMesh;
 		c.m_cti.m_offset = distance;
+		c.m_cti.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
 
 		btScalar ima = n.m_im;
 		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
@@ -4490,7 +4491,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
-void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh)
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	// See similar comment in skinSoftRigidCollisionHandler
@@ -4567,6 +4568,7 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 			c.m_node1 = &nOther;
 			c.m_colObj = otherSoft;
 			c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
+			c.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
 			m_nodeNodeContacts.push_back(c);
 
 			// Not entirely sure if this is needed as applyRepulsionForce applies opposite forces on both faces in one go, but there is some
@@ -4703,6 +4705,9 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 		{
 			I *= 2.0;
 		}
+
+		if (c.m_contact_point_impulse_magnitude)
+			*c.m_contact_point_impulse_magnitude = std::abs(I);
 
 		if (node0_penetration <= 0)
 		{

@@ -240,6 +240,7 @@ public:
 		btScalar m_offset;                 /* Offset from origin	        */
 		btVector3 m_bary;                  /* Barycentric weights for faces */
 		int m_count = 0;
+		mutable btScalar* m_contact_point_impulse_magnitude = nullptr;
 		sCti() : m_impulse(0, 0, 0) {}
 	};
 
@@ -450,6 +451,7 @@ public:
 		btVector3 m_normal;                 // Normal
 		btScalar m_friction;                // Friction
 		const btCollisionObject* m_colObj;  // Collision object to collide with.
+		btScalar* m_contact_point_impulse_magnitude = nullptr;
 	};
 
 	/* SContact		*/
@@ -1153,8 +1155,8 @@ public:
 	/* defaultCollisionHandlers												*/
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
-	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating);
-	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh);
+	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
+	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar* contactPointImpulseMagnitude);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();

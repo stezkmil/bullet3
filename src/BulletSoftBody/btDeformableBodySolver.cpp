@@ -600,17 +600,17 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 	}
 }
 
-void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, const btManifoldResultForSkin* resultOut)
+void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, btManifoldResultForSkin* resultOut)
 {
 	if (softBody->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE)
 		softBody->defaultCollisionHandler(collisionObjectWrap);
 	else
 	{
-		const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
+		auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 		softBody->skinSoftRigidCollisionHandler(collisionObjectWrap,
 												resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB(),  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 												resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
-												cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING);
+												cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING, &cp.m_appliedImpulse);
 	}
 }
 
@@ -619,9 +619,9 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 	softBody->defaultCollisionHandler(otherSoftBody);
 }
 
-void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, const btManifoldResultForSkin* resultOut)
+void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, btManifoldResultForSkin* resultOut)
 {
-	const auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
+	auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB(),  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
-										   resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB);
+										   resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB, &cp.m_appliedImpulse);
 }

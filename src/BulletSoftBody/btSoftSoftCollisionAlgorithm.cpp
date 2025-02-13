@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btSoftSoftCollisionAlgorithm.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "BulletCollision/CollisionShapes/btBoxShape.h"
@@ -46,7 +45,7 @@ void btSoftSoftCollisionAlgorithm::processCollision(const btCollisionObjectWrapp
 	if ((soft0->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE && soft1->getCollisionShape()->getShapeType() == SOFTBODY_SHAPE_PROXYTYPE))
 		soft0->getSoftBodySolver()->processCollision(soft0, soft1);
 	else
-		soft0->getSoftBodySolver()->processCollision(soft0, soft1, static_cast<const btManifoldResultForSkin*>(resultOut));
+		soft0->getSoftBodySolver()->processCollision(soft0, soft1, static_cast<btManifoldResultForSkin*>(resultOut));
 }
 
 btScalar btSoftSoftCollisionAlgorithm::calculateTimeOfImpact(btCollisionObject* /*body0*/, btCollisionObject* /*body1*/, const btDispatcherInfo& /*dispatchInfo*/, btManifoldResult* /*resultOut*/)

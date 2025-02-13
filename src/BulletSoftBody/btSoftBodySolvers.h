@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_SOFT_BODY_SOLVERS_H
 #define BT_SOFT_BODY_SOLVERS_H
 
@@ -90,12 +89,12 @@ public:
 	virtual void updateSoftBodies() = 0;
 
 	/** Process a collision between one of the world's soft bodies and another collision object */
-	virtual void processCollision(btSoftBody *, const struct btCollisionObjectWrapper *, const btManifoldResultForSkin *) = 0;
+	virtual void processCollision(btSoftBody *, const struct btCollisionObjectWrapper *, btManifoldResultForSkin *) = 0;
 
 	/** Process a collision between two soft bodies */
 	virtual void processCollision(btSoftBody *, btSoftBody *) = 0;
 
-	virtual void processCollision(btSoftBody *, btSoftBody *, const btManifoldResultForSkin *) = 0;
+	virtual void processCollision(btSoftBody *, btSoftBody *, btManifoldResultForSkin *) = 0;
 
 	/** Set the number of velocity constraint solver iterations this solver uses. */
 	virtual void setNumberOfPositionIterations(int iterations)

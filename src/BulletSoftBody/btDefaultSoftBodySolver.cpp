@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "BulletCollision/CollisionShapes/btTriangleIndexVertexArray.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObject.h"
 #include "BulletCollision/CollisionShapes/btCollisionShape.h"
@@ -131,13 +130,13 @@ void btDefaultSoftBodySolver::processCollision(btSoftBody *softBody, btSoftBody 
 	softBody->defaultCollisionHandler(otherSoftBody);
 }
 
-void btDefaultSoftBodySolver::processCollision(btSoftBody *softBody, btSoftBody *otherSoftBody, const btManifoldResultForSkin *)
+void btDefaultSoftBodySolver::processCollision(btSoftBody *softBody, btSoftBody *otherSoftBody, btManifoldResultForSkin *)
 {
 	softBody->defaultCollisionHandler(otherSoftBody);
 }
 
 // For the default solver just leave the soft body to do its collision processing
-void btDefaultSoftBodySolver::processCollision(btSoftBody *softBody, const btCollisionObjectWrapper *collisionObjectWrap, const btManifoldResultForSkin *resultOut)
+void btDefaultSoftBodySolver::processCollision(btSoftBody *softBody, const btCollisionObjectWrapper *collisionObjectWrap, btManifoldResultForSkin *resultOut)
 {
 	softBody->defaultCollisionHandler(collisionObjectWrap);
 }  // btDefaultSoftBodySolver::processCollision

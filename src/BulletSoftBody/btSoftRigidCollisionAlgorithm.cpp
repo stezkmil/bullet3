@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btSoftRigidCollisionAlgorithm.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "BulletCollision/CollisionShapes/btSphereShape.h"
@@ -66,7 +65,7 @@ void btSoftRigidCollisionAlgorithm::processCollision(const btCollisionObjectWrap
 
 	if (softBody->m_collisionDisabledObjects.findLinearSearch(rigidCollisionObjectWrap->getCollisionObject()) == softBody->m_collisionDisabledObjects.size())
 	{
-		softBody->getSoftBodySolver()->processCollision(softBody, rigidCollisionObjectWrap, static_cast<const btManifoldResultForSkin*>(resultOut));
+		softBody->getSoftBodySolver()->processCollision(softBody, rigidCollisionObjectWrap, static_cast<btManifoldResultForSkin*>(resultOut));
 	}
 }
 
