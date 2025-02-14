@@ -4371,8 +4371,6 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
-	//constexpr btScalar offsetMagnitudeFactor = 1.0;  // TODO obviously it would be best if such an ad hoc magical value was not needed
-	//distance *= offsetMagnitudeFactor;
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
@@ -4392,14 +4390,10 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 		for (auto i = 0; i < m_nodeRigidContacts.size(); ++i)
 		{
 			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
-			// This prevents that.
+			// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftSoftCollisionHandler, or deduplicate.
 			if (m_nodeRigidContacts[i].m_cti.m_colObj == rigidBody && m_nodeRigidContacts[i].m_node == &n)
 			{
 				alreadyImpulsed = true;
-				// TODO we should not just modify normals. If dragging through a hole, then all the normals pointing to the circle center should be kept.
-				// Otherwise the cable will not stay calmly in the hole. It would be better (but it would be more expensive) to just do findNClosestNodesLinearComplexity
-				// with 1 as the N parameter and the do a 3d "blur" operation between all these nodes. Where blurring will create contacts on inbetween nodes with blurred normals.
-				// The blurring would be done using a kernel with a radius which would correspond to the original value of N being 30.
 				auto newNormal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
 				if (newNormal.fuzzyZero())
 					break;
@@ -4491,66 +4485,62 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
-void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar* contactPointImpulseMagnitude)
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
-	// See similar comment in skinSoftRigidCollisionHandler
+
+	/*fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
+	auto lineStart = contactPointOnSoftCollisionMesh;
+	auto lineEnd = contactPointOnSoftCollisionMesh + contactNormalOnSoftCollisionMesh * 10.0;
+	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", lineStart.x(), lineStart.y(), lineStart.z(),
+			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
+
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto otherNodeCount = std::max(static_cast<int>(otherSoft->m_nodes.size() * influencedNodesFactor), 1);
 	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
 	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, otherNodeCount);
 
-	bool iGoingAgain = false;
-	bool jGoingAgain = false;
-	for (auto i = 0, j = 0; !(iGoingAgain && jGoingAgain); ++i, ++j)
+	for (auto i = 0, j = 0; i < res.size() && j < resOther.size(); ++i, ++j)
 	{
-		if (i >= res.size())
-		{
-			i = 0;
-			iGoingAgain = true;
-		}
-
-		if (j >= resOther.size())
-		{
-			j = 0;
-			jGoingAgain = true;
-		}
-
 		btSoftBody::Node& n = m_nodes[res[i]];
 		btSoftBody::Node& nOther = otherSoft->m_nodes[resOther[j]];
 
 		bool alreadyCreated = false;
 		for (auto c = 0; c < m_nodeNodeContacts.size(); ++c)
+		{
 			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
-			// This prevents that.
+			// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftRigidCollisionHandler, or deduplicate.
 			if (m_nodeNodeContacts[c].m_colObj == otherSoft && m_nodeNodeContacts[c].m_node0 == &n && m_nodeNodeContacts[c].m_node1 == &nOther)
 			{
 				alreadyCreated = true;
-				// TODO we should not just modify normals. If dragging through a hole, then all the normals pointing to the circle center should be kept.
-				// Otherwise the cable will not stay calmly in the hole. It would be better (but it would be more expensive) to just do findNClosestNodesLinearComplexity
-				// with 1 as the N parameter and the do a 3d "blur" operation between all these nodes. Where blurring will create contacts on inbetween nodes with blurred normals.
-				// The blurring would be done using a kernel with a radius which would correspond to the original value of N being 30.
-				m_nodeNodeContacts[c].m_normal += contactNormalOnSoftCollisionMesh;
+
+				auto newNormal = (m_nodeNodeContacts[c].m_count * m_nodeNodeContacts[c].m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeNodeContacts[c].m_count + 1);
+				if (newNormal.fuzzyZero())
+					break;
+				m_nodeNodeContacts[c].m_normal = newNormal;
+				++m_nodeNodeContacts[c].m_count;
 				m_nodeNodeContacts[c].m_normal = m_nodeNodeContacts[c].m_normal.normalize();
+				m_nodeNodeContacts[c].m_offset = std::min(m_nodeNodeContacts[c].m_offset, distance);
 				break;
 			}
+		}
 
 		if (alreadyCreated)
 			continue;
 
-		/*if (!origsDrawn)
-		{
+		//if (!origsDrawn)
+		/*{
 			for (auto i = 0; i < m_faces.size(); ++i)
 			{
 				auto& f = m_faces[i];
-				fprintf(stderr, "createTriangleObject \"tri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+				fprintf(stderr, "drawtriangle \"tri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
 						f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
 						f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
 			}
 			for (auto i = 0; i < otherSoft->m_faces.size(); ++i)
 			{
 				auto& f = otherSoft->m_faces[i];
-				fprintf(stderr, "createTriangleObject \"othertri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+				fprintf(stderr, "drawtriangle \"othertri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
 						f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
 						f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
 			}
@@ -4564,18 +4554,12 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 		{
 			btSoftBody::DeformableNodeNodeContact c;
 			c.m_normal = contactNormalOnSoftCollisionMesh;
+			c.m_offset = distance;
 			c.m_node0 = &n;
 			c.m_node1 = &nOther;
 			c.m_colObj = otherSoft;
 			c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
 			c.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
-			m_nodeNodeContacts.push_back(c);
-
-			// Not entirely sure if this is needed as applyRepulsionForce applies opposite forces on both faces in one go, but there is some
-			// asymetry there - for example the mass is calculated only based on node0.
-			c.m_normal = -contactNormalOnSoftCollisionMesh;
-			c.m_node0 = &nOther;
-			c.m_node1 = &n;
 			m_nodeNodeContacts.push_back(c);
 		}
 	}
@@ -4676,52 +4660,49 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 		btSoftBody::Node* node1 = c.m_node1;
 		const btVector3& n = c.m_normal;
 		//fprintf(stderr, "c.m_normal %f %f %f\n", c.m_normal.x(), c.m_normal.y(), c.m_normal.z());
-		btVector3 l = node0->m_x - node1->m_x;
-		btScalar d = n.dot(l);  // Not taking into account the margins, because margins were already taken into consideration in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
-		d = btMax(btScalar(0), d);
 
 		const btVector3& va = node0->m_v;
 		btVector3 vb = node1->m_v;
 		btVector3 vr = va - vb;
 		const btScalar vn = btDot(vr, n);  // dn < 0 <==> opposing
+		btVector3 vt = vr - vn * n;
+		btScalar vtNorm = vt.safeNorm();
+
 		//fprintf(stderr, "vn %f d %f rhs %f\n", vn, d, OVERLAP_REDUCTION_FACTOR * d / timeStep);
-		if (vn > OVERLAP_REDUCTION_FACTOR * d / timeStep)
+		if (vn >= 0.0)
 		{
 			//fprintf(stderr, "CONTINUE\n");
 			continue;
 		}
-		const btScalar impulseFactor = 1.0;
-		btVector3 vt = vr - vn * n;
-		btScalar I = 0;
-		btScalar mass = node0->m_im == 0 ? 0 : btScalar(1) / node0->m_im;
-		if (applySpringForce)
-			I = -btMin(m_repulsionStiffness * timeStep * d, mass * (OVERLAP_REDUCTION_FACTOR * d / timeStep - vn));
-		if (vn < 0)
-			I += impulseFactor * mass * vn;
-		int node0_penetration = node0->m_constrained, node1_penetration = node1->m_constrained;
 
-		//             double the impulse if node or face is constrained.
-		if (node0_penetration > 0 || node1_penetration > 0)
-		{
-			I *= 2.0;
-		}
+		btScalar invMass0 = node0->m_im;
+		btScalar invMass1 = node1->m_im;
+		btScalar invMassSum = invMass0 + invMass1;
+		if (invMassSum < SIMD_EPSILON)
+			continue;
+
+		// Typical "collision" style impulse
+		btScalar restitution = 0.f;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
+		btScalar jCollision = -(1.f + restitution) * vn / invMassSum;
+		btScalar jPenetration = -c.m_offset;
+		btScalar jTotal = jCollision + jPenetration;
 
 		if (c.m_contact_point_impulse_magnitude)
-			*c.m_contact_point_impulse_magnitude = std::abs(I);
+			*c.m_contact_point_impulse_magnitude = std::abs(jTotal);
 
-		if (node0_penetration <= 0)
+		if (node0->m_constrained == 0)
 		{
-			auto delta = -I * node0->m_im * n;
+			auto delta = (jTotal * invMass0) * n;
 			//fprintf(stderr, "node0->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
 			node0->m_v += delta;
 			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
 		}
 
-		if (node1_penetration <= 0)
+		if (node1->m_constrained == 0)
 		{
-			auto delta = I * node0->m_im * n;
+			auto delta = (jTotal * invMass1) * n;
 			//fprintf(stderr, "node1->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
-			node1->m_v += delta;
+			node1->m_v -= delta;
 			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
 		}
 
@@ -4729,26 +4710,25 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 		btScalar vt_norm = vt.safeNorm();
 		if (vt_norm > SIMD_EPSILON)
 		{
-			btScalar delta_vn = -2 * I * node0->m_im;
+			// friction coefficient
 			btScalar mu = c.m_friction;
-			btScalar vt_new = btMax(btScalar(1) - mu * delta_vn / (vt_norm + SIMD_EPSILON), btScalar(0)) * vt_norm;
-			I = impulseFactor * mass * (vt_norm - vt_new);
-			vt.safeNormalize();
-			//                 double the impulse if node or face is constrained.
-			if (node0_penetration > 0 || node1_penetration > 0)
-				I *= 2.0;
 
-			if (node0_penetration <= 0)
-			{
-				node0->m_v -= I * node0->m_im * vt;
-				//fprintf(stderr, "after frict node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
-			}
+			// ideal friction impulse (no clamp)
+			// note: we re-check relative velocity in tangent after normal impulse if you prefer
+			btVector3 vtDir = vt / vtNorm;
+			// friction tries to cancel tangential velocity
+			// jFric = - vtNorm / invMassSum
+			btScalar jFric = -vtNorm / invMassSum;
 
-			if (node1_penetration <= 0)
-			{
-				node1->m_v += I * node1->m_im * vt;
-				//fprintf(stderr, "after frict node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
-			}
+			// Coulomb clamp: limit friction by mu * normal impulse
+			btScalar frictionLimit = mu * jTotal;  // if j is positive normal impulse
+			btClamp(jFric, -frictionLimit, frictionLimit);
+
+			// Apply friction impulse
+			if (!node0->m_constrained)
+				node0->m_v += (jFric * invMass0) * vtDir;
+			if (!node1->m_constrained)
+				node1->m_v -= (jFric * invMass1) * vtDir;
 		}
 	}
 }

@@ -446,12 +446,14 @@ public:
 
 	struct DeformableNodeNodeContact
 	{
-		Node* m_node0;                      // Node0
-		Node* m_node1;                      // Node1
-		btVector3 m_normal;                 // Normal
+		Node* m_node0;       // Node0
+		Node* m_node1;       // Node1
+		btVector3 m_normal;  // Normal
+		btScalar m_offset;
 		btScalar m_friction;                // Friction
 		const btCollisionObject* m_colObj;  // Collision object to collide with.
 		btScalar* m_contact_point_impulse_magnitude = nullptr;
+		int m_count = 0;
 	};
 
 	/* SContact		*/
@@ -1156,7 +1158,7 @@ public:
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
-	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar* contactPointImpulseMagnitude);
+	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, btScalar* contactPointImpulseMagnitude);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
