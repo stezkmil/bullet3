@@ -654,6 +654,18 @@ int btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
 	return removedCount;
 }
 
+std::vector<int> btSoftBody::getDeformableAnchorByUserIndex(int userIndex) const
+{
+	std::vector<int> result;
+	for (int i = 0; i < m_deformableAnchors.size(); ++i)
+	{
+		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
+		if (c.m_userIndex == userIndex)
+			result.emplace_back(i);
+	}
+	return result;
+}
+
 //
 void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex)
 {
