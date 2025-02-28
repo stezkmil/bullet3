@@ -493,7 +493,7 @@ static void _find_quantized_collision_pairs_recursive_ser(
 			//collide right0 right1
 			_find_quantized_collision_pairs_recursive_ser(boxset0, boxset1, collision_pairs, trans_cache_1to0, boxset0->getRightNode(node0), boxset1->getRightNode(node1), false, findOnlyFirstPenetratingPair);
 		}  // else if node1 is not a leaf
-	}      // else if node0 is not a leaf
+	}  // else if node0 is not a leaf
 }
 
 // OUTDATED findOnlyFirstPenetratingPair behaviour
@@ -659,6 +659,7 @@ struct GroupedParams
 	ThreadLocalGImpactResult& perThreadIntermediateResults;
 	const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0;
 	bool findOnlyFirstPenetratingPair;
+	bool isSelfCollision;
 	std::atomic<bool>& firstPenetratingPairFound;
 	int threadLaunchStopLevel;
 	btGimpactVsGimpactGroupedParams grpParams;
@@ -667,9 +668,10 @@ struct GroupedParams
 				  ThreadLocalGImpactResult& perThreadIntermediateResults,
 				  const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0,
 				  bool findOnlyFirstPenetratingPair,
+				  bool isSelfCollision,
 				  std::atomic<bool>& firstPenetratingPairFound,
 				  int threadLaunchStopLevel,
-				  const btGimpactVsGimpactGroupedParams& grpParams) : boxset0(boxset0), boxset1(boxset1), perThreadIntermediateResults(perThreadIntermediateResults), trans_cache_1to0(trans_cache_1to0), findOnlyFirstPenetratingPair(findOnlyFirstPenetratingPair), firstPenetratingPairFound(firstPenetratingPairFound), threadLaunchStopLevel(threadLaunchStopLevel), grpParams(grpParams)
+				  const btGimpactVsGimpactGroupedParams& grpParams) : boxset0(boxset0), boxset1(boxset1), perThreadIntermediateResults(perThreadIntermediateResults), trans_cache_1to0(trans_cache_1to0), findOnlyFirstPenetratingPair(findOnlyFirstPenetratingPair), isSelfCollision(isSelfCollision), firstPenetratingPairFound(firstPenetratingPairFound), threadLaunchStopLevel(threadLaunchStopLevel), grpParams(grpParams)
 	{
 	}
 };
@@ -686,9 +688,54 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 	}
 	else if (!groupedParams.findOnlyFirstPenetratingPair && groupedParams.boxset0->isLeafNode(node0) && groupedParams.boxset1->isLeafNode(node1))
 	{
-		btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstPenetratingPair, &groupedParams.perThreadIntermediateResults, nullptr);
+		// Why is EvalPair called also here? It is a speed optimization. The assumption is that the tri-tri test is similar in cost as the aabb-obb test in
+		// _quantized_node_collision below, so it makes sense to check if both are leaves here and doing the tri-tri immediately, thus avoiding the aabb-obb test
+		// in _quantized_node_collision below. Doing also the aabb-obb would just waste time.
+		btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstPenetratingPair, groupedParams.isSelfCollision, &groupedParams.perThreadIntermediateResults, nullptr);
 		return;
 	}
+
+	// This branch is here only to correctly handle the remaining cases in one boxset colliding against itself (for soft body self collisions)
+	// See btDbvt::collideTT for reference (the "if (p.a == p.b)" branch)
+	if (groupedParams.isSelfCollision && !groupedParams.boxset0->isLeafNode(node0))
+	{
+		if (node0 == node1)
+		{
+			auto leftNode = groupedParams.boxset0->getLeftNode(node0);
+			auto rightNode = groupedParams.boxset0->getRightNode(node0);
+
+			if (level < groupedParams.threadLaunchStopLevel)
+			{
+				tbb::parallel_invoke(
+					[&groupedParams, leftNode, rightNode, level]
+					{
+						//collide left0 left0
+						_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, leftNode, level + 1, false);
+					},
+					[&groupedParams, leftNode, rightNode, level]
+					{
+						//collide right0 right0
+						_find_quantized_collision_pairs_recursive_par(groupedParams, rightNode, rightNode, level + 1, false);
+					},
+					[&groupedParams, leftNode, rightNode, level]
+					{
+						//collide left0 right0
+						_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, rightNode, level + 1, false);
+					});
+			}
+			else
+			{
+				//collide left0 left0
+				_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, leftNode, level + 1, false);
+				//collide right0 right0
+				_find_quantized_collision_pairs_recursive_par(groupedParams, rightNode, rightNode, level + 1, false);
+				//collide left0 right0
+				_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, rightNode, level + 1, false);
+			}
+			return;
+		}
+	}
+
 	if (_quantized_node_collision(
 			groupedParams.boxset0, groupedParams.boxset1, groupedParams.trans_cache_1to0,
 			node0, node1, complete_primitive_tests) == false)
@@ -703,7 +750,7 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 			// collision result
 			if (groupedParams.findOnlyFirstPenetratingPair)
 			{
-				if (btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstPenetratingPair, &groupedParams.perThreadIntermediateResults, nullptr))
+				if (btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstPenetratingPair, groupedParams.isSelfCollision, &groupedParams.perThreadIntermediateResults, nullptr))
 					groupedParams.firstPenetratingPairFound = true;
 			}
 			return;
@@ -794,7 +841,7 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false);
 			}
 		}  // else if node1 is not a leaf
-	}      // else if node0 is not a leaf
+	}  // else if node0 is not a leaf
 }
 
 void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0, const btTransform& trans0,
@@ -830,7 +877,7 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	// previously
 	if (grpParams.previouslyConsumedTime <= 100 || findOnlyFirstPenetratingPair)
 		threadLaunchStopLevel = 0;
-	GroupedParams groupedParams(boxset0, boxset1, perThreadIntermediateResults, trans_cache_1to0, findOnlyFirstPenetratingPair, firstPenetratingPairFound, threadLaunchStopLevel, grpParams);
+	GroupedParams groupedParams(boxset0, boxset1, perThreadIntermediateResults, trans_cache_1to0, findOnlyFirstPenetratingPair, boxset0 == boxset1, firstPenetratingPairFound, threadLaunchStopLevel, grpParams);
 	_find_quantized_collision_pairs_recursive_par(groupedParams, 0, 0, 0, true);
 	//auto end = std::chrono::steady_clock::now();
 

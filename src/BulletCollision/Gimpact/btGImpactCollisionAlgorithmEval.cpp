@@ -3,6 +3,7 @@
 
 bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 								 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair,
+								 bool isSelfCollision,
 								 ThreadLocalGImpactResult* perThreadIntermediateResults,
 								 std::list<btGImpactIntermediateResult>* intermediateResults)
 {
@@ -26,6 +27,18 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 
 	if (ptri0.validity_test() && ptri1.validity_test())
 	{
+		if (isSelfCollision)
+		{
+			// It would seem natural just to compare the triangle indices to check if the triangles are adjacent, but we are doing mesh subdivisions which
+			// do not do create shared indices (to make the subdivisions less costly), so all that we can do now is to compare the vertex coordinates. This
+			// is not completely bulletproof, but probably the best I can do now.
+			constexpr btScalar vertIsEqualEpsilon = 0.001;
+			for (auto i = 0; i < 3; ++i)
+				for (auto j = 0; j < 3; ++j)
+					if ((ptri0.m_vertices[i] - ptri1.m_vertices[j]).length2() < vertIsEqualEpsilon)
+						return false;  // It is an adjacent triangle. We ignore adjacent triangles in self collisions now.
+		}
+
 		//build planes
 		ptri0.buildTriPlane();
 		ptri1.buildTriPlane();
@@ -33,7 +46,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 		if (ptri0.overlap_test(ptri1))
 		{
 			if (ptri0.find_triangle_collision_alt_method_outer(ptri1, contact_data, gMarginZoneRecoveryStrengthFactor, grpParams.lastSafeTrans0,
-															   grpParams.lastSafeTrans1, ptri0Backup, ptri1Backup, grpParams.doUnstuck, grpParams.modifiedDepth))
+															   grpParams.lastSafeTrans1, ptri0Backup, ptri1Backup, grpParams.doUnstuck, isSelfCollision))
 			{
 				if (contact_data.m_point_count >= 1)
 				{

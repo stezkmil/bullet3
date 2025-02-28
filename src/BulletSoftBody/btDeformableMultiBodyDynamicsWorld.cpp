@@ -73,6 +73,47 @@ btDeformableMultiBodyDynamicsWorld::~btDeformableMultiBodyDynamicsWorld()
 	delete m_solverDeformableBodyIslandCallback;
 }
 
+void btDeformableMultiBodyDynamicsWorld::performDiscreteCollisionDetection()
+{
+	BT_PROFILE("performDiscreteCollisionDetection");
+
+	btDispatcherInfo& dispatchInfo = getDispatchInfo();
+
+	updateAabbs();
+
+	computeOverlappingPairs();
+
+	addSoftsWithSelfCollisionCheckToOverlappingPairs();
+
+	btDispatcher* dispatcher = getDispatcher();
+	{
+		BT_PROFILE("dispatchAllCollisionPairs");
+		if (dispatcher)
+			dispatcher->dispatchAllCollisionPairs(m_broadphasePairCache->getOverlappingPairCache(), dispatchInfo, m_dispatcher1);
+	}
+}
+
+void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlappingPairs()
+{
+	btBroadphaseInterface* broadphase = getBroadphase();
+	btOverlappingPairCache* pairCache = broadphase->getOverlappingPairCache();
+
+	if (!pairCache)
+		return;
+
+	for (int i = 0; i < m_softBodies.size(); ++i)
+	{
+		auto& soft = m_softBodies[i];
+		if (soft->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE && (soft->m_cfg.collisions & btSoftBody::fCollision::CL_SELF))  // Do this only for "our" type of softs
+		{
+			if (!soft->getBroadphaseHandle())
+				continue;
+
+			pairCache->addOverlappingPair(soft->getBroadphaseHandle(), soft->getBroadphaseHandle());
+		}
+	}
+}
+
 void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 {
 	BT_PROFILE("internalSingleStepSimulation");
@@ -90,7 +131,7 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	//fprintf(stderr, "framestart()\n");
 	///perform collision detection that involves rigid/multi bodies
-	btMultiBodyDynamicsWorld::performDiscreteCollisionDetection();
+	performDiscreteCollisionDetection();
 
 	if (0 != m_internalPostDiscreteCollisionDetectionTickCallback)
 	{
@@ -141,10 +182,9 @@ void btDeformableMultiBodyDynamicsWorld::performDeformableCollisionDetection()
 	{
 		for (int j = i; j < m_softBodies.size(); ++j)
 		{
-			if ((m_softBodies[i]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE || m_softBodies[j]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE) &&
-				i != j)
+			if (m_softBodies[i]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE || m_softBodies[j]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE)
 			{
-				// If any shape is not the default soft shape, then the collision is checked elsewhere. For now, self collisions are an exception - they are handled here no matter what.
+				// If any shape is not the default soft shape, then the collision is checked elsewhere
 				continue;
 			}
 			m_softBodies[i]->defaultCollisionHandler(m_softBodies[j]);

@@ -554,7 +554,6 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 	grpParams.shape0 = shape0;
 	grpParams.shape1 = shape1;
 	grpParams.doUnstuck = (isStatic0 ? body1Wrap : body0Wrap)->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK;
-	grpParams.modifiedDepth = body0Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY && body1Wrap->getCollisionObject()->getInternalType() != btCollisionObject::CO_SOFT_BODY;
 	grpParams.lastSafeTrans0 = isStatic0 ? grpParams.orgtrans0 : body0Wrap->getCollisionObject()->getLastSafeWorldTransform();
 	grpParams.lastSafeTrans1 = isStatic1 ? grpParams.orgtrans1 : body1Wrap->getCollisionObject()->getLastSafeWorldTransform();
 
@@ -640,7 +639,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 	std::list<btGImpactIntermediateResult> intermediateResults;
 	for (auto pairIter = auxPairSet.begin(); pairIter != auxPairSet.end(); ++pairIter)
 	{
-		btGImpactPairEval::EvalPair(*pairIter, grpParams, false, nullptr, &intermediateResults);
+		btGImpactPairEval::EvalPair(*pairIter, grpParams, false, false, nullptr, &intermediateResults);
 	}
 
 	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1);

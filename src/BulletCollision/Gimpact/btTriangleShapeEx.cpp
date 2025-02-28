@@ -820,9 +820,9 @@ bool btPrimitiveTriangle::find_triangle_collision_clip_method(btPrimitiveTriangl
 
 bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTriangle& other, GIM_TRIANGLE_CONTACT& contacts, btScalar marginZoneRecoveryStrengthFactor,
 																   const btTransform& thisTransformLastSafe, const btTransform& otherTransformLastSafe,
-																   const btPrimitiveTriangle& thisBackup, const btPrimitiveTriangle& otherBackup, bool doUnstuck, /*TODO remove*/ bool depthModified)
+																   const btPrimitiveTriangle& thisBackup, const btPrimitiveTriangle& otherBackup, bool doUnstuck, bool isSelfCollision)
 {
-	btScalar margin = m_margin + other.m_margin;
+	btScalar margin = isSelfCollision ? 0.0 : (m_margin + other.m_margin);
 	btScalar marginEpsilon = margin / 40.0;
 
 	contacts.m_point_count = 0;

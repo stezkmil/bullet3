@@ -70,6 +70,8 @@ protected:
 
 	void updateLastSafeTransforms();
 
+	void addSoftsWithSelfCollisionCheckToOverlappingPairs();
+
 public:
 	btDeformableMultiBodyDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btDeformableMultiBodyConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration, btDeformableBodySolver* deformableBodySolver = 0);
 
@@ -124,6 +126,8 @@ public:
 	}
 
 	virtual void setGravity(const btVector3& gravity);
+
+	void performDiscreteCollisionDetection() override;
 
 	void reinitialize(btScalar timeStep);
 

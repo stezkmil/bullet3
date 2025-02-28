@@ -57,7 +57,6 @@ struct btGimpactVsGimpactGroupedParams
 	btTransform lastSafeTrans0;
 	btTransform lastSafeTrans1;
 	bool doUnstuck;
-	bool modifiedDepth;
 	int previouslyConsumedTime;
 	btGimpactVsGimpactGroupedParams() {}
 };
@@ -65,7 +64,7 @@ struct btGimpactVsGimpactGroupedParams
 struct btGImpactPairEval
 {
 	static bool EvalPair(const GIM_PAIR& pair,
-						 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair,
+						 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair, bool isSelfCollision,
 						 ThreadLocalGImpactResult* perThreadIntermediateResults,
 						 std::list<btGImpactIntermediateResult>* intermediateResults);
 };
