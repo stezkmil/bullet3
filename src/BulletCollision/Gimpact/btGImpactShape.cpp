@@ -290,9 +290,22 @@ const char* btGImpactMeshShape::serialize(void* dataBuffer, btSerializer* serial
 	return "btGImpactMeshShapeData";
 }
 
-int btGImpactMeshShape::getMapping(const std::pair<int, int>& partAndIndex) const
+int btGImpactMeshShape::getMapping(int part, int vertIndex) const
 {
-	auto shapePart = getMeshPart(partAndIndex.first);
+	auto shapePart = getMeshPart(part);
 	auto manager = shapePart->getPrimitiveManager();
-	return manager->get_mapping(partAndIndex.second);
+	return manager->get_mapping(vertIndex);
+}
+
+std::set<int> btGImpactMeshShape::getMappingForTri(int part, int triIndex) const
+{
+	auto shapePart = getMeshPart(part);
+	auto manager = shapePart->getPrimitiveManager();
+	unsigned int A, B, C;
+	manager->get_primitive_indices(triIndex, A, B, C);
+	std::set<int> retVal;
+	retVal.insert(manager->get_mapping(A));
+	retVal.insert(manager->get_mapping(B));
+	retVal.insert(manager->get_mapping(C));
+	return retVal;
 }

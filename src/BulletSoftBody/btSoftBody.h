@@ -1161,6 +1161,7 @@ public:
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
 	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, btScalar* contactPointImpulseMagnitude);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
+	int findClosestNodeByMapping(int part, int triIndex, const btVector3& p) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);

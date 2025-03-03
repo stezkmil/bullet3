@@ -125,9 +125,14 @@ public:
 	virtual void setMargin(btScalar margin) = 0;
 	virtual btScalar getMargin() const = 0;
 
-	virtual int getMapping(const std::pair<int, int>& partAndIndex) const
+	virtual int getMapping(int part, int vertIndex) const
 	{
 		return 0;
+	}
+
+	virtual std::set<int> getMappingForTri(int part, int triIndex) const
+	{
+		return std::set<int>();
 	}
 
 	///optional user data pointer

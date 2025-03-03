@@ -4351,6 +4351,12 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 	}
 }
 
+int btSoftBody::findClosestNodeByMapping(int part, int triIndex, const btVector3& p) const
+{
+	auto tetraIndices = getCollisionShape()->getMappingForTri(part, triIndex);
+	return 0;
+}
+
 std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& p, int N) const
 {
 	std::vector<std::tuple<int, btScalar>> nodeDistances;
@@ -4509,6 +4515,7 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto otherNodeCount = std::max(static_cast<int>(otherSoft->m_nodes.size() * influencedNodesFactor), 1);
+	// TODO use it also in rigid soft
 	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
 	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, otherNodeCount);
 
