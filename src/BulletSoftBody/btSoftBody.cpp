@@ -4354,7 +4354,19 @@ void btSoftBody::defaultCollisionHandler(btSoftBody* psb)
 int btSoftBody::findClosestNodeByMapping(int part, int triIndex, const btVector3& p) const
 {
 	auto tetraIndices = getCollisionShape()->getMappingForTri(part, triIndex);
-	return 0;
+	std::map<btScalar, int> nodeDistances;
+	for (auto tetraIndex : tetraIndices)
+	{
+		for (auto n = 0; n < 4; ++n)
+		{
+			auto& node = m_tetras[tetraIndex].m_n[n];
+			nodeDistances.insert({(p - node->m_x).length2(), node->index});
+		}
+	}
+	if (!nodeDistances.empty())
+		return nodeDistances.begin()->second;
+	else
+		return -1;
 }
 
 std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& p, int N) const
@@ -4386,7 +4398,7 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	return closestNodes;
 }
 
-void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
+void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
@@ -4399,111 +4411,112 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
-	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
-	for (const auto& r : res)
+	auto res = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
+
+	if (res == -1)
+		return;
+
+	btSoftBody::Node& n = m_nodes[res];
+
+	bool alreadyImpulsed = false;
+	for (auto i = 0; i < m_nodeRigidContacts.size(); ++i)
 	{
-		btSoftBody::Node& n = m_nodes[r];
-
-		bool alreadyImpulsed = false;
-		for (auto i = 0; i < m_nodeRigidContacts.size(); ++i)
+		// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
+		// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftSoftCollisionHandler, or deduplicate.
+		if (m_nodeRigidContacts[i].m_cti.m_colObj == rigidBody && m_nodeRigidContacts[i].m_node == &n)
 		{
-			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
-			// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftSoftCollisionHandler, or deduplicate.
-			if (m_nodeRigidContacts[i].m_cti.m_colObj == rigidBody && m_nodeRigidContacts[i].m_node == &n)
-			{
-				alreadyImpulsed = true;
-				auto newNormal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
-				if (newNormal.fuzzyZero())
-					break;
-				m_nodeRigidContacts[i].m_cti.m_normal = newNormal;
-				++m_nodeRigidContacts[i].m_cti.m_count;
-				m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
-				m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
+			alreadyImpulsed = true;
+			auto newNormal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
+			if (newNormal.fuzzyZero())
 				break;
-			}
+			m_nodeRigidContacts[i].m_cti.m_normal = newNormal;
+			++m_nodeRigidContacts[i].m_cti.m_count;
+			m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
+			m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
+			break;
 		}
+	}
 
-		if (alreadyImpulsed)
-			continue;
+	if (alreadyImpulsed)
+		return;
 
-		btSoftBody::DeformableNodeRigidContact c;
+	btSoftBody::DeformableNodeRigidContact c;
 
-		c.m_cti.m_colObj = rigidBody;
-		c.m_cti.m_normal = contactNormalOnSoftCollisionMesh;
-		c.m_cti.m_offset = distance;
-		c.m_cti.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
+	c.m_cti.m_colObj = rigidBody;
+	c.m_cti.m_normal = contactNormalOnSoftCollisionMesh;
+	c.m_cti.m_offset = distance;
+	c.m_cti.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
 
-		btScalar ima = n.m_im;
-		const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
+	btScalar ima = n.m_im;
+	const btScalar imb = rigidBody ? rigidBody->getInvMass() : 0.f;
 
-		const btScalar ms = ima + imb;
-		if (ms > 0)
+	const btScalar ms = ima + imb;
+	if (ms > 0)
+	{
+		btSoftBody::sCti& cti = c.m_cti;
+
+		c.m_node = &n;
+		// friction is handled by the nodes to prevent sticking
+		//                    const btScalar fc = 0;
+		const btScalar fc = m_cfg.kDF * rigidWrap->getCollisionObject()->getFriction();
+
+		c.m_c2 = ima;
+		c.m_c3 = fc;
+		c.m_c4 = rigidWrap->getCollisionObject()->isStaticOrKinematicObject() ? m_cfg.kKHR : m_cfg.kCHR;
+		c.m_c5 = Diagonal(ima);
+		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
 		{
-			btSoftBody::sCti& cti = c.m_cti;
+			const btTransform& wtr = rigidBody ? rigidBody->getWorldTransform() : rigidWrap->getCollisionObject()->getWorldTransform();
+			static const btMatrix3x3 iwiStatic(0, 0, 0, 0, 0, 0, 0, 0, 0);
+			const btMatrix3x3& iwi = rigidBody ? rigidBody->getInvInertiaTensorWorld() : iwiStatic;
+			const btVector3 ra = contactPointOnSoftCollisionMesh - wtr.getOrigin();
 
-			c.m_node = &n;
-			// friction is handled by the nodes to prevent sticking
-			//                    const btScalar fc = 0;
-			const btScalar fc = m_cfg.kDF * rigidWrap->getCollisionObject()->getFriction();
-
-			c.m_c2 = ima;
-			c.m_c3 = fc;
-			c.m_c4 = rigidWrap->getCollisionObject()->isStaticOrKinematicObject() ? m_cfg.kKHR : m_cfg.kCHR;
-			c.m_c5 = Diagonal(ima);
-			if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
-			{
-				const btTransform& wtr = rigidBody ? rigidBody->getWorldTransform() : rigidWrap->getCollisionObject()->getWorldTransform();
-				static const btMatrix3x3 iwiStatic(0, 0, 0, 0, 0, 0, 0, 0, 0);
-				const btMatrix3x3& iwi = rigidBody ? rigidBody->getInvInertiaTensorWorld() : iwiStatic;
-				const btVector3 ra = contactPointOnSoftCollisionMesh - wtr.getOrigin();
-
-				// we do not scale the impulse matrix by dt
-				c.m_c0 = ImpulseMatrix(1, ima, imb, iwi, ra);
-				c.m_c1 = ra;
-			}
-			else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
-			{
-				btMultiBodyLinkCollider* multibodyLinkCol = (btMultiBodyLinkCollider*)btMultiBodyLinkCollider::upcast(cti.m_colObj);
-				if (multibodyLinkCol)
-				{
-					btVector3 normal = cti.m_normal;
-					btVector3 t1 = generateUnitOrthogonalVector(normal);
-					btVector3 t2 = btCross(normal, t1);
-					btMultiBodyJacobianData jacobianData_normal, jacobianData_t1, jacobianData_t2;
-					findJacobian(multibodyLinkCol, jacobianData_normal, contactPointOnSoftCollisionMesh, normal);
-					findJacobian(multibodyLinkCol, jacobianData_t1, contactPointOnSoftCollisionMesh, t1);
-					findJacobian(multibodyLinkCol, jacobianData_t2, contactPointOnSoftCollisionMesh, t2);
-
-					btScalar* J_n = &jacobianData_normal.m_jacobians[0];
-					btScalar* J_t1 = &jacobianData_t1.m_jacobians[0];
-					btScalar* J_t2 = &jacobianData_t2.m_jacobians[0];
-
-					btScalar* u_n = &jacobianData_normal.m_deltaVelocitiesUnitImpulse[0];
-					btScalar* u_t1 = &jacobianData_t1.m_deltaVelocitiesUnitImpulse[0];
-					btScalar* u_t2 = &jacobianData_t2.m_deltaVelocitiesUnitImpulse[0];
-
-					btMatrix3x3 rot(normal.getX(), normal.getY(), normal.getZ(),
-									t1.getX(), t1.getY(), t1.getZ(),
-									t2.getX(), t2.getY(), t2.getZ());  // world frame to local frame
-					const int ndof = multibodyLinkCol->m_multiBody->getNumDofs() + 6;
-					btMatrix3x3 local_impulse_matrix = (Diagonal(ima) + OuterProduct(J_n, J_t1, J_t2, u_n, u_t1, u_t2, ndof)).inverse();
-					c.m_c0 = rot.transpose() * local_impulse_matrix * rot;
-					c.jacobianData_normal = jacobianData_normal;
-					c.jacobianData_t1 = jacobianData_t1;
-					c.jacobianData_t2 = jacobianData_t2;
-					c.t1 = t1;
-					c.t2 = t2;
-				}
-			}
-			m_nodeRigidContacts.push_back(c);
+			// we do not scale the impulse matrix by dt
+			c.m_c0 = ImpulseMatrix(1, ima, imb, iwi, ra);
+			c.m_c1 = ra;
 		}
+		else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
+		{
+			btMultiBodyLinkCollider* multibodyLinkCol = (btMultiBodyLinkCollider*)btMultiBodyLinkCollider::upcast(cti.m_colObj);
+			if (multibodyLinkCol)
+			{
+				btVector3 normal = cti.m_normal;
+				btVector3 t1 = generateUnitOrthogonalVector(normal);
+				btVector3 t2 = btCross(normal, t1);
+				btMultiBodyJacobianData jacobianData_normal, jacobianData_t1, jacobianData_t2;
+				findJacobian(multibodyLinkCol, jacobianData_normal, contactPointOnSoftCollisionMesh, normal);
+				findJacobian(multibodyLinkCol, jacobianData_t1, contactPointOnSoftCollisionMesh, t1);
+				findJacobian(multibodyLinkCol, jacobianData_t2, contactPointOnSoftCollisionMesh, t2);
+
+				btScalar* J_n = &jacobianData_normal.m_jacobians[0];
+				btScalar* J_t1 = &jacobianData_t1.m_jacobians[0];
+				btScalar* J_t2 = &jacobianData_t2.m_jacobians[0];
+
+				btScalar* u_n = &jacobianData_normal.m_deltaVelocitiesUnitImpulse[0];
+				btScalar* u_t1 = &jacobianData_t1.m_deltaVelocitiesUnitImpulse[0];
+				btScalar* u_t2 = &jacobianData_t2.m_deltaVelocitiesUnitImpulse[0];
+
+				btMatrix3x3 rot(normal.getX(), normal.getY(), normal.getZ(),
+								t1.getX(), t1.getY(), t1.getZ(),
+								t2.getX(), t2.getY(), t2.getZ());  // world frame to local frame
+				const int ndof = multibodyLinkCol->m_multiBody->getNumDofs() + 6;
+				btMatrix3x3 local_impulse_matrix = (Diagonal(ima) + OuterProduct(J_n, J_t1, J_t2, u_n, u_t1, u_t2, ndof)).inverse();
+				c.m_c0 = rot.transpose() * local_impulse_matrix * rot;
+				c.jacobianData_normal = jacobianData_normal;
+				c.jacobianData_t1 = jacobianData_t1;
+				c.jacobianData_t2 = jacobianData_t2;
+				c.t1 = t1;
+				c.t2 = t2;
+			}
+		}
+		m_nodeRigidContacts.push_back(c);
 	}
 }
 
 //int cnt = 0;
 //int origsDrawn = false;
 
-void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, btScalar* contactPointImpulseMagnitude)
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 
@@ -4513,42 +4526,40 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", lineStart.x(), lineStart.y(), lineStart.z(),
 			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
 
-	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
-	auto otherNodeCount = std::max(static_cast<int>(otherSoft->m_nodes.size() * influencedNodesFactor), 1);
-	// TODO use it also in rigid soft
-	auto res = findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, nodeCount);
-	auto resOther = otherSoft->findNClosestNodesLinearComplexity(contactPointOnSoftCollisionMesh, otherNodeCount);
+	auto res = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
+	auto resOther = otherSoft->findClosestNodeByMapping(part1, index1, contactPointOnSoftCollisionMesh);
 
-	for (auto i = 0, j = 0; i < res.size() && j < resOther.size(); ++i, ++j)
+	if (res == -1 || resOther == -1)
+		return;
+
+	btSoftBody::Node& n = m_nodes[res];
+	btSoftBody::Node& nOther = otherSoft->m_nodes[resOther];
+
+	bool alreadyCreated = false;
+	for (auto c = 0; c < m_nodeNodeContacts.size(); ++c)
 	{
-		btSoftBody::Node& n = m_nodes[res[i]];
-		btSoftBody::Node& nOther = otherSoft->m_nodes[resOther[j]];
-
-		bool alreadyCreated = false;
-		for (auto c = 0; c < m_nodeNodeContacts.size(); ++c)
+		// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
+		// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftRigidCollisionHandler, or deduplicate.
+		if (m_nodeNodeContacts[c].m_colObj == otherSoft && m_nodeNodeContacts[c].m_node0 == &n && m_nodeNodeContacts[c].m_node1 == &nOther)
 		{
-			// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
-			// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftRigidCollisionHandler, or deduplicate.
-			if (m_nodeNodeContacts[c].m_colObj == otherSoft && m_nodeNodeContacts[c].m_node0 == &n && m_nodeNodeContacts[c].m_node1 == &nOther)
-			{
-				alreadyCreated = true;
+			alreadyCreated = true;
 
-				auto newNormal = (m_nodeNodeContacts[c].m_count * m_nodeNodeContacts[c].m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeNodeContacts[c].m_count + 1);
-				if (newNormal.fuzzyZero())
-					break;
-				m_nodeNodeContacts[c].m_normal = newNormal;
-				++m_nodeNodeContacts[c].m_count;
-				m_nodeNodeContacts[c].m_normal = m_nodeNodeContacts[c].m_normal.normalize();
-				m_nodeNodeContacts[c].m_offset = std::min(m_nodeNodeContacts[c].m_offset, distance);
+			auto newNormal = (m_nodeNodeContacts[c].m_count * m_nodeNodeContacts[c].m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeNodeContacts[c].m_count + 1);
+			if (newNormal.fuzzyZero())
 				break;
-			}
+			m_nodeNodeContacts[c].m_normal = newNormal;
+			++m_nodeNodeContacts[c].m_count;
+			m_nodeNodeContacts[c].m_normal = m_nodeNodeContacts[c].m_normal.normalize();
+			m_nodeNodeContacts[c].m_offset = std::min(m_nodeNodeContacts[c].m_offset, distance);
+			break;
 		}
+	}
 
-		if (alreadyCreated)
-			continue;
+	if (alreadyCreated)
+		return;
 
-		//if (!origsDrawn)
-		/*{
+	//if (!origsDrawn)
+	/*{
 			for (auto i = 0; i < m_faces.size(); ++i)
 			{
 				auto& f = m_faces[i];
@@ -4566,21 +4577,20 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, const btVec
 			origsDrawn = true;
 		}*/
 
-		/*fprintf(stderr, "createPointHelperObject \"contactpoint\" [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
+	/*fprintf(stderr, "createPointHelperObject \"contactpoint\" [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 		fprintf(stderr, "createPointHelperObject \"n%d\" [%f, %f, %f] \n", getUserIndex(), n.m_x.x(), n.m_x.y(), n.m_x.z());
 		fprintf(stderr, "createPointHelperObject \"nOther%d\" [%f, %f, %f] \n", otherSoft->getUserIndex(), nOther.m_x.x(), nOther.m_x.y(), nOther.m_x.z());*/
 
-		{
-			btSoftBody::DeformableNodeNodeContact c;
-			c.m_normal = contactNormalOnSoftCollisionMesh;
-			c.m_offset = distance;
-			c.m_node0 = &n;
-			c.m_node1 = &nOther;
-			c.m_colObj = otherSoft;
-			c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
-			c.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
-			m_nodeNodeContacts.push_back(c);
-		}
+	{
+		btSoftBody::DeformableNodeNodeContact c;
+		c.m_normal = contactNormalOnSoftCollisionMesh;
+		c.m_offset = distance;
+		c.m_node0 = &n;
+		c.m_node1 = &nOther;
+		c.m_colObj = otherSoft;
+		c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
+		c.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
+		m_nodeNodeContacts.push_back(c);
 	}
 }
 

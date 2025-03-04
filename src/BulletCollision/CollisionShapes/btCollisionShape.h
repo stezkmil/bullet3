@@ -26,6 +26,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"  //for the shape types
 
 #include <utility>
+#include <set>
 
 class btSerializer;
 
