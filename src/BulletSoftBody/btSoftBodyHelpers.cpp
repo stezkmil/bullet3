@@ -23,7 +23,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <stdio.h>
 #include <string>
 #include <iostream>
-#include <iomanip> 
+#include <iomanip>
 #include <sstream>
 #include <string.h>
 #include <algorithm>
@@ -736,7 +736,7 @@ btSoftBody* btSoftBodyHelpers::CreatePatch(btSoftBodyWorldInfo& worldInfo, const
 										   bool gendiags,
 										   btScalar perturbation)
 {
-#define IDX(_x_, _y_) ((_y_)*rx + (_x_))
+#define IDX(_x_, _y_) ((_y_) * rx + (_x_))
 	/* Create nodes	*/
 	if ((resx < 2) || (resy < 2)) return (0);
 	const int rx = resx;
@@ -888,7 +888,7 @@ btSoftBody* btSoftBodyHelpers::CreatePatchUV(btSoftBodyWorldInfo& worldInfo,
 	*
 	*/
 
-#define IDX(_x_, _y_) ((_y_)*rx + (_x_))
+#define IDX(_x_, _y_) ((_y_) * rx + (_x_))
 	/* Create nodes		*/
 	if ((resx < 2) || (resy < 2)) return (0);
 	const int rx = resx;
@@ -1074,7 +1074,7 @@ btSoftBody* btSoftBodyHelpers::CreateFromTriMesh(btSoftBodyWorldInfo& worldInfo,
 	for (i = 0, ni = ntriangles * 3; i < ni; i += 3)
 	{
 		const int idx[] = {triangles[i], triangles[i + 1], triangles[i + 2]};
-#define IDX(_x_, _y_) ((_y_)*maxidx + (_x_))
+#define IDX(_x_, _y_) ((_y_) * maxidx + (_x_))
 		for (int j = 2, k = 0; k < 3; j = k++)
 		{
 			if (!chks[IDX(idx[j], idx[k])])
@@ -1146,8 +1146,6 @@ void btSoftBodyHelpers::PopulateTetras(btSoftBody* psb, const std::vector<std::a
 	psb->m_tetraScratches.resize(psb->m_tetras.size());
 	psb->m_tetraScratchesTn.resize(psb->m_tetras.size());
 }
-
-
 
 static int nextLine(const char* buffer)
 {
@@ -1387,6 +1385,7 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 	for (int i = 0; i < psb->m_nodes.size(); ++i)
 	{
 		psb->m_nodes[i].index = counter++;
+		psb->m_nodes[i].local_index = psb->m_nodes[i].index;
 	}
 	typedef btAlignedObjectArray<int> Index;
 	btAlignedObjectArray<Index> indices;
@@ -1405,6 +1404,7 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 	class FaceIndices
 	{
 		std::array<int, 3> arr;
+
 	public:
 		FaceIndices() {}
 		FaceIndices(const std::array<int, 3>& arr) : arr(arr) {}
@@ -1559,7 +1559,6 @@ void btSoftBodyHelpers::writeObj(const char* filename, const btSoftBody* psb)
 	fs.close();
 }
 
-
 void btSoftBodyHelpers::writeState(const char* file, const btSoftBody* psb)
 {
 	std::ofstream fs;
@@ -1596,7 +1595,7 @@ void btSoftBodyHelpers::duplicateFaces(const char* filename, const btSoftBody* p
 	fs_read.open(filename);
 	std::string line;
 	btVector3 pos;
-	btAlignedObjectArray<btAlignedObjectArray<int> > additional_faces;
+	btAlignedObjectArray<btAlignedObjectArray<int>> additional_faces;
 	while (std::getline(fs_read, line))
 	{
 		std::stringstream ss(line);

@@ -4360,7 +4360,7 @@ int btSoftBody::findClosestNodeByMapping(int part, int triIndex, const btVector3
 		for (auto n = 0; n < 4; ++n)
 		{
 			auto& node = m_tetras[tetraIndex].m_n[n];
-			nodeDistances.insert({(p - node->m_x).length2(), node->index});
+			nodeDistances.insert({(p - node->m_x).length2(), node->local_index});
 		}
 	}
 	if (!nodeDistances.empty())
@@ -4411,12 +4411,12 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
-	auto res = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
+	auto nodeIndex = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
 
-	if (res == -1)
+	if (nodeIndex == -1)
 		return;
 
-	btSoftBody::Node& n = m_nodes[res];
+	btSoftBody::Node& n = m_nodes[nodeIndex];
 
 	bool alreadyImpulsed = false;
 	for (auto i = 0; i < m_nodeRigidContacts.size(); ++i)
@@ -4526,14 +4526,14 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, 
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", lineStart.x(), lineStart.y(), lineStart.z(),
 			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
 
-	auto res = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
-	auto resOther = otherSoft->findClosestNodeByMapping(part1, index1, contactPointOnSoftCollisionMesh);
+	auto nodeIndex = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
+	auto nodeIndexOther = otherSoft->findClosestNodeByMapping(part1, index1, contactPointOnSoftCollisionMesh);
 
-	if (res == -1 || resOther == -1)
+	if (nodeIndex == -1 || nodeIndexOther == -1)
 		return;
 
-	btSoftBody::Node& n = m_nodes[res];
-	btSoftBody::Node& nOther = otherSoft->m_nodes[resOther];
+	btSoftBody::Node& n = m_nodes[nodeIndex];
+	btSoftBody::Node& nOther = otherSoft->m_nodes[nodeIndexOther];
 
 	bool alreadyCreated = false;
 	for (auto c = 0; c < m_nodeNodeContacts.size(); ++c)

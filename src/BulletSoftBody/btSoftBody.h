@@ -308,7 +308,8 @@ public:
 		btDbvtNode* m_leaf;  // Leaf data
 		int m_constrained;   // depth of penetration
 		int m_battach : 1;   // Attached
-		int index;
+		int index;           // Watch out - there is a certain design smell here. Index is sometimes an index into the global m_nodes array (when using the deformable soft bodies) and sometimes into the soft body's own m_nodes array. This is why the local_index was introduced. To reliably have an index into the local m_nodes.
+		int local_index;
 		btVector3 m_splitv;               // velocity associated with split impulse
 		btMatrix3x3 m_effectiveMass;      // effective mass in contact
 		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
