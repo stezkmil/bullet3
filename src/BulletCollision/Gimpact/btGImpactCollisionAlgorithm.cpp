@@ -829,8 +829,6 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
 	manifoldResultForSkin.setBody0Wrap(softWrap);
 	manifoldResultForSkin.setBody1Wrap(rigidWrap);
-	manifoldResultForSkin.setShapeIdentifiersA(swapped ? m_resultOut->getPartId1() : m_resultOut->getPartId0(), swapped ? m_resultOut->getIndex1() : m_resultOut->getIndex0());
-	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
 	manifoldResultForSkin.swapped = swapped;
 
 	//fprintf(stderr, "m_resultOut->getPersistentManifold()->getNumContacts() %d\n", m_resultOut->getPersistentManifold()->getNumContacts());
@@ -840,6 +838,8 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact(const btCollisionObjec
 		//fprintf(stderr, "contactPoint %d normal %f %f %f orig %f %f %f\n", i, -contactPoint.m_normalWorldOnB.x(), -contactPoint.m_normalWorldOnB.y(), -contactPoint.m_normalWorldOnB.z(), contactPoint.getPositionWorldOnB().x(), contactPoint.getPositionWorldOnB().y(), contactPoint.getPositionWorldOnB().z());
 
 		manifoldResultForSkin.contactIndex = i;
+		manifoldResultForSkin.setShapeIdentifiersA(swapped ? contactPoint.m_partId1 : contactPoint.m_partId0, swapped ? contactPoint.m_index1 : contactPoint.m_index0);
+		manifoldResultForSkin.setShapeIdentifiersB(swapped ? contactPoint.m_partId0 : contactPoint.m_partId1, swapped ? contactPoint.m_index0 : contactPoint.m_index1);
 		m_algorithmForSoftVsRigid->processCollision(softWrap, rigidWrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
 }
@@ -863,8 +863,6 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact_soft(const btCollision
 	manifoldResultForSkin.setPersistentManifold(m_resultOut->getPersistentManifold());
 	manifoldResultForSkin.setBody0Wrap(soft0Wrap);
 	manifoldResultForSkin.setBody1Wrap(soft1Wrap);
-	manifoldResultForSkin.setShapeIdentifiersA(swapped ? m_resultOut->getPartId1() : m_resultOut->getPartId0(), swapped ? m_resultOut->getIndex1() : m_resultOut->getIndex0());
-	manifoldResultForSkin.setShapeIdentifiersB(swapped ? m_resultOut->getPartId0() : m_resultOut->getPartId1(), swapped ? m_resultOut->getIndex0() : m_resultOut->getIndex1());
 	manifoldResultForSkin.swapped = swapped;
 
 	for (auto i = 0; i < m_resultOut->getPersistentManifold()->getNumContacts(); ++i)
@@ -872,6 +870,8 @@ void btGImpactCollisionAlgorithm::gimpact_soft_vs_gimpact_soft(const btCollision
 		auto& contactPoint = m_resultOut->getPersistentManifold()->getContactPoint(i);
 
 		manifoldResultForSkin.contactIndex = i;
+		manifoldResultForSkin.setShapeIdentifiersA(swapped ? contactPoint.m_partId1 : contactPoint.m_partId0, swapped ? contactPoint.m_index1 : contactPoint.m_index0);
+		manifoldResultForSkin.setShapeIdentifiersB(swapped ? contactPoint.m_partId0 : contactPoint.m_partId1, swapped ? contactPoint.m_index0 : contactPoint.m_index1);
 		m_algorithmForSoftVsSoft->processCollision(soft0Wrap, soft1Wrap, *m_dispatchInfo, &manifoldResultForSkin);
 	}
 }

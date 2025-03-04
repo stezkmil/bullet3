@@ -4357,9 +4357,10 @@ int btSoftBody::findClosestNodeByMapping(int part, int triIndex, const btVector3
 	std::map<btScalar, int> nodeDistances;
 	for (auto tetraIndex : tetraIndices)
 	{
+		const auto& tetra = m_tetras[tetraIndex];
 		for (auto n = 0; n < 4; ++n)
 		{
-			auto& node = m_tetras[tetraIndex].m_n[n];
+			auto& node = tetra.m_n[n];
 			nodeDistances.insert({(p - node->m_x).length2(), node->local_index});
 		}
 	}
@@ -4398,17 +4399,26 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	return closestNodes;
 }
 
+//std::random_device rd;
+//std::mt19937 gen(rd());
+//std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
 
-	/*fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
+	// Uniform distribution for [0.0, 1.0]
+
+	/*float r = dist(gen);
+	float g = dist(gen);
+	float b = dist(gen);
+	fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][%f,%f,%f,1]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z(), r, g, b);
 	auto lineStart = contactPointOnSoftCollisionMesh;
 	auto lineEnd = contactPointOnSoftCollisionMesh + contactNormalOnSoftCollisionMesh * 10.0;
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", lineStart.x(), lineStart.y(), lineStart.z(),
-			lineEnd.x(), lineEnd.y(), lineEnd.z());*/
+	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][%f,%f,%f,1] \n", lineStart.x(), lineStart.y(), lineStart.z(),
+			lineEnd.x(), lineEnd.y(), lineEnd.z(), r, g, b);*/
 
 	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto nodeIndex = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
