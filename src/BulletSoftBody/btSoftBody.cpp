@@ -4729,17 +4729,19 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 		if (c.m_contact_point_impulse_magnitude)
 			*c.m_contact_point_impulse_magnitude = std::abs(jTotal);
 
-		if (node0->m_constrained == 0)
 		{
 			auto delta = (jTotal * invMass0) * n;
+			if (node0->m_constrained != 0)
+				delta *= 10.0;
 			//fprintf(stderr, "node0->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
 			node0->m_v += delta;
 			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
 		}
 
-		if (node1->m_constrained == 0)
 		{
 			auto delta = (jTotal * invMass1) * n;
+			if (node1->m_constrained != 0)
+				delta *= 10.0;
 			//fprintf(stderr, "node1->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
 			node1->m_v -= delta;
 			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
