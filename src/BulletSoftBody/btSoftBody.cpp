@@ -4731,8 +4731,11 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		{
 			auto delta = (jTotal * invMass0) * n;
-			if (node0->m_constrained != 0)
-				delta *= 10.0;
+			if (node0->m_constrained != 0 && !delta.fuzzyZero())
+			{
+				auto len = delta.length();
+				delta = (delta / len) * (len * 10.0);
+			}
 			//fprintf(stderr, "node0->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
 			node0->m_v += delta;
 			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
@@ -4740,8 +4743,11 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		{
 			auto delta = (jTotal * invMass1) * n;
-			if (node1->m_constrained != 0)
-				delta *= 10.0;
+			if (node1->m_constrained != 0 && !delta.fuzzyZero())
+			{
+				auto len = delta.length();
+				delta = (delta / len) * (len * 10.0);
+			}
 			//fprintf(stderr, "node1->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
 			node1->m_v -= delta;
 			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
