@@ -58,6 +58,7 @@ enum btContactManifoldTypes
 };
 
 #define MANIFOLD_CACHE_SIZE 4
+#define MANIFOLD_CACHE_SIZE_UNLIMITED 200000
 
 ///btPersistentManifold is a contact point cache, it stays persistent as long as objects are overlapping in the broadphase.
 ///Those contact points are created by the collision narrow phase.
@@ -112,6 +113,8 @@ public:
 	{
 		if (!m_unlimitedCacheSize)
 			m_pointCache.resize(MANIFOLD_CACHE_SIZE);
+		else
+			m_pointCache.reserve(MANIFOLD_CACHE_SIZE_UNLIMITED);
 	}
 
 	SIMD_FORCE_INLINE const btCollisionObject* getBody0() const { return m_body0; }
