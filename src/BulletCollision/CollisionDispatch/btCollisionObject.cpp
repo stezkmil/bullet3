@@ -35,6 +35,7 @@ btCollisionObject::btCollisionObject()
 	  m_rootCollisionShape(0),
 	  m_collisionFlags(btCollisionObject::CF_STATIC_OBJECT),
 	  m_islandTag1(-1),
+	  m_islandTag2(-1),
 	  m_companionId(-1),
 	  m_worldArrayIndex(-1),
 	  m_activationState1(1),

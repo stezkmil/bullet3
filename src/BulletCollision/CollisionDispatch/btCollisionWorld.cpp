@@ -41,6 +41,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "LinearMath/btSerializer.h"
 #include "BulletCollision/CollisionShapes/btConvexPolyhedron.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObjectWrapper.h"
+#include "BulletCollision/CollisionDispatch/btSimulationIslandManager.h"
 
 //#define DISABLE_DBVT_COMPOUNDSHAPE_RAYCAST_ACCELERATION
 
@@ -1390,11 +1391,30 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		}
 	}
 
+	bool anyPenetrations = !penetratingColliders.empty();
+
+	if (anyPenetrations)
+	{
+		// For islandsWithLastSafeUpdated to work reliably, we need the more forgiving island partitioning scheme based on broadphase AABB tests. This writes the
+		// AABB based island ids into the m_islandTag2. This needs to be done only if there were any penetrations, otherwise we just update the safe transforms for
+		// all the bodies.
+		btSimulationIslandManager islandManagerAABB;
+		islandManagerAABB.setNarrowphaseBased(false);
+		islandManagerAABB.setUseSecondTag(true);
+		islandManagerAABB.updateActivationState(this, m_dispatcher1);
+		islandManagerAABB.storeIslandActivationState(this);
+	}
+
+	std::multimap<int, btCollisionObject*> islandsWithLastSafeUpdated;
+
 	for (int i = 0; i < numBodies; i++)
 	{
 		auto* body = bodies[i];
 		if (body->isStaticObject())
 			continue;
+
+		if (anyPenetrations)
+			islandsWithLastSafeUpdated.insert({body->getIslandTag2(), body});
 		if (!penetratingColliders.contains(body))
 		{
 			//fprintf(stderr, "no pen\n");
@@ -1411,6 +1431,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		auto* body = softBodies[i];
 		if (body->isStaticObject())
 			continue;
+
+		if (anyPenetrations)
+			islandsWithLastSafeUpdated.insert({body->getIslandTag2(), body});
 		if (!penetratingColliders.contains(body))
 		{
 			//fprintf(stderr, "no pen\n");
@@ -1434,7 +1457,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 	};
 
 	std::vector<VectorElem> unstuckVector;
-	bool nothingStuck = true;
 
 	for (auto penColIter = penetratingColliders.begin(); penColIter != penetratingColliders.end(); ++penColIter)
 	{
@@ -1449,7 +1471,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 				body, penColIter->second.mappedCollisionObject, body->getInternalType() == btCollisionObject::CO_SOFT_BODY, penColIter->second.distance, penColIter->second.numContacts /*,
 									 penColIter->second.partialUnstuckIndex*/
 			});
-			nothingStuck = false;
+
+			auto eraseRange = islandsWithLastSafeUpdated.equal_range(body->getIslandTag2());
+			islandsWithLastSafeUpdated.erase(eraseRange.first, eraseRange.second);
 		}
 	}
 
@@ -1492,8 +1516,15 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 	}
 
 	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state.
-	// TODO some "clusterisation" could be done so that each "cluster" of close bodies has its own nothingStuck. This should be based on island ids, which are already available.
-	if (nothingStuck)
+	if (anyPenetrations)
+		for (auto& updatedPair : islandsWithLastSafeUpdated)
+		{
+			auto* body = updatedPair.second;
+			if (body->isStaticObject())
+				continue;
+			body->updateLastSafeWorldTransform();
+		}
+	else
 	{
 		for (int i = 0; i < numBodies; i++)
 		{

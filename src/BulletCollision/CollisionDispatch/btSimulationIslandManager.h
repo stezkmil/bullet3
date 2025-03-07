@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_SIMULATION_ISLAND_MANAGER_H
 #define BT_SIMULATION_ISLAND_MANAGER_H
 
@@ -40,6 +39,10 @@ class btSimulationIslandManager
 	btAlignedObjectArray<btCollisionObject*> m_islandBodies;
 
 	bool m_splitIslands;
+	// This is useful when body activations have to be kept to a bare minimum (when the bodies are very detailed and the collision detection which follows after a wakeup is very costly)
+	bool m_narrowphaseBased;
+	// This is used when the alternative island tag has to be used and the collision objects have to be also otherwise untouched.
+	bool m_useSecondTag;
 
 public:
 	btSimulationIslandManager();
@@ -56,17 +59,17 @@ public:
 
 	struct IslandCallback
 	{
-		virtual ~IslandCallback(){};
+		virtual ~IslandCallback() {};
 
 		virtual void processIsland(btCollisionObject** bodies, int numBodies, class btPersistentManifold** manifolds, int numManifolds, int islandId) = 0;
 	};
 
 	void buildAndProcessIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
-    
+
 	void buildIslands(btDispatcher* dispatcher, btCollisionWorld* colWorld);
 
-    void processIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
-    
+	void processIslands(btDispatcher* dispatcher, btCollisionWorld* collisionWorld, IslandCallback* callback);
+
 	bool getSplitIslands()
 	{
 		return m_splitIslands;
@@ -74,6 +77,14 @@ public:
 	void setSplitIslands(bool doSplitIslands)
 	{
 		m_splitIslands = doSplitIslands;
+	}
+	void setNarrowphaseBased(bool narrowphaseBased)
+	{
+		m_narrowphaseBased = narrowphaseBased;
+	}
+	void setUseSecondTag(bool usedSecondTag)
+	{
+		m_useSecondTag = usedSecondTag;
 	}
 };
 

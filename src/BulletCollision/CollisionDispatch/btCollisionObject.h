@@ -85,6 +85,7 @@ protected:
 	int m_collisionFlags;
 
 	int m_islandTag1;
+	int m_islandTag2;  // Used to store the AABB based island id
 	int m_companionId;
 	int m_worldArrayIndex;  // index of object in world's collisionObjects array
 
@@ -612,6 +613,16 @@ public:
 	void setIslandTag(int tag)
 	{
 		m_islandTag1 = tag;
+	}
+
+	SIMD_FORCE_INLINE int getIslandTag2() const
+	{
+		return m_islandTag2;
+	}
+
+	void setIslandTag2(int tag)
+	{
+		m_islandTag2 = tag;
 	}
 
 	SIMD_FORCE_INLINE int getCompanionId() const

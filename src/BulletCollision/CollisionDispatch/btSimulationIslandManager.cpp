@@ -28,7 +28,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 //#include <stdio.h>
 #include "LinearMath/btQuickprof.h"
 
-btSimulationIslandManager::btSimulationIslandManager() : m_splitIslands(true)
+btSimulationIslandManager::btSimulationIslandManager() : m_splitIslands(true), m_narrowphaseBased(true), m_useSecondTag(false)
 {
 }
 
@@ -41,33 +41,32 @@ void btSimulationIslandManager::initUnionFind(int n)
 	m_unionFind.reset(n);
 }
 
-// This is useful when body activations have to be kept to a bare minimum (when the bodies are very detailed and the collision detection which follows after a wakeup is very costly)
-#define NARROW_PHASE_BASED_UNIONS 1
-
 void btSimulationIslandManager::findUnions(btDispatcher* dispatcher, btCollisionWorld* colWorld)
 {
-#ifdef NARROW_PHASE_BASED_UNIONS
-	int i;
-	int maxNumManifolds = dispatcher->getNumManifolds();
-
-	// Note that unions based on constraints are handled in btDiscreteDynamicsWorld::calculateSimulationIslands(), so they don't have to be here
-	for (i = 0; i < maxNumManifolds; i++)
+	if (m_narrowphaseBased)
 	{
-		btPersistentManifold* manifold = dispatcher->getManifoldByIndexInternal(i);
-		if (manifold->getNumContacts() == 0)
-			continue;
+		int i;
+		int maxNumManifolds = dispatcher->getNumManifolds();
 
-		const btCollisionObject* colObj0 = manifold->getBody0();
-		const btCollisionObject* colObj1 = manifold->getBody1();
-
-		if ((colObj0 && colObj0->mergesSimulationIslands()) &&
-			(colObj1 && colObj1->mergesSimulationIslands()))
+		// Note that unions based on constraints are handled in btDiscreteDynamicsWorld::calculateSimulationIslands(), so they don't have to be here
+		for (i = 0; i < maxNumManifolds; i++)
 		{
-			m_unionFind.unite(colObj0->getIslandTag(),
-							  colObj1->getIslandTag());
+			btPersistentManifold* manifold = dispatcher->getManifoldByIndexInternal(i);
+			if (manifold->getNumContacts() == 0)
+				continue;
+
+			const btCollisionObject* colObj0 = manifold->getBody0();
+			const btCollisionObject* colObj1 = manifold->getBody1();
+
+			if ((colObj0 && colObj0->mergesSimulationIslands()) &&
+				(colObj1 && colObj1->mergesSimulationIslands()))
+			{
+				m_unionFind.unite(m_useSecondTag ? colObj0->getIslandTag2() : colObj0->getIslandTag(),
+								  m_useSecondTag ? colObj1->getIslandTag2() : colObj1->getIslandTag());
+			}
 		}
 	}
-#else
+	else
 	{
 		btOverlappingPairCache* pairCachePtr = colWorld->getPairCache();
 		const int numOverlappingPairs = pairCachePtr->getNumOverlappingPairs();
@@ -84,13 +83,12 @@ void btSimulationIslandManager::findUnions(btDispatcher* dispatcher, btCollision
 				if (((colObj0) && ((colObj0)->mergesSimulationIslands())) &&
 					((colObj1) && ((colObj1)->mergesSimulationIslands())))
 				{
-					m_unionFind.unite((colObj0)->getIslandTag(),
-									  (colObj1)->getIslandTag());
+					m_unionFind.unite(m_useSecondTag ? (colObj0)->getIslandTag2() : (colObj0)->getIslandTag(),
+									  m_useSecondTag ? (colObj1)->getIslandTag2() : (colObj1)->getIslandTag());
 				}
 			}
 		}
 	}
-#endif
 }
 
 #ifdef STATIC_SIMULATION_ISLAND_OPTIMIZATION
@@ -106,10 +104,16 @@ void btSimulationIslandManager::updateActivationState(btCollisionWorld* colWorld
 			//Adding filtering here
 			if (!collisionObject->isStaticOrKinematicObject())
 			{
-				collisionObject->setIslandTag(index++);
+				if (m_useSecondTag)
+					collisionObject->setIslandTag2(index++);
+				else
+					collisionObject->setIslandTag(index++);
 			}
-			collisionObject->setCompanionId(-1);
-			collisionObject->setHitFraction(btScalar(1.));
+			if (!m_useSecondTag)
+			{
+				collisionObject->setCompanionId(-1);
+				collisionObject->setHitFraction(btScalar(1.));
+			}
 		}
 	}
 	// do the union find
@@ -130,16 +134,25 @@ void btSimulationIslandManager::storeIslandActivationState(btCollisionWorld* col
 			btCollisionObject* collisionObject = colWorld->getCollisionObjectArray()[i];
 			if (!collisionObject->isStaticOrKinematicObject())
 			{
-				collisionObject->setIslandTag(m_unionFind.find(index));
+				if (m_useSecondTag)
+					collisionObject->setIslandTag2(m_unionFind.find(index));
+				else
+					collisionObject->setIslandTag(m_unionFind.find(index));
 				//Set the correct object offset in Collision Object Array
 				m_unionFind.getElement(index).m_sz = i;
-				collisionObject->setCompanionId(-1);
+				if (!m_useSecondTag)
+					collisionObject->setCompanionId(-1);
 				index++;
 			}
 			else
 			{
-				collisionObject->setIslandTag(-1);
-				collisionObject->setCompanionId(-2);
+				if (!m_useSecondTag)
+				{
+					collisionObject->setIslandTag(-1);
+					collisionObject->setCompanionId(-2);
+				}
+				else
+					collisionObject->setIslandTag2(-1);
 			}
 		}
 	}
