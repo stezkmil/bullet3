@@ -3609,6 +3609,8 @@ void btSoftBody::initializeDmInverse()
 		t.m_P_inv[0] = p1;
 		t.m_P_inv[1] = p2;
 		t.m_P_inv[2] = p3;
+
+		t.m_rv = VolumeOf(a, b, c, d);
 	}
 }
 
@@ -4721,35 +4723,43 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 			continue;
 
 		// Typical "collision" style impulse
-		btScalar restitution = 0.f;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
-		btScalar jCollision = -(1.f + restitution) * vn / invMassSum;
-		btScalar jPenetration = -c.m_offset;
-		btScalar jTotal = jCollision + jPenetration;
+		btScalar penetration = 0.0;
+		//if (c.m_offset < 0.0)
+		//	penetration = -c.m_offset * std::min(vn, -1.0);
+		btScalar restitution = 0.0;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
+		btScalar jCollision = -(1.0 + restitution) * (vn + penetration) / invMassSum;
+		btScalar jTotal = jCollision;
 
 		if (c.m_contact_point_impulse_magnitude)
 			*c.m_contact_point_impulse_magnitude = std::abs(jTotal);
 
 		{
 			auto delta = (jTotal * invMass0) * n;
+			auto alen = delta.length();
+			delta = (delta / alen) * (alen * 1.00);
 			if (node0->m_constrained != 0 && !delta.fuzzyZero())
 			{
 				auto len = delta.length();
 				delta = (delta / len) * (len * 10.0);
 			}
-			//fprintf(stderr, "node0->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
-			node0->m_v += delta;
+			fprintf(stderr, "node0->m_v delta %d %f %f %f\n", node0->local_index, delta.x(), delta.y(), delta.z());
+			if (invMass0 != 0.0)
+				node0->m_v += delta;
 			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
 		}
 
 		{
 			auto delta = (jTotal * invMass1) * n;
+			auto alen = delta.length();
+			delta = (delta / alen) * (alen * 1.00);
 			if (node1->m_constrained != 0 && !delta.fuzzyZero())
 			{
 				auto len = delta.length();
 				delta = (delta / len) * (len * 10.0);
 			}
-			//fprintf(stderr, "node1->m_v delta %f %f %f\n", delta.x(), delta.y(), delta.z());
-			node1->m_v -= delta;
+			fprintf(stderr, "node1->m_v delta %d %f %f %f\n", node1->local_index, delta.x(), delta.y(), delta.z());
+			if (invMass1 != 0.0)
+				node1->m_v -= delta;
 			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
 		}
 
@@ -4773,9 +4783,19 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 			// Apply friction impulse
 			if (!node0->m_constrained)
-				node0->m_v += (jFric * invMass0) * vtDir;
+			{
+				auto delta = (jFric * invMass0) * vtDir;
+				auto alen = delta.length();
+				delta = (delta / alen) * (alen * 1.00);
+				node0->m_v += delta;
+			}
 			if (!node1->m_constrained)
-				node1->m_v -= (jFric * invMass1) * vtDir;
+			{
+				auto delta = (jFric * invMass1) * vtDir;
+				auto alen = delta.length();
+				delta = (delta / alen) * (alen * 1.00);
+				node1->m_v -= delta;
+			}
 		}
 	}
 }
