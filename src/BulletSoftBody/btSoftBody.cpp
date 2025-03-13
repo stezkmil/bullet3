@@ -32,6 +32,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <list>
 //
 static inline btDbvtNode* buildTreeBottomUp(btAlignedObjectArray<btDbvtNode*>& leafNodes, btAlignedObjectArray<btAlignedObjectArray<int>>& adj)
 {
@@ -1034,12 +1035,16 @@ btScalar btSoftBody::getTotalMass() const
 void btSoftBody::setTotalMass(btScalar mass, bool fromfaces)
 {
 	int i;
+	std::list<int> anchors;
 
 	if (fromfaces)
 	{
 		for (i = 0; i < m_nodes.size(); ++i)
 		{
-			m_nodes[i].m_im = 0;
+			if (m_nodes[i].m_im == 0)
+				anchors.emplace_back(i);
+			else
+				m_nodes[i].m_im = 0;
 		}
 		for (i = 0; i < m_faces.size(); ++i)
 		{
@@ -1063,6 +1068,9 @@ void btSoftBody::setTotalMass(btScalar mass, bool fromfaces)
 	{
 		m_nodes[i].m_im /= itm * mass;
 	}
+	for (auto anchor : anchors)
+		m_nodes[anchor].m_im = 0;
+
 	m_bUpdateRtCst = true;
 }
 
@@ -1076,12 +1084,16 @@ void btSoftBody::setTotalDensity(btScalar density)
 void btSoftBody::setVolumeMass(btScalar mass)
 {
 	btAlignedObjectArray<btScalar> ranks;
+	std::list<int> anchors;
 	ranks.resize(m_nodes.size(), 0);
 	int i;
 
 	for (i = 0; i < m_nodes.size(); ++i)
 	{
-		m_nodes[i].m_im = 0;
+		if (m_nodes[i].m_im == 0)
+			anchors.emplace_back(i);
+		else
+			m_nodes[i].m_im = 0;
 	}
 	for (i = 0; i < m_tetras.size(); ++i)
 	{
@@ -1099,6 +1111,9 @@ void btSoftBody::setVolumeMass(btScalar mass)
 			m_nodes[i].m_im = ranks[i] / m_nodes[i].m_im;
 		}
 	}
+	for (auto anchor : anchors)
+		m_nodes[anchor].m_im = 0;
+
 	setTotalMass(mass, false);
 }
 
@@ -4724,8 +4739,9 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		// Typical "collision" style impulse
 		btScalar penetration = 0.0;
-		//if (c.m_offset < 0.0)
-		//	penetration = -c.m_offset * std::min(vn, -1.0);
+		const btScalar penetrationStiffness = 100.0;
+		if (c.m_offset < 0.0)
+			penetration = c.m_offset * penetrationStiffness;
 		btScalar restitution = 0.0;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
 		btScalar jCollision = -(1.0 + restitution) * (vn + penetration) / invMassSum;
 		btScalar jTotal = jCollision;
@@ -4735,14 +4751,12 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		{
 			auto delta = (jTotal * invMass0) * n;
-			auto alen = delta.length();
-			delta = (delta / alen) * (alen * 1.00);
 			if (node0->m_constrained != 0 && !delta.fuzzyZero())
 			{
 				auto len = delta.length();
 				delta = (delta / len) * (len * 10.0);
 			}
-			fprintf(stderr, "node0->m_v delta %d %f %f %f\n", node0->local_index, delta.x(), delta.y(), delta.z());
+			//fprintf(stderr, "node0->m_v delta %d %f %f %f\n", node0->local_index, delta.x(), delta.y(), delta.z());
 			if (invMass0 != 0.0)
 				node0->m_v += delta;
 			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
@@ -4750,14 +4764,12 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		{
 			auto delta = (jTotal * invMass1) * n;
-			auto alen = delta.length();
-			delta = (delta / alen) * (alen * 1.00);
 			if (node1->m_constrained != 0 && !delta.fuzzyZero())
 			{
 				auto len = delta.length();
 				delta = (delta / len) * (len * 10.0);
 			}
-			fprintf(stderr, "node1->m_v delta %d %f %f %f\n", node1->local_index, delta.x(), delta.y(), delta.z());
+			//fprintf(stderr, "node1->m_v delta %d %f %f %f\n", node1->local_index, delta.x(), delta.y(), delta.z());
 			if (invMass1 != 0.0)
 				node1->m_v -= delta;
 			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
@@ -4785,15 +4797,11 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 			if (!node0->m_constrained)
 			{
 				auto delta = (jFric * invMass0) * vtDir;
-				auto alen = delta.length();
-				delta = (delta / alen) * (alen * 1.00);
 				node0->m_v += delta;
 			}
 			if (!node1->m_constrained)
 			{
 				auto delta = (jFric * invMass1) * vtDir;
-				auto alen = delta.length();
-				delta = (delta / alen) * (alen * 1.00);
 				node1->m_v -= delta;
 			}
 		}
