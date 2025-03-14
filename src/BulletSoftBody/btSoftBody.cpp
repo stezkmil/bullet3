@@ -1124,10 +1124,7 @@ void btSoftBody::setVolumeDensity(btScalar density)
 	for (int i = 0; i < m_tetras.size(); ++i)
 	{
 		const Tetra& t = m_tetras[i];
-		for (int j = 0; j < 4; ++j)
-		{
-			volume += btFabs(t.m_rv);
-		}
+		volume += btFabs(t.m_rv);
 	}
 	setVolumeMass(volume * density / 6);
 }
