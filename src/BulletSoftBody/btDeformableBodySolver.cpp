@@ -287,6 +287,11 @@ void btDeformableBodySolver::updateVelocity()
 			else
 			{
 				psb->m_nodes[j].m_v = m_backupVelocity[counter] + m_dv[counter] - psb->m_nodes[j].m_splitv;
+				if (j == 0 && psb->getUserIndex() == 8)
+				{
+					auto foo = m_backupVelocity[counter] + m_dv[counter] - psb->m_nodes[j].m_splitv;
+					fprintf(stderr, "updateVelocity m_v %f %f %f delta %f %f %f backup %f %f %f dv %f %f %f split %f %f %f\n", psb->m_nodes[j].m_v.x(), psb->m_nodes[j].m_v.y(), psb->m_nodes[j].m_v.z(), foo.x(), foo.y(), foo.z(), m_backupVelocity[counter].x(), m_backupVelocity[counter].y(), m_backupVelocity[counter].z(), m_dv[counter].x(), m_dv[counter].y(), m_dv[counter].z(), psb->m_nodes[j].m_splitv.x(), psb->m_nodes[j].m_splitv.y(), psb->m_nodes[j].m_splitv.z());
+				}
 			}
 			psb->m_maxSpeedSquared = btMax(psb->m_maxSpeedSquared, psb->m_nodes[j].m_v.length2());
 			++counter;

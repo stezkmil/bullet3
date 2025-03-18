@@ -212,6 +212,46 @@ public:
 };
 
 //
+// Constraint between deformable and deformable objects
+class btDeformableDeformableContactConstraint : public btDeformableContactConstraint
+{
+public:
+	btVector3 m_total_normal_dv;
+	btVector3 m_total_tangent_dv;
+	btScalar m_penetration;
+	btScalar m_total_split_impulse;
+	bool m_binding;
+	const btSoftBody::DeformableNodeNodeContact* m_contact;
+
+	btDeformableDeformableContactConstraint(const btSoftBody::DeformableNodeNodeContact& c, const btContactSolverInfo& infoGlobal);
+	btDeformableDeformableContactConstraint(const btDeformableRigidContactConstraint& other);
+	btDeformableDeformableContactConstraint() : m_binding(false) {}
+	virtual ~btDeformableDeformableContactConstraint()
+	{
+	}
+
+	// object A is the rigid/multi body, and object B is the deformable node/face
+	virtual btVector3 getVa() const;
+
+	// get the split impulse velocity of the deformable face at the contact point
+	virtual btVector3 getSplitVb() const = 0;
+
+	// get the split impulse velocity of the rigid/multibdoy at the contaft
+	virtual btVector3 getSplitVa() const;
+
+	virtual btScalar solveConstraint(const btContactSolverInfo& infoGlobal);
+
+	virtual void setPenetrationScale(btScalar scale)
+	{
+		m_penetration *= scale;
+	}
+
+	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal);
+
+	virtual void applySplitImpulse(const btVector3& impulse) = 0;
+};
+
+//
 // Constraint between rigid/multi body and deformable objects faces
 class btDeformableFaceRigidContactConstraint : public btDeformableRigidContactConstraint
 {

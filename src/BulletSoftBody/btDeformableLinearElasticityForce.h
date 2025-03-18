@@ -148,7 +148,8 @@ public:
 				{
 					force[id] -= scale * node.m_v / node.m_im * m_damping_alpha;
 				}
-				//fprintf(stderr, "force[id] %d %f %f %f scale %f node.m_v %f %f %f node.m_im %f m_damping_alpha %f\n", j, force[id].x(), force[id].y(), force[id].z(), scale, node.m_v.x(), node.m_v.y(), node.m_v.z(), node.m_im, m_damping_alpha);
+				if (psb->getUserIndex() == 8 && j == 0)
+					fprintf(stderr, "force[id] %d %f %f %f scale %f node.m_v %f %f %f node.m_im %f m_damping_alpha %f\n", j, force[id].x(), force[id].y(), force[id].z(), scale, node.m_v.x(), node.m_v.y(), node.m_v.z(), node.m_im, m_damping_alpha);
 			}
 		}
 	}
@@ -284,6 +285,15 @@ public:
 				force[id1] -= scale1 * force_on_node123.getColumn(0);
 				force[id2] -= scale1 * force_on_node123.getColumn(1);
 				force[id3] -= scale1 * force_on_node123.getColumn(2);
+
+				if (psb->getUserIndex() == 8 && node0->local_index == 0)
+					fprintf(stderr, "addScaledElasticForce force[id] %d %f %f %f force_on_node %f %f %f trPTP %f\n", j, force[id0].x(), force[id0].y(), force[id0].z(), force_on_node0.x(), force_on_node0.y(), force_on_node0.z(), trPTP);
+				if (psb->getUserIndex() == 8 && node1->local_index == 0)
+					fprintf(stderr, "addScaledElasticForce force[id] %d %f %f %f force_on_node %f %f %f trPTP %f\n", j, force[id1].x(), force[id1].y(), force[id1].z(), force_on_node123.getColumn(0).x(), force_on_node123.getColumn(0).y(), force_on_node123.getColumn(0).z(), trPTP);
+				if (psb->getUserIndex() == 8 && node2->local_index == 0)
+					fprintf(stderr, "addScaledElasticForce force[id] %d %f %f %f force_on_node %f %f %f trPTP %f\n", j, force[id2].x(), force[id2].y(), force[id2].z(), force_on_node123.getColumn(1).x(), force_on_node123.getColumn(1).y(), force_on_node123.getColumn(1).z(), trPTP);
+				if (psb->getUserIndex() == 8 && node3->local_index == 0)
+					fprintf(stderr, "addScaledElasticForce force[id] %d %f %f %f force_on_node %f %f %f trPTP %f\n", j, force[id3].x(), force[id3].y(), force[id3].z(), force_on_node123.getColumn(2).x(), force_on_node123.getColumn(2).y(), force_on_node123.getColumn(2).z(), trPTP);
 			}
 			averagePrincipalStress /= psb->m_tetras.size();
 			psb->m_averagePrincipalStress = averagePrincipalStress;

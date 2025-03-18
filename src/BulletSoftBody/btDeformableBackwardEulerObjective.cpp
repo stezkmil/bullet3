@@ -86,8 +86,8 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 	{
 		// add damping matrix
 		m_lf[i]->addScaledDampingForceDifferential(-m_dt, x, b);
-        // Always integrate picking force implicitly for stability.
-        if (m_implicit || m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
+		// Always integrate picking force implicitly for stability.
+		if (m_implicit || m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
 		{
 			m_lf[i]->addScaledElasticForceDifferential(-m_dt * m_dt, x, b);
 		}
@@ -161,6 +161,12 @@ void btDeformableBackwardEulerObjective::applyForce(TVStack& force, bool setZero
 			{
 				btScalar one_over_mass = (psb->m_nodes[j].m_im == 0) ? 0 : psb->m_nodes[j].m_im;
 				psb->m_nodes[j].m_v += one_over_mass * force[counter++];
+				if (j == 0 && psb->getUserIndex() == 8)
+				{
+					auto delta = one_over_mass * force[counter - 1];
+					auto rawforce = force[counter - 1];
+					fprintf(stderr, "m_v %d %f %f %f force %f %f %f rawforce %f %f %f\n", psb->getUserIndex(), psb->m_nodes[j].m_v.x(), psb->m_nodes[j].m_v.y(), psb->m_nodes[j].m_v.z(), delta.x(), delta.y(), delta.z(), rawforce.x(), rawforce.y(), rawforce.z());
+				}
 			}
 		}
 	}
@@ -177,7 +183,7 @@ void btDeformableBackwardEulerObjective::computeResidual(btScalar dt, TVStack& r
 	// add implicit force
 	for (int i = 0; i < m_lf.size(); ++i)
 	{
-        // Always integrate picking force implicitly for stability.
+		// Always integrate picking force implicitly for stability.
 		if (m_implicit || m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
 		{
 			m_lf[i]->addScaledForces(dt, residual);
@@ -244,6 +250,11 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 				{
 					// add gravity explicitly
 					psb->m_nodes[j].m_v += m_dt * psb->m_gravityFactor * gravity;
+					if (j == 0)
+					{
+						auto foo = m_dt * psb->m_gravityFactor * gravity;
+						fprintf(stderr, "grav m_v %d %f %f %f grav %f %f %f\n", psb->getUserIndex(), psb->m_nodes[j].m_v.x(), psb->m_nodes[j].m_v.y(), psb->m_nodes[j].m_v.z(), foo.x(), foo.y(), foo.z());
+					}
 				}
 			}
 		}

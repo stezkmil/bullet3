@@ -323,7 +323,7 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	}
 	impulse = impulse_normal + impulse_tangent;
 	// apply impulse to deformable nodes involved and change their velocities
-	//printf("impulse %f %f %f\n", impulse.x(), impulse.y(), impulse.z());
+	//fprintf(stderr, "impulse %f %f %f\n", impulse.x(), impulse.y(), impulse.z());
 	applyImpulse(impulse);
 
 	if (cti.m_contact_point_impulse_magnitude)
@@ -444,11 +444,53 @@ void btDeformableNodeRigidContactConstraint::applyImpulse(const btVector3& impul
 	const btSoftBody::DeformableNodeRigidContact* contact = getContact();
 	btVector3 dv = contact->m_c5 * impulse;
 	contact->m_node->m_v -= dv;
+	fprintf(stderr, "dv %f %f %f vel %f %f %f\n", dv.x(), dv.y(), dv.z(), contact->m_node->m_v.x(), contact->m_node->m_v.y(), contact->m_node->m_v.z());
 }
 
 void btDeformableNodeRigidContactConstraint::applySplitImpulse(const btVector3& impulse)
 {
 	const btSoftBody::DeformableNodeRigidContact* contact = getContact();
+	btVector3 dv = contact->m_c5 * impulse;
+	contact->m_node->m_splitv -= dv;
+}
+
+/* ================   Node vs. Node   =================== */
+btDeformableDeformableContactConstraint::btDeformableDeformableContactConstraint(const btSoftBody::DeformableNodeNodeContact& contact, const btContactSolverInfo& infoGlobal)
+	: btDeformableContactConstraint(contact, infoGlobal)
+{
+}
+
+btDeformableDeformableContactConstraint::btDeformableDeformableContactConstraint(const btDeformableNodeNodeContactConstraint& other)
+	: m_node(other.m_node), btDeformableRigidContactConstraint(other)
+{
+}
+
+btVector3 btDeformableDeformableContactConstraint::getVb() const
+{
+	return m_node->m_v;
+}
+
+btVector3 btDeformableDeformableContactConstraint::getSplitVb() const
+{
+	return m_node->m_splitv;
+}
+
+btVector3 btDeformableDeformableContactConstraint::getDv(const btSoftBody::Node* node) const
+{
+	return m_total_normal_dv + m_total_tangent_dv;
+}
+
+void btDeformableDeformableContactConstraint::applyImpulse(const btVector3& impulse)
+{
+	const btSoftBody::DeformableNodeNodeContact* contact = getContact();
+	btVector3 dv = contact->m_c5 * impulse;
+	contact->m_node->m_v -= dv;
+	fprintf(stderr, "dv %f %f %f vel %f %f %f\n", dv.x(), dv.y(), dv.z(), contact->m_node->m_v.x(), contact->m_node->m_v.y(), contact->m_node->m_v.z());
+}
+
+void btDeformableDeformableContactConstraint::applySplitImpulse(const btVector3& impulse)
+{
+	const btSoftBody::DeformableNodeNodeContact* contact = getContact();
 	btVector3 dv = contact->m_c5 * impulse;
 	contact->m_node->m_splitv -= dv;
 }
