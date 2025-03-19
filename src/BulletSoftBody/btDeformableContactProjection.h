@@ -56,7 +56,7 @@ public:
 	// map from node index to node rigid constraint
 	btAlignedObjectArray<btAlignedObjectArray<btDeformableNodeRigidContactConstraint> > m_nodeRigidConstraints;
 	// map from node index to node soft constraint
-	btAlignedObjectArray<btAlignedObjectArray<btDeformableNodeNodeContactConstraint> > m_nodeNodeConstraints;
+	btAlignedObjectArray<btAlignedObjectArray<btDeformableDeformableContactConstraint> > m_nodeNodeConstraints;
 	// map from node index to face rigid constraint
 	btAlignedObjectArray<btAlignedObjectArray<btDeformableFaceRigidContactConstraint> > m_faceRigidConstraints;
 	// map from node index to deformable constraint

@@ -233,8 +233,13 @@ public:
 	// object A is the rigid/multi body, and object B is the deformable node/face
 	virtual btVector3 getVa() const;
 
+	virtual btVector3 getVb() const;
+
 	// get the split impulse velocity of the deformable face at the contact point
-	virtual btVector3 getSplitVb() const = 0;
+	virtual btVector3 getSplitVb() const
+	{
+		return btVector3();
+	}
 
 	// get the split impulse velocity of the rigid/multibdoy at the contaft
 	virtual btVector3 getSplitVa() const;
@@ -248,7 +253,9 @@ public:
 
 	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal);
 
-	virtual void applySplitImpulse(const btVector3& impulse) = 0;
+	void applySplitImpulse(const btVector3& impulse);
+
+	void applyImpulse(const btVector3& impulse);
 };
 
 //
