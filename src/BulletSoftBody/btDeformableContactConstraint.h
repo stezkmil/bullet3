@@ -1,4 +1,4 @@
-/*
+﻿/*
  Written by Xuchen Han <xuchenhan2015@u.northwestern.edu>
  
  Bullet Continuous Collision Detection and Physics Library
@@ -209,6 +209,66 @@ public:
 	virtual void applyImpulse(const btVector3& impulse);
 
 	virtual void applySplitImpulse(const btVector3& impulse);
+};
+
+class btDeformableNodeNodeContactConstraint
+{
+protected:
+	btSoftBody::Node* m_nodeA;
+	btSoftBody::Node* m_nodeB;
+
+	btVector3 m_normal;      // contact normal (pointing from A to B)
+	btScalar m_penetration;  // overlap distance or offset
+	btScalar m_friction;
+	btScalar m_invMassSum;      // precomputed inverse mass sum
+	btScalar m_appliedImpulse;  // optional for warm starting
+
+public:
+	bool m_binding;              // Are we binding or not?
+	bool m_static;               // If friction is static vs. dynamic
+	btVector3 m_totalNormalDV;   // Accumulated normal velocity change
+	btVector3 m_totalTangentDV;  // Accumulated tangential velocity change
+
+	btDeformableNodeNodeContactConstraint()
+		: m_nodeA(nullptr), m_nodeB(nullptr), m_normal(btVector3(0, 0, 0)), m_penetration(0), m_friction(0), m_invMassSum(0), m_appliedImpulse(0)
+	{
+	}
+
+	btDeformableNodeNodeContactConstraint(btSoftBody::Node* nodeA,
+										  btSoftBody::Node* nodeB,
+										  const btVector3& normal,
+										  btScalar penetration,
+										  btScalar friction)
+		: m_nodeA(nodeA), m_nodeB(nodeB), m_normal(normal), m_penetration(penetration), m_friction(friction), m_appliedImpulse(0)
+	{
+		btScalar imA = (nodeA) ? nodeA->m_im : 0.f;
+		btScalar imB = (nodeB) ? nodeB->m_im : 0.f;
+		m_invMassSum = imA + imB;
+
+		// default friction/binding states
+		m_binding = false;
+		m_static = false;
+		m_totalNormalDV.setZero();
+		m_totalTangentDV.setZero();
+	}
+
+	btScalar solveConstraint(const btContactSolverInfo& infoGlobal);
+	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal);
+
+	btSoftBody::Node* getNodeA() const
+	{
+		return m_nodeA;
+	}
+
+	btSoftBody::Node* getNodeB() const
+	{
+		return m_nodeB;
+	}
+
+	btVector3 getNormal() const
+	{
+		return m_normal;
+	}
 };
 
 //

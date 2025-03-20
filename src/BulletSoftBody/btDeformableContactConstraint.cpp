@@ -598,6 +598,179 @@ void btDeformableFaceRigidContactConstraint::applySplitImpulse(const btVector3& 
 	}
 }
 
+/// The main solver method, called each iteration
+btScalar btDeformableNodeNodeContactConstraint::solveConstraint(const btContactSolverInfo& infoGlobal)
+{
+	// 1) Sanity checks
+	if (!m_nodeA || !m_nodeB || m_invMassSum < SIMD_EPSILON)
+		return 0;
+
+	// 2) Compute relative velocity
+	btVector3 velA = m_nodeA->m_v;
+	btVector3 velB = m_nodeB->m_v;
+	btVector3 relVel = velA - velB;
+
+	// 3) Relative normal velocity
+	btScalar relNormalVel = relVel.dot(m_normal);
+
+	// 4) If there's penetration > 0, we might want some separation velocity
+	btScalar desiredSeparationVel = 0.f;
+	if (m_penetration < 0)
+	{
+		// an ERP-like correction, if you like:
+		btScalar erp = infoGlobal.m_erp2;
+		desiredSeparationVel = erp * (-m_penetration / infoGlobal.m_timeStep);
+	}
+
+	// 5) Normal velocity error
+	btScalar normalErr = desiredSeparationVel - relNormalVel;
+
+	// 6) Compute normal impulse to fix that
+	btScalar normalImpulseMag = 0.f;
+	if (btFabs(normalErr) > SIMD_EPSILON)
+	{
+		normalImpulseMag = normalErr / m_invMassSum;
+	}
+	// optionally clamp it or scale it
+
+	// 7) Apply normal impulse
+	btVector3 normalImpulse = normalImpulseMag * m_normal;
+	if (m_nodeA->m_im > SIMD_EPSILON)
+		m_nodeA->m_v += normalImpulse * m_nodeA->m_im;
+	if (m_nodeB->m_im > SIMD_EPSILON)
+		m_nodeB->m_v -= normalImpulse * m_nodeB->m_im;
+
+	// 8) Update accumulation vectors for normal
+	// In the rigid solver snippet, they do something like:
+	//   m_total_normal_dv -= m_contact->m_c5 * impulse_normal;
+	// but we can just track total changes:
+	m_totalNormalDV += normalImpulse;
+
+	// 9) Now do friction logic
+	// Re-check relative velocity
+	btVector3 newRelVel = m_nodeA->m_v - m_nodeB->m_v;
+	btScalar newRelNormalVel = newRelVel.dot(m_normal);
+	btVector3 tangVel = newRelVel - newRelNormalVel * m_normal;
+	btScalar tangSpeed = tangVel.length();
+
+	// Let’s start by “assuming” we are binding
+	m_binding = true;
+
+	// If newRelNormalVel < 0 => they are separating => no more binding
+	// (similar to "if (m_total_normal_dv.dot(cti.m_normal) < 0) ... m_binding = false")
+	if (newRelNormalVel < 0)
+	{
+		// They are moving apart in the normal direction, so not bound
+		m_binding = false;
+		m_static = false;
+
+		// We can forcibly zero out tangential impulse if we want:
+		// (In the deformable-rigid code, we do "impulse_tangent.setZero()")
+		// but let's do a simple version here: no friction if not bound:
+		return normalErr * normalErr;
+	}
+
+	// If still bound, we proceed with friction
+	// "m_static" means no slip => static friction
+	// if friction > friction limit => dynamic friction
+	bool doFriction = (tangSpeed > SIMD_EPSILON && m_friction > 0.0);
+	if (!doFriction)
+	{
+		// no friction to apply
+		m_static = false;
+		return normalErr * normalErr;  // done
+	}
+
+	// 10) Attempt to remove tangential velocity
+	// friction impulse magnitude
+	btScalar denom = m_invMassSum;  // or extra friction scaling
+	// "desired tangential impulse" to reduce tangVel to 0:
+	btScalar dImpulse = -tangSpeed / denom;
+
+	// The friction limit is mu * normalImpulseMag
+	btScalar frictionLimit = m_friction * btFabs(normalImpulseMag);
+
+	// We'll check if |dImpulse| <= frictionLimit => static friction
+	if (btFabs(dImpulse) <= frictionLimit)
+	{
+		// static friction
+		m_static = true;
+	}
+	else
+	{
+		// dynamic friction => clamp
+		m_static = false;
+		dImpulse = btClamped(dImpulse, -frictionLimit, frictionLimit);
+	}
+
+	// 11) Apply friction impulse
+	btVector3 frictionDir = tangVel / tangSpeed;  // direction of tangential velocity
+	btVector3 frictionImpulse = dImpulse * frictionDir;
+
+	if (m_nodeA->m_im > SIMD_EPSILON)
+		m_nodeA->m_v += frictionImpulse * m_nodeA->m_im;
+	if (m_nodeB->m_im > SIMD_EPSILON)
+		m_nodeB->m_v -= frictionImpulse * m_nodeB->m_im;
+
+	// 12) Accumulate friction DV
+	m_totalTangentDV += frictionImpulse;
+
+	// 13) Check final relative velocity to measure residual
+	btVector3 postRelVel = m_nodeA->m_v - m_nodeB->m_v;
+	btScalar postRelNormalVel = postRelVel.dot(m_normal);
+	btScalar errorTerm = (desiredSeparationVel - postRelNormalVel);
+	btScalar residual = errorTerm * errorTerm;
+
+	return residual;
+}
+
+/// This method is meant to be called after the main velocity solver
+/// but before final integration, to fix overlapping (penetration) more gently.
+btScalar btDeformableNodeNodeContactConstraint::solveSplitImpulse(const btContactSolverInfo& infoGlobal)
+{
+	// We need valid nodes and a penetration to correct
+	if (!m_nodeA || !m_nodeB || m_invMassSum < SIMD_EPSILON || m_penetration >= 0)
+		return 0;
+
+	// If your solver has a separate parameter for split impulse ERP, you might use it;
+	// if not, you can reuse the same one, or define something like infoGlobal.m_erp2 here.
+	btScalar erp = infoGlobal.m_erp2;
+	btScalar dt = infoGlobal.m_timeStep;
+
+	// Compute the desired "positional correction velocity" from the penetration.
+	// Typically: desiredSeparationVel = (ERP * penetration) / dt
+	// This is how fast we want the nodes to separate just to fix the penetration.
+	btScalar desiredSeparationVel = erp * (-m_penetration / dt);
+
+	// Now see how much normal velocity we *already* have between them:
+	btVector3 relVel = m_nodeA->m_v - m_nodeB->m_v;
+	btScalar relNormalVel = relVel.dot(m_normal);
+
+	// The correction we still need is:
+	btScalar normalErr = desiredSeparationVel - relNormalVel;
+
+	// Solve for that correction impulse
+	btScalar impulse = normalErr / m_invMassSum;
+	// (Optionally clamp if too large, or scale, etc.)
+
+	// Apply that impulse *only* to a separate "split impulse" or "positional correction" velocity
+	// If you don't already have "split velocities" in your node structure, you can either:
+	//   (a) Create them (like m_splitV), or
+	//   (b) Just apply to m_v but keep in mind that you're mixing in position correction with velocity.
+	// For clarity, let's pretend we have m_splitV in each node:
+
+	btVector3 impulseVec = impulse * m_normal;
+
+	if (m_nodeA->m_im > SIMD_EPSILON)
+		m_nodeA->m_splitv += impulseVec * m_nodeA->m_im;
+
+	if (m_nodeB->m_im > SIMD_EPSILON)
+		m_nodeB->m_splitv -= impulseVec * m_nodeB->m_im;
+
+	// Return a measure of how big the correction was (not strictly necessary)
+	return impulse * impulse;
+}
+
 /* ================   Face vs. Node   =================== */
 btDeformableFaceNodeContactConstraint::btDeformableFaceNodeContactConstraint(const btSoftBody::DeformableFaceNodeContact& contact, const btContactSolverInfo& infoGlobal)
 	: m_node(contact.m_node), m_face(contact.m_face), m_contact(&contact), btDeformableContactConstraint(contact.m_normal, infoGlobal)

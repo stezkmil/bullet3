@@ -35,6 +35,12 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 				btScalar localResidualSquare = constraint.solveConstraint(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
+			for (int k = 0; k < m_nodeNodeConstraints[j].size(); ++k)
+			{
+				btDeformableNodeNodeContactConstraint& constraint = m_nodeNodeConstraints[j][k];
+				btScalar localResidualSquare = constraint.solveConstraint(infoGlobal);
+				residualSquare = btMax(residualSquare, localResidualSquare);
+			}
 			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
@@ -73,6 +79,12 @@ btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** de
 			for (int k = 0; k < m_nodeRigidConstraints[j].size(); ++k)
 			{
 				btDeformableNodeRigidContactConstraint& constraint = m_nodeRigidConstraints[j][k];
+				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
+				residualSquare = btMax(residualSquare, localResidualSquare);
+			}
+			for (int k = 0; k < m_nodeNodeConstraints[j].size(); ++k)
+			{
+				btDeformableNodeNodeContactConstraint& constraint = m_nodeNodeConstraints[j][k];
 				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
@@ -149,6 +161,13 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			//fprintf(stderr, "normal %d %f %f %f\n", j, contact.m_cti.m_normal.x(), contact.m_cti.m_normal.y(), contact.m_cti.m_normal.z());
 			btDeformableNodeRigidContactConstraint constraint(contact, infoGlobal);
 			m_nodeRigidConstraints[i].push_back(constraint);
+		}
+
+		for (int j = 0; j < psb->m_nodeNodeContacts.size(); ++j)
+		{
+			const btSoftBody::DeformableNodeNodeContact& contact = psb->m_nodeNodeContacts[j];
+			btDeformableNodeNodeContactConstraint constraint(contact.m_node0, contact.m_node1, contact.m_normal, contact.m_offset, contact.m_friction);
+			m_nodeNodeConstraints[i].push_back(constraint);
 		}
 
 		// set Deformable Face vs. Rigid constraint
@@ -302,6 +321,98 @@ void btDeformableContactProjection::setProjection()
 				}
 			}
 		}
+		for (int j = 0; j < m_nodeNodeConstraints[i].size(); ++j)
+		{
+			// Grab the constraint
+			btDeformableNodeNodeContactConstraint& constraint = m_nodeNodeConstraints[i][j];
+
+			// Extract the two soft-body nodes
+			btSoftBody::Node* nodeA = constraint.getNodeA();
+			btSoftBody::Node* nodeB = constraint.getNodeB();
+			if (!nodeA || !nodeB)
+				continue;  // skip invalid
+
+			int indexA = nodeA->index;
+			int indexB = nodeB->index;
+
+			// Mark them as constrained
+			nodeA->m_constrained = true;
+			nodeB->m_constrained = true;
+
+			// If we only store "binding" constraints, check constraint.m_binding
+			if (constraint.m_binding)
+			{
+				// Distinguish static vs. dynamic if you have that notion
+				if (constraint.m_static)
+				{
+					// Insert these "units" into the dictionary for node A
+					if (m_projectionsDict.find(indexA) == NULL)
+					{
+						// create a new array
+						btAlignedObjectArray<btVector3> newProj;
+						for (int k = 0; k < 3; ++k)
+							newProj.push_back(units[k]);
+						m_projectionsDict.insert(indexA, newProj);
+					}
+					else
+					{
+						btAlignedObjectArray<btVector3>& projA = *m_projectionsDict[indexA];
+						for (int k = 0; k < 3; ++k)
+							projA.push_back(units[k]);
+					}
+
+					// Suppose we also do it for node B if we treat B as static or pinned, etc.
+					// If B is truly "static", you might skip it, but let's say we do the same:
+					if (m_projectionsDict.find(indexB) == NULL)
+					{
+						btAlignedObjectArray<btVector3> newProj;
+						for (int k = 0; k < 3; ++k)
+							newProj.push_back(units[k]);
+						m_projectionsDict.insert(indexB, newProj);
+					}
+					else
+					{
+						btAlignedObjectArray<btVector3>& projB = *m_projectionsDict[indexB];
+						for (int k = 0; k < 3; ++k)
+							projB.push_back(units[k]);
+					}
+				}
+				else
+				{
+					// Not static => store the contact normal
+					// For node A
+					if (m_projectionsDict.find(indexA) == NULL)
+					{
+						btAlignedObjectArray<btVector3> projectionsA;
+						projectionsA.push_back(constraint.getNormal());
+						m_projectionsDict.insert(indexA, projectionsA);
+					}
+					else
+					{
+						btAlignedObjectArray<btVector3>& projA = *m_projectionsDict[indexA];
+						projA.push_back(constraint.getNormal());
+					}
+
+					// For node B, we might want the opposite normal (pointing from B to A),
+					// or the same, depending on how your code organizes contact normals.
+					// Typically, if m_normal points from A->B, for node B you might want -m_normal:
+					btVector3 oppositeNormal = -constraint.getNormal();
+
+					if (m_projectionsDict.find(indexB) == NULL)
+					{
+						btAlignedObjectArray<btVector3> projectionsB;
+						projectionsB.push_back(oppositeNormal);
+						m_projectionsDict.insert(indexB, projectionsB);
+					}
+					else
+					{
+						btAlignedObjectArray<btVector3>& projB = *m_projectionsDict[indexB];
+						projB.push_back(oppositeNormal);
+					}
+				}
+			}  // end if binding
+		}  // end for j
+
 		for (int j = 0; j < m_faceRigidConstraints[i].size(); ++j)
 		{
 			const btSoftBody::Face* face = m_faceRigidConstraints[i][j].m_face;
@@ -539,6 +650,57 @@ void btDeformableContactProjection::setLagrangeMultiplier()
 			m_lagrangeMultipliers.push_back(lm);
 		}
 
+		for (int j = 0; j < m_nodeNodeConstraints[i].size(); ++j)
+		{
+			btDeformableNodeNodeContactConstraint& contact = m_nodeNodeConstraints[i][j];
+
+			// If we are only building constraints for binding contacts:
+			if (!contact.m_binding)
+			{
+				continue;  // skip
+			}
+
+			// Mark both nodes as constrained
+			int indexA = contact.getNodeA()->index;
+			int indexB = contact.getNodeB()->index;
+			contact.getNodeA()->m_constrained = true;
+			contact.getNodeB()->m_constrained = true;
+
+			// Create the LagrangeMultiplier
+			LagrangeMultiplier lm;
+
+			// We have TWO nodes in this constraint
+			lm.m_num_nodes = 2;
+			lm.m_indices[0] = indexA;
+			lm.m_indices[1] = indexB;
+
+			// Usually we say nodeA has weight +1, nodeB has weight -1
+			// so that the difference in velocity (vA - vB) is constrained
+			lm.m_weights[0] = 1.0;
+			lm.m_weights[1] = -1.0;
+
+			if (contact.m_static)
+			{
+				// "static" might mean no relative motion in ANY direction => 3 constraints
+				lm.m_num_constraints = 3;
+				lm.m_dirs[0] = btVector3(1, 0, 0);
+				lm.m_dirs[1] = btVector3(0, 1, 0);
+				lm.m_dirs[2] = btVector3(0, 0, 1);
+			}
+			else
+			{
+				// "dynamic" => only constrain the relative velocity along the normal
+				// so the nodes can't separate (or maybe they can't compress each other),
+				// but they can still slide tangentially
+				lm.m_num_constraints = 1;
+				// contact.m_normal is from nodeA to nodeB
+				// if we want to keep them from moving relative to each other along that normal:
+				lm.m_dirs[0] = contact.getNormal().normalized();
+			}
+
+			m_lagrangeMultipliers.push_back(lm);
+		}
+
 		for (int j = 0; j < m_faceRigidConstraints[i].size(); ++j)
 		{
 			if (!m_faceRigidConstraints[i][j].m_binding)
@@ -636,6 +798,7 @@ void btDeformableContactProjection::reinitialize(bool nodeUpdated)
 		m_staticConstraints.resize(N);
 		m_nodeAnchorConstraints.resize(N);
 		m_nodeRigidConstraints.resize(N);
+		m_nodeNodeConstraints.resize(N);
 		m_faceRigidConstraints.resize(N);
 		m_deformableConstraints.resize(N);
 	}
@@ -644,6 +807,7 @@ void btDeformableContactProjection::reinitialize(bool nodeUpdated)
 		m_staticConstraints[i].clear();
 		m_nodeAnchorConstraints[i].clear();
 		m_nodeRigidConstraints[i].clear();
+		m_nodeNodeConstraints[i].clear();
 		m_faceRigidConstraints[i].clear();
 		m_deformableConstraints[i].clear();
 	}
