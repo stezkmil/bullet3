@@ -238,9 +238,9 @@ public:
 		return (m_collisionFlags & CF_NO_CONTACT_RESPONSE) == 0;
 	}
 
-	bool isToleratingInitialCollisionsAll(bool& lowDetail) const
+	bool isToleratingInitialCollisionsAndGetDetailLevel(bool& lowDetail) const
 	{
-		if (m_objectsWithToleratedCollision.size() == 1)
+		if (isToleratingInitialCollisions())
 		{
 			if (m_objectsWithToleratedCollision[0] == nullptr)
 			{
@@ -257,9 +257,28 @@ public:
 		return false;
 	}
 
-	bool isToleratingCertainInitialCollisions() const
+	bool isToleratingInitialCollisionsLow() const
 	{
-		return m_objectsWithToleratedCollision.size() > 1;
+		if (isToleratingInitialCollisions())
+		{
+			if (m_objectsWithToleratedCollision[0] == reinterpret_cast<const btCollisionObject*>(~0))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool isToleratingInitialCollisionsHigh() const
+	{
+		if (isToleratingInitialCollisions())
+		{
+			if (m_objectsWithToleratedCollision[0] == nullptr)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	bool isToleratingInitialCollisions() const

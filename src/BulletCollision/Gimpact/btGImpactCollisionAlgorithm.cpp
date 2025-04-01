@@ -677,37 +677,42 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		return;
 	}
 
-	bool lowDetail0, lowDetail1;
-	bool isTol0 = body0Wrap->getCollisionObject()->isToleratingInitialCollisionsAll(lowDetail0);
-	bool isTol1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisionsAll(lowDetail1);
+	bool isTol0 = body0Wrap->getCollisionObject()->isToleratingInitialCollisions();
+	bool isTol1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisions();
+	bool isTolLow0 = body0Wrap->getCollisionObject()->isToleratingInitialCollisionsLow();
+	bool isTolLow1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisionsLow();
 	bool isGhost0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
 	bool isGhost1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
+	bool isBarrier0 = !isGhost0 && (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost0
+	bool isBarrier1 = !isGhost1 && (body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost1
 	bool findOnlyFirstPenetratingPair = isTol0 || isTol1;
-	if (body0Wrap->getCollisionObject()->isToleratingCertainInitialCollisions() || body1Wrap->getCollisionObject()->isToleratingCertainInitialCollisions())
-	{
-		bool check0 = body0Wrap->getCollisionObject()->checkIsTolerated(body1Wrap->getCollisionObject());
-		bool check1 = body1Wrap->getCollisionObject()->checkIsTolerated(body0Wrap->getCollisionObject());
-		findOnlyFirstPenetratingPair |= (check0 || check1);
-	}
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstPenetratingPair |= generateManifoldForGhost;
 
-	// Unfortunately it was found that this optimization is not possible anymore, ever since the whole controller grab is an option. With this option on,
-	// all the remaining bodies have to be checked in case one of them is a controller.
-	//if (findOnlyFirstPenetratingPair && (lowDetail0 || lowDetail1))
-	//{
-	//	const btCollisionObject* checked = nullptr;
-	//	if (isTol0)
-	//		checked = body0Wrap->getCollisionObject();
-	//	else if (isTol1)
-	//		checked = body1Wrap->getCollisionObject();
-	//	auto& participants = isTol0 ? m_dispatcher->getInitialCollisionParticipants0() : m_dispatcher->getInitialCollisionParticipants1();
-	//	if (checked && participants.find(checked) != participants.end())
-	//	{
-	//		// There already was some collision with some other body and the details are low. No need to waste time checking with this and the remaining bodies
-	//		return;
-	//	}
-	//}
+	if (isTolLow0 && isTolLow1 || (isTolLow0 && isBarrier1) || (isTolLow1 && isBarrier0))
+	{
+		const btCollisionObject* checked = nullptr;
+		if (isTolLow0)
+		{
+			checked = body0Wrap->getCollisionObject();
+			auto& participants = m_dispatcher->getInitialCollisionParticipants0();
+			if (checked && participants.contains(checked))
+			{
+				// There already was some collision with some other body and the details are low. No need to waste time checking these two bodies
+				return;
+			}
+		}
+		if (isTolLow1)
+		{
+			checked = body1Wrap->getCollisionObject();
+			auto& participants = m_dispatcher->getInitialCollisionParticipants1();
+			if (checked && participants.contains(checked))
+			{
+				// There already was some collision with some other body and the details are low. No need to waste time checking these two bodies
+				return;
+			}
+		}
+	}
 
 	auxPairSet.clear();
 	perThreadIntermediateResults.clear();
