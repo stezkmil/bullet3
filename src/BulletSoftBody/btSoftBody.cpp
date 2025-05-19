@@ -5330,6 +5330,10 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 		// It can happen that a soft does not have its safe position updated in a long time, so this partial application of the safe position can cause noticeable
 		// stoppage of the soft body.
 
+		// TODO add scene names into a comment here where this helps. I am now not convinced that this has a significant benefit given how small the values of distForMaxFraction and maxFraction are.
+		// It seems to me that this unstuck will be completely overpowered by the unstuck impulses (because of const btScalar maxDepthPenetration = 5.0;)
+		// Is it also the case for rigids?
+
 		constexpr btScalar maxFraction = 0.1;
 		constexpr btScalar distForMaxFraction = 100.0;
 

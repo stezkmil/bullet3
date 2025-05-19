@@ -830,7 +830,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	btVector3 a_closest_out, b_closest_out;
 	bool ret = false;
 	const btScalar maxDepth = margin * marginZoneRecoveryStrengthFactor;
-	const btScalar maxDepthPenetration = 5.0;
+	const btScalar maxDepthPenetration = 5.0;  // So that two pipes in cd_debug_flexi4.VRUT do not phase through each other
 
 	auto create_contact = [&]()
 	{
