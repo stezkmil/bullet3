@@ -76,7 +76,11 @@ SET(BulletSoftBody_HDRS
 	BulletReducedDeformableBody/btReducedDeformableContactConstraint.h
 )
 
-
+IF (NOT MSVC)
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
+ELSE (NOT MSVC)
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20")
+ENDIF (NOT MSVC)
 
 ADD_LIBRARY(BulletSoftBody  ${BulletSoftBody_SRCS} ${BulletSoftBody_HDRS})
 SET_TARGET_PROPERTIES(BulletSoftBody PROPERTIES VERSION ${BULLET_VERSION})

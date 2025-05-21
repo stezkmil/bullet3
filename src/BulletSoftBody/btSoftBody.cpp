@@ -4413,9 +4413,69 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	return closestNodes;
 }
 
-//std::random_device rd;
-//std::mt19937 gen(rd());
-//std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+// 60 degrees to make sure we cover the whole sphere with kMaxBucketsPerNode = 6 buckets
+static const btScalar kMergeCos = btCos(btRadians(60.f));
+// One for each cardinal direction (-x, x, -y, y, -z, z)
+static const int kMaxBucketsPerNode = 6;
+
+template <typename T, typename U>
+bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const btVector3& contactNormalOnSoftCollisionMesh, const btScalar& distance, btSoftBody::Node& n, btSoftBody::Node& nOther)
+{
+	auto sameDirection = [](const btVector3& a, const btVector3& b)
+	{
+		// a·b ≥ |a||b|cosθ  (both already unit-length here)
+		return a.dot(b) > kMergeCos;
+	};
+
+	bool merged = false;
+	int bucketCount = 0;
+	for (int idx = 0, cnt = contacts.size(); idx < cnt; ++idx)
+	{
+		auto& c = contacts[idx];
+		U* cCti;
+		if constexpr (std::is_same_v<U, btSoftBody::sCti>)
+			cCti = &contacts[idx].m_cti;
+		else
+			cCti = &contacts[idx];
+
+		bool irrelevantContact;
+		if constexpr (std::is_same_v<U, btSoftBody::sCti>)
+			irrelevantContact = cCti->m_colObj != body || c.m_node != &n;
+		else
+			irrelevantContact = c.m_colObj != body || c.m_node0 != &n || c.m_node1 != &nOther;
+
+		if (irrelevantContact)
+			continue;
+
+		++bucketCount;
+
+		if (sameDirection(cCti->m_normal, contactNormalOnSoftCollisionMesh))
+		{
+			// Merge into this bucket
+			const int newCount = cCti->m_count + 1;
+			const btVector3 avgN = (cCti->m_normal * cCti->m_count +
+									contactNormalOnSoftCollisionMesh) /
+								   newCount;
+
+			cCti->m_normal = avgN.normalized();
+			cCti->m_offset = btMin(cCti->m_offset, distance);
+			cCti->m_count = newCount;
+
+			merged = true;
+			break;
+		}
+	}
+
+	// Whole sphere should be covered by these conical buckets, so if we now have number of bins which is equal or larger than kMaxBucketsPerNode
+	// it indicates a bug somewhere
+	btAssert(bucketCount < kMaxBucketsPerNode &&
+			 "Directional coverage theory broken – investigate!");
+
+	if (bucketCount >= kMaxBucketsPerNode)
+		return true;  // safety valve – should never fire in practice
+
+	return merged;
+}
 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
@@ -4434,7 +4494,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][%f,%f,%f,1] \n", lineStart.x(), lineStart.y(), lineStart.z(),
 			lineEnd.x(), lineEnd.y(), lineEnd.z(), r, g, b);*/
 
-	auto nodeCount = std::max(static_cast<int>(m_nodes.size() * influencedNodesFactor), 1);
 	auto nodeIndex = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
 
 	if (nodeIndex == -1)
@@ -4442,26 +4501,8 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 
 	btSoftBody::Node& n = m_nodes[nodeIndex];
 
-	bool alreadyImpulsed = false;
-	for (auto i = 0; i < m_nodeRigidContacts.size(); ++i)
-	{
-		// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
-		// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftSoftCollisionHandler, or deduplicate.
-		if (m_nodeRigidContacts[i].m_cti.m_colObj == rigidBody && m_nodeRigidContacts[i].m_node == &n)
-		{
-			alreadyImpulsed = true;
-			auto newNormal = (m_nodeRigidContacts[i].m_cti.m_count * m_nodeRigidContacts[i].m_cti.m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeRigidContacts[i].m_cti.m_count + 1);
-			if (newNormal.fuzzyZero())
-				break;
-			m_nodeRigidContacts[i].m_cti.m_normal = newNormal;
-			++m_nodeRigidContacts[i].m_cti.m_count;
-			m_nodeRigidContacts[i].m_cti.m_normal = m_nodeRigidContacts[i].m_cti.m_normal.normalize();
-			m_nodeRigidContacts[i].m_cti.m_offset = std::min(m_nodeRigidContacts[i].m_cti.m_offset, distance);
-			break;
-		}
-	}
-
-	if (alreadyImpulsed)
+	bool merged = mergeContactIntoBucket<btAlignedObjectArray<btSoftBody::DeformableNodeRigidContact>, btSoftBody::sCti>(rigidBody, m_nodeRigidContacts, contactNormalOnSoftCollisionMesh, distance, n, n);
+	if (merged)
 		return;
 
 	btSoftBody::DeformableNodeRigidContact c;
@@ -4559,27 +4600,8 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, 
 	btSoftBody::Node& n = m_nodes[nodeIndex];
 	btSoftBody::Node& nOther = otherSoft->m_nodes[nodeIndexOther];
 
-	bool alreadyCreated = false;
-	for (auto c = 0; c < m_nodeNodeContacts.size(); ++c)
-	{
-		// With the separate collision mesh, close contact points on the collision mesh can result in the same sim mesh face being impulsed many times, resulting in huge impulse spikes.
-		// This prevents that. Keep this bit in sync with the analog part in btSoftBody::skinSoftRigidCollisionHandler, or deduplicate.
-		if (m_nodeNodeContacts[c].m_colObj == otherSoft && m_nodeNodeContacts[c].m_node0 == &n && m_nodeNodeContacts[c].m_node1 == &nOther)
-		{
-			alreadyCreated = true;
-
-			auto newNormal = (m_nodeNodeContacts[c].m_count * m_nodeNodeContacts[c].m_normal + contactNormalOnSoftCollisionMesh) / (m_nodeNodeContacts[c].m_count + 1);
-			if (newNormal.fuzzyZero())
-				break;
-			m_nodeNodeContacts[c].m_normal = newNormal;
-			++m_nodeNodeContacts[c].m_count;
-			m_nodeNodeContacts[c].m_normal = m_nodeNodeContacts[c].m_normal.normalize();
-			m_nodeNodeContacts[c].m_offset = std::min(m_nodeNodeContacts[c].m_offset, distance);
-			break;
-		}
-	}
-
-	if (alreadyCreated)
+	bool merged = mergeContactIntoBucket<btAlignedObjectArray<DeformableNodeNodeContact>, DeformableNodeNodeContact>(otherSoft, m_nodeNodeContacts, contactNormalOnSoftCollisionMesh, distance, n, nOther);
+	if (merged)
 		return;
 
 	//if (!origsDrawn)
@@ -5299,6 +5321,9 @@ bool btSoftBody::wantsSleeping()
 
 void btSoftBody::updateLastSafeWorldTransform()
 {
+	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
+	// because the penetration contact generation also depends on this last safe data.
+
 	//fprintf(stderr, "update\n");
 	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
@@ -5320,6 +5345,13 @@ void btSoftBody::updateLastSafeWorldTransform()
 
 void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 {
+	// Disabled until I have some proof that it helps. I suspect that this move into safe position is
+	// negligible compared to the penetration contact generated based on the same last safe data.
+	// It seems to me that the penetration contact generation (in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
+	// using maxDepthPenetration) does the same job but better. This unstuck also introduces slight
+	// artifacts into the simulation (teeth like effect when two ropes collide), which is one more argument to keep it disabled.
+	// It should perhaps be reverified also for rigids, whether it is still improves some cases, because it is essentially the same thing in this aspect.
+	return;
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
