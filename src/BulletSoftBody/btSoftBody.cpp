@@ -5319,18 +5319,34 @@ bool btSoftBody::wantsSleeping()
 	return false;
 }
 
-void btSoftBody::updateLastSafeWorldTransform()
+void btSoftBody::updateLastSafeWorldTransform(std::set<int>* partial)
 {
 	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
 	// because the penetration contact generation also depends on this last safe data.
 
-	//fprintf(stderr, "update\n");
-	for (auto i = 0; i < m_nodes.size(); ++i)
+	if (partial)
 	{
-		const auto& src = m_nodes[i];
-		auto& dst = m_nodes[i].m_safe;
-		dst.m_x = src.m_x;
-		/*dst.m_q = src.m_q;
+		std::set<const btSoftBody::Node*> nodesInCollision;
+		for (auto tetraIndex : *partial)
+		{
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
+		}
+
+		fprintf(stderr, "update start -------------------------------------------\n");
+		for (auto i = 0; i < m_nodes.size(); ++i)
+		{
+			const auto& src = m_nodes[i];
+			if (nodesInCollision.contains(&src))
+			{
+				fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
+				continue;
+			}
+			auto& dst = m_nodes[i].m_safe;
+			dst.m_x = src.m_x;
+			/*dst.m_q = src.m_q;
 		dst.m_v = src.m_v;
 		dst.m_vn = src.m_vn;
 		dst.m_f = src.m_f;
@@ -5340,6 +5356,26 @@ void btSoftBody::updateLastSafeWorldTransform()
 		dst.m_splitv = src.m_splitv;
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
+		}
+	}
+	else
+	{
+		for (auto i = 0; i < m_nodes.size(); ++i)
+		{
+			const auto& src = m_nodes[i];
+			auto& dst = m_nodes[i].m_safe;
+			dst.m_x = src.m_x;
+			/*dst.m_q = src.m_q;
+		dst.m_v = src.m_v;
+		dst.m_vn = src.m_vn;
+		dst.m_f = src.m_f;
+		dst.m_n = src.m_n;
+		dst.m_im = src.m_im;
+		dst.m_area = src.m_area;
+		dst.m_splitv = src.m_splitv;
+		dst.m_effectiveMass = src.m_effectiveMass;
+		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
+		}
 	}
 }
 
