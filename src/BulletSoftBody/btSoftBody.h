@@ -1414,7 +1414,7 @@ public:
 		}
 	}
 
-	virtual void updateLastSafeWorldTransform(std::set<int>* partial) override;
+	virtual void updateLastSafeWorldTransform() override;
 	virtual void applyLastSafeWorldTransform(btScalar dist) override;
 };
 

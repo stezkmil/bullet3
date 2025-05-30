@@ -548,7 +548,7 @@ public:
 		return m_lastSafeWorldTransform;
 	}
 
-	virtual void updateLastSafeWorldTransform(std::set<int> * partial)
+	virtual void updateLastSafeWorldTransform()
 	{
 		m_lastSafeWorldTransform = m_worldTransform;
 	}

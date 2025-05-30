@@ -1520,7 +1520,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto* body = updatedPair.second;
 			if (body->isStaticObject() || body->getInternalType() == btCollisionObject::CO_SOFT_BODY)
 				continue;
-			body->updateLastSafeWorldTransform(nullptr);
+			body->updateLastSafeWorldTransform();
 		}
 		//auto* body = softBodies[i];
 		//body->updateLastSafeWorldTransform(&iter->second.stuckTetraIndices);
@@ -1532,12 +1532,12 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto* body = bodies[i];
 			if (body->isStaticObject())
 				continue;
-			body->updateLastSafeWorldTransform(nullptr);
+			body->updateLastSafeWorldTransform();
 		}
 		for (int i = 0; i < numSoftBodies; i++)
 		{
 			auto* body = softBodies[i];
-			body->updateLastSafeWorldTransform(nullptr);
+			body->updateLastSafeWorldTransform();
 		}
 	}
 }
