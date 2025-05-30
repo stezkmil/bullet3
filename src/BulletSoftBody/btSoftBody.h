@@ -1415,7 +1415,7 @@ public:
 	}
 
 	virtual void updateLastSafeWorldTransform() override;
-	virtual void applyLastSafeWorldTransform(btScalar dist) override;
+	virtual void applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial) override;
 };
 
 #endif  //_BT_SOFT_BODY_H

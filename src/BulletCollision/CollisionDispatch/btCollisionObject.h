@@ -553,7 +553,7 @@ public:
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(btScalar dist);
+	virtual void applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial);
 
 	void resetLastSafeApplyCounter()
 	{

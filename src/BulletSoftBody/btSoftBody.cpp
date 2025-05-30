@@ -5397,7 +5397,7 @@ void btSoftBody::updateLastSafeWorldTransform(/*std::set<int>* partial*/)
 	}
 }
 
-void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
+void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial)
 {
 	// Disabled until I have some proof that it helps. I suspect that this move into safe position is
 	// negligible compared to the penetration contact generated based on the same last safe data.
@@ -5405,9 +5405,38 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 	// using maxDepthPenetration) does the same job but better. This unstuck also introduces slight
 	// artifacts into the simulation (teeth like effect when two ropes collide), which is one more argument to keep it disabled.
 	// It should perhaps be reverified also for rigids, whether it is still improves some cases, because it is essentially the same thing in this aspect.
-	return;
+	//return;
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
+		//fprintf(stderr, "framestart()\n");
+		std::set<btSoftBody::Node*> nodesInCollision;
+		if (partial)
+		{
+			for (auto tetraIndex : *partial)
+			{
+				nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
+				nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
+				nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
+				nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
+				/*auto& a = m_tetras[tetraIndex].m_n[0];
+				auto& b = m_tetras[tetraIndex].m_n[1];
+				auto& c = m_tetras[tetraIndex].m_n[2];
+				auto& d = m_tetras[tetraIndex].m_n[3];
+				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+						b->m_x.x(), b->m_x.y(), b->m_x.z());
+				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+						c->m_x.x(), c->m_x.y(), c->m_x.z());
+				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+						d->m_x.x(), d->m_x.y(), d->m_x.z());
+				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+						d->m_x.x(), d->m_x.y(), d->m_x.z());
+				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+						c->m_x.x(), c->m_x.y(), c->m_x.z());
+				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
+						c->m_x.x(), c->m_x.y(), c->m_x.z());*/
+			}
+		}
+
 		// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
 		// values. If we got to high fraction values close to 1.0, then the soft would be unresponsive.
 		// Disadvantage is that it will never truly reach the safe destination, just approach it.
@@ -5420,7 +5449,7 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 		// It seems to me that this unstuck will be completely overpowered by the unstuck impulses (because of const btScalar maxDepthPenetration = 5.0;)
 		// Is it also the case for rigids?
 
-		constexpr btScalar maxFraction = 0.1;
+		constexpr btScalar maxFraction = 1.0;
 		constexpr btScalar distForMaxFraction = 100.0;
 
 		/*numContacts = numContacts - 50;
@@ -5429,19 +5458,20 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist)
 	normedNumContacts = std::min(normedNumContacts, 1.0);
 	normedNumContacts = std::max(normedNumContacts, 0.0);*/
 
-		dist = dist / distForMaxFraction;
-		auto normedDist = std::min(dist, 1.0);
-		normedDist = std::max(normedDist, 0.0);
+		//dist = dist / distForMaxFraction;
+		//auto normedDist = std::min(dist, 1.0);
+		//normedDist = std::max(normedDist, 0.0);
 
-		auto fraction = maxFraction * normedDist /*maxFraction * normedNumContacts*/;
+		auto fraction = maxFraction /** normedDist*/ /*maxFraction * normedNumContacts*/;
 		//fprintf(stderr, "fraction %f\n", fraction);
 		//fprintf(stderr, "apply\n");
 
-		for (auto i = 0; i < m_nodes.size(); ++i)
+		for (auto nodeInCollision : nodesInCollision)
 		{
-			const auto& src = m_nodes[i].m_safe;
-			auto& dst = m_nodes[i];
-			dst.m_x = dst.m_x.lerp(src.m_x, fraction);
+			const auto& src = nodeInCollision->m_safe;
+			auto& dst = nodeInCollision;
+
+			dst->m_x = dst->m_x.lerp(src.m_x, fraction);
 			//dst.m_q = dst.m_q.lerp(src.m_q, fraction);
 			/*dst.m_v = dst.m_v.lerp(src.m_v, fraction);
 		dst.m_vn = dst.m_vn.lerp(src.m_vn, fraction);
