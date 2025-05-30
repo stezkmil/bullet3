@@ -1322,7 +1322,10 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		int numContacts = 0;
 		// Partial unstuck for softs would be nice, but so far I was unable to use it in a way which would not cause a soft body explosion...
 		// This is used for softs. For softs we can be more efficient and unstuck only the tetra nodes which are really stuck and leave the remaining nodes as they were.
-		std::set<int> stuckTetraIndices;
+		// UPDATE: why this not such a great idea. It was tested to update last safe positions only for tetra nodes which are not part of a collision. It has
+		// worsened the case of a soft cube falling onto a flat ground, because the triangles which were part of the cube base side have tunelled completely through
+		// the ground and were thus not in a collision, therefore updating the safe positions of their tetras. Safe pos naturally should not have been updated for them.
+		//std::set<int> stuckTetraIndices;
 	};
 	std::map<btCollisionObject*, MappedType> penetratingColliders;
 	for (int i = 0; i < numManifolds; i++)
@@ -1348,18 +1351,18 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					{
 						std::set<int> stuckTetraIndices;
 						if (body0IsSoft)
-							stuckTetraIndices.insert(contactManifold->getBody0()->getCollisionShape()->getMapping(cp.m_partId0, cp.m_index0));
+							stuckTetraIndices.merge(contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0));
 						MappedType val{
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody1()),
 							.distance = cp.getUnmodifiedDistance(),
 							.numContacts = numContacts,
-							.stuckTetraIndices = stuckTetraIndices};
+							/*.stuckTetraIndices = stuckTetraIndices*/};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody0()), val});
 					}
 					else
 					{
-						if (body0IsSoft)
-							body0Iter->second.stuckTetraIndices.insert(contactManifold->getBody0()->getCollisionShape()->getMapping(cp.m_partId0, cp.m_index0));
+						//if (body0IsSoft)
+						//	body0Iter->second.stuckTetraIndices.merge(contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0));
 						body0Iter->second.distance = max(body0Iter->second.distance, cp.getUnmodifiedDistance());
 					}
 				}
@@ -1371,18 +1374,18 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					{
 						std::set<int> stuckTetraIndices;
 						if (body1IsSoft)
-							stuckTetraIndices.insert(contactManifold->getBody1()->getCollisionShape()->getMapping(cp.m_partId1, cp.m_index1));
+							stuckTetraIndices.merge(contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1));
 						MappedType val{
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody0()),
 							.distance = cp.getUnmodifiedDistance(),
 							.numContacts = numContacts,
-							.stuckTetraIndices = stuckTetraIndices};
+							/*.stuckTetraIndices = stuckTetraIndices*/};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody1()), val});
 					}
 					else
 					{
-						if (body1IsSoft)
-							body1Iter->second.stuckTetraIndices.insert(contactManifold->getBody1()->getCollisionShape()->getMapping(cp.m_partId1, cp.m_index1));
+						//if (body1IsSoft)
+						//	body1Iter->second.stuckTetraIndices.merge(contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1));
 						body1Iter->second.distance = max(body1Iter->second.distance, cp.getUnmodifiedDistance());
 					}
 				}
@@ -1519,17 +1522,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 				continue;
 			body->updateLastSafeWorldTransform(nullptr);
 		}
-		for (int i = 0; i < numSoftBodies; i++)
-		{
-			auto* body = softBodies[i];
-			auto iter = penetratingColliders.find(body);
-			if (iter != penetratingColliders.end())
-			{
-				body->updateLastSafeWorldTransform(&iter->second.stuckTetraIndices);
-			}
-			else
-				body->updateLastSafeWorldTransform(nullptr);
-		}
+		//auto* body = softBodies[i];
+		//body->updateLastSafeWorldTransform(&iter->second.stuckTetraIndices);
 	}
 	else
 	{

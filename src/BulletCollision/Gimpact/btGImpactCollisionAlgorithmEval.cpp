@@ -11,6 +11,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 	btPrimitiveTriangle ptri1;
 	GIM_TRIANGLE_CONTACT contact_data;
 
+	//fprintf(stderr, "pair.m_index1 %d pair.m_index2 %d\n", pair.m_index1, pair.m_index2);
 	grpParams.shape0->getPrimitiveTriangle(pair.m_index1, ptri0);
 	grpParams.shape1->getPrimitiveTriangle(pair.m_index2, ptri1);
 

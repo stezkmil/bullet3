@@ -5326,6 +5326,7 @@ void btSoftBody::updateLastSafeWorldTransform(std::set<int>* partial)
 
 	if (partial)
 	{
+		//fprintf(stderr, "framestart()\n");
 		std::set<const btSoftBody::Node*> nodesInCollision;
 		for (auto tetraIndex : *partial)
 		{
@@ -5333,15 +5334,31 @@ void btSoftBody::updateLastSafeWorldTransform(std::set<int>* partial)
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
+			/*auto& a = m_tetras[tetraIndex].m_n[0];
+			auto& b = m_tetras[tetraIndex].m_n[1];
+			auto& c = m_tetras[tetraIndex].m_n[2];
+			auto& d = m_tetras[tetraIndex].m_n[3];
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+					b->m_x.x(), b->m_x.y(), b->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+					c->m_x.x(), c->m_x.y(), c->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+					d->m_x.x(), d->m_x.y(), d->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+					d->m_x.x(), d->m_x.y(), d->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+					c->m_x.x(), c->m_x.y(), c->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
+					c->m_x.x(), c->m_x.y(), c->m_x.z());*/
 		}
 
-		fprintf(stderr, "update start -------------------------------------------\n");
+		//fprintf(stderr, "update start -------------------------------------------\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
 		{
 			const auto& src = m_nodes[i];
 			if (nodesInCollision.contains(&src))
 			{
-				fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
+				//fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
 				continue;
 			}
 			auto& dst = m_nodes[i].m_safe;
@@ -5357,6 +5374,7 @@ void btSoftBody::updateLastSafeWorldTransform(std::set<int>* partial)
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
 		}
+		//fprintf(stderr, "frameend()\n");
 	}
 	else
 	{
