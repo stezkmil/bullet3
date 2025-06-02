@@ -1521,10 +1521,16 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto* body = updatedPair.second;
 			if (body->isStaticObject() || body->getInternalType() == btCollisionObject::CO_SOFT_BODY)
 				continue;
-			body->updateLastSafeWorldTransform();
+			body->updateLastSafeWorldTransform(nullptr);
 		}
-		//auto* body = softBodies[i];
-		//body->updateLastSafeWorldTransform(&iter->second.stuckTetraIndices);
+		for (const auto& unstuckVectorElem : unstuckVector)
+		{
+			if (unstuckVectorElem.isSoft)
+			{
+				auto body = unstuckVectorElem.body;
+				body->updateLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
+			}
+		}
 	}
 	else
 	{
@@ -1533,12 +1539,12 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto* body = bodies[i];
 			if (body->isStaticObject())
 				continue;
-			body->updateLastSafeWorldTransform();
+			body->updateLastSafeWorldTransform(nullptr);
 		}
 		for (int i = 0; i < numSoftBodies; i++)
 		{
 			auto* body = softBodies[i];
-			body->updateLastSafeWorldTransform();
+			body->updateLastSafeWorldTransform(nullptr);
 		}
 	}
 }

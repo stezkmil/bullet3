@@ -169,7 +169,8 @@ public:
 	virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle) const = 0;
 	virtual bool get_primitive_triangle_safe(int prim_index, btPrimitiveTriangle& triangle) const = 0;
 	virtual void get_primitive_indices(int prim_index, unsigned int& A, unsigned int& B, unsigned int& C) const = 0;
-	virtual int get_mapping(int index) const { return 0; }
+	virtual int get_mapping_vert(int index) const { return 0; }
+	virtual std::vector<int> get_mapping_tri(int index) const { return std::vector<int>(); }
 };
 
 //! Structure for containing Boxes

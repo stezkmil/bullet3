@@ -57,7 +57,7 @@ btGImpactMeshShapePart::~btGImpactMeshShapePart()
 {
 	if (m_primitive_manager)
 		delete m_primitive_manager;
-		// moved from .h to .cpp because of conditional compilation
+	// moved from .h to .cpp because of conditional compilation
 #if BT_THREADSAFE
 	m_primitive_manager.unlock();
 #endif
@@ -294,7 +294,7 @@ int btGImpactMeshShape::getMapping(int part, int vertIndex) const
 {
 	auto shapePart = getMeshPart(part);
 	auto manager = shapePart->getPrimitiveManager();
-	return manager->get_mapping(vertIndex);
+	return manager->get_mapping_vert(vertIndex);
 }
 
 std::set<int> btGImpactMeshShape::getMappingForTri(int part, int triIndex) const
@@ -304,8 +304,10 @@ std::set<int> btGImpactMeshShape::getMappingForTri(int part, int triIndex) const
 	unsigned int A, B, C;
 	manager->get_primitive_indices(triIndex, A, B, C);
 	std::set<int> retVal;
-	retVal.insert(manager->get_mapping(A));
-	retVal.insert(manager->get_mapping(B));
-	retVal.insert(manager->get_mapping(C));
+	retVal.insert(manager->get_mapping_vert(A));
+	retVal.insert(manager->get_mapping_vert(B));
+	retVal.insert(manager->get_mapping_vert(C));
+	auto tetrasForTri = manager->get_mapping_tri(triIndex);
+	retVal.insert(tetrasForTri.begin(), tetrasForTri.end());
 	return retVal;
 }

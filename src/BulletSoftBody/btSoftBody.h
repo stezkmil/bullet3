@@ -832,6 +832,11 @@ public:
 		btVector4 baryCoordNormalEndInTetra;  // Barycentric coordiante of collision shape vertex normal end in that tetra
 	};
 
+	struct btTriToTetraMapping
+	{
+		std::vector<int> triToTetra;  // Index of all tetras the triangle is passing through
+	};
+
 	//
 	// Typedefs
 	//
@@ -1414,7 +1419,7 @@ public:
 		}
 	}
 
-	virtual void updateLastSafeWorldTransform() override;
+	virtual void updateLastSafeWorldTransform(const std::set<int>* partial) override;
 	virtual void applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial) override;
 };
 

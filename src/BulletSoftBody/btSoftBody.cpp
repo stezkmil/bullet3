@@ -5319,64 +5319,64 @@ bool btSoftBody::wantsSleeping()
 	return false;
 }
 
-void btSoftBody::updateLastSafeWorldTransform(/*std::set<int>* partial*/)
+void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 {
 	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
 	// because the penetration contact generation also depends on this last safe data.
 
-	//if (partial)
-	//{
-	//	//fprintf(stderr, "framestart()\n");
-	//	std::set<const btSoftBody::Node*> nodesInCollision;
-	//	for (auto tetraIndex : *partial)
-	//	{
-	//		nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
-	//		nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
-	//		nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
-	//		nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
-	//		/*auto& a = m_tetras[tetraIndex].m_n[0];
-	//		auto& b = m_tetras[tetraIndex].m_n[1];
-	//		auto& c = m_tetras[tetraIndex].m_n[2];
-	//		auto& d = m_tetras[tetraIndex].m_n[3];
-	//		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-	//				b->m_x.x(), b->m_x.y(), b->m_x.z());
-	//		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-	//				c->m_x.x(), c->m_x.y(), c->m_x.z());
-	//		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-	//				d->m_x.x(), d->m_x.y(), d->m_x.z());
-	//		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-	//				d->m_x.x(), d->m_x.y(), d->m_x.z());
-	//		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-	//				c->m_x.x(), c->m_x.y(), c->m_x.z());
-	//		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
-	//				c->m_x.x(), c->m_x.y(), c->m_x.z());*/
-	//	}
+	if (partial)
+	{
+		//fprintf(stderr, "framestart()\n");
+		std::set<const btSoftBody::Node*> nodesInCollision;
+		for (auto tetraIndex : *partial)
+		{
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
+			nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
+			/*auto& a = m_tetras[tetraIndex].m_n[0];
+			auto& b = m_tetras[tetraIndex].m_n[1];
+			auto& c = m_tetras[tetraIndex].m_n[2];
+			auto& d = m_tetras[tetraIndex].m_n[3];
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+					b->m_x.x(), b->m_x.y(), b->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+					c->m_x.x(), c->m_x.y(), c->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+					d->m_x.x(), d->m_x.y(), d->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+					d->m_x.x(), d->m_x.y(), d->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+					c->m_x.x(), c->m_x.y(), c->m_x.z());
+			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
+					c->m_x.x(), c->m_x.y(), c->m_x.z());*/
+		}
 
-	//	//fprintf(stderr, "update start -------------------------------------------\n");
-	//	for (auto i = 0; i < m_nodes.size(); ++i)
-	//	{
-	//		const auto& src = m_nodes[i];
-	//		if (nodesInCollision.contains(&src))
-	//		{
-	//			//fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
-	//			continue;
-	//		}
-	//		auto& dst = m_nodes[i].m_safe;
-	//		dst.m_x = src.m_x;
-	//		/*dst.m_q = src.m_q;
-	//	dst.m_v = src.m_v;
-	//	dst.m_vn = src.m_vn;
-	//	dst.m_f = src.m_f;
-	//	dst.m_n = src.m_n;
-	//	dst.m_im = src.m_im;
-	//	dst.m_area = src.m_area;
-	//	dst.m_splitv = src.m_splitv;
-	//	dst.m_effectiveMass = src.m_effectiveMass;
-	//	dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
-	//	}
-	//	//fprintf(stderr, "frameend()\n");
-	//}
-	//else
+		//fprintf(stderr, "update start -------------------------------------------\n");
+		for (auto i = 0; i < m_nodes.size(); ++i)
+		{
+			const auto& src = m_nodes[i];
+			if (nodesInCollision.contains(&src))
+			{
+				fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
+				continue;
+			}
+			auto& dst = m_nodes[i].m_safe;
+			dst.m_x = src.m_x;
+			/*dst.m_q = src.m_q;
+		dst.m_v = src.m_v;
+		dst.m_vn = src.m_vn;
+		dst.m_f = src.m_f;
+		dst.m_n = src.m_n;
+		dst.m_im = src.m_im;
+		dst.m_area = src.m_area;
+		dst.m_splitv = src.m_splitv;
+		dst.m_effectiveMass = src.m_effectiveMass;
+		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
+		}
+		//fprintf(stderr, "frameend()\n");
+	}
+	else
 	{
 		for (auto i = 0; i < m_nodes.size(); ++i)
 		{
