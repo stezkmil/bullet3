@@ -5326,7 +5326,15 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 
 	if (partial)
 	{
-		//fprintf(stderr, "framestart()\n");
+		fprintf(stderr, "framestart()\n");
+		std::vector<std::set<int>> nodeTetraMembership;
+		nodeTetraMembership.resize(m_nodes.size());
+		for (int i = 0; i < m_tetras.size(); ++i)
+		{
+			for (auto j = 0; j < 4; ++j)
+				nodeTetraMembership[m_tetras[i].m_n[j]->local_index].insert(i);
+		}
+
 		std::set<const btSoftBody::Node*> nodesInCollision;
 		for (auto tetraIndex : *partial)
 		{
@@ -5334,31 +5342,25 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
-			/*auto& a = m_tetras[tetraIndex].m_n[0];
-			auto& b = m_tetras[tetraIndex].m_n[1];
-			auto& c = m_tetras[tetraIndex].m_n[2];
-			auto& d = m_tetras[tetraIndex].m_n[3];
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-					b->m_x.x(), b->m_x.y(), b->m_x.z());
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-					c->m_x.x(), c->m_x.y(), c->m_x.z());
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-					d->m_x.x(), d->m_x.y(), d->m_x.z());
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-					d->m_x.x(), d->m_x.y(), d->m_x.z());
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-					c->m_x.x(), c->m_x.y(), c->m_x.z());
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
-					c->m_x.x(), c->m_x.y(), c->m_x.z());*/
+
+			// Surrounding nodes also, because my CD phase is not bulletproof. So this is sort of 1 node border grow.
+			for (auto i = 0; i < 4; ++i)
+				for (auto tetra : nodeTetraMembership[m_tetras[tetraIndex].m_n[i]->local_index])
+				{
+					for (auto j = 0; j < 4; ++j)
+						nodesInCollision.insert(m_tetras[tetra].m_n[j]);
+				}
 		}
 
 		//fprintf(stderr, "update start -------------------------------------------\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
 		{
 			const auto& src = m_nodes[i];
-			if (nodesInCollision.contains(&src))
+			auto inCol = nodesInCollision.contains(&src);
+			fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][%f,%f,0,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z(), inCol ? 1.0 : 0.0, inCol ? 0.0 : 1.0);
+			if (inCol)
 			{
-				fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
+				//fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
 				continue;
 			}
 			auto& dst = m_nodes[i].m_safe;
@@ -5374,7 +5376,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
 		}
-		//fprintf(stderr, "frameend()\n");
+		fprintf(stderr, "frameend()\n");
 	}
 	else
 	{
@@ -5412,12 +5414,28 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>*
 		std::set<btSoftBody::Node*> nodesInCollision;
 		if (partial)
 		{
+			std::vector<std::set<int>> nodeTetraMembership;
+			nodeTetraMembership.resize(m_nodes.size());
+			for (int i = 0; i < m_tetras.size(); ++i)
+			{
+				for (auto j = 0; j < 4; ++j)
+					nodeTetraMembership[m_tetras[i].m_n[j]->local_index].insert(i);
+			}
 			for (auto tetraIndex : *partial)
 			{
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
+
+				// Surrounding nodes also, because my CD phase is not bulletproof. So this is sort of 1 node border grow.
+				for (auto i = 0; i < 4; ++i)
+					for (auto tetra : nodeTetraMembership[m_tetras[tetraIndex].m_n[i]->local_index])
+					{
+						for (auto j = 0; j < 4; ++j)
+							nodesInCollision.insert(m_tetras[tetra].m_n[j]);
+					}
+
 				/*auto& a = m_tetras[tetraIndex].m_n[0];
 				auto& b = m_tetras[tetraIndex].m_n[1];
 				auto& c = m_tetras[tetraIndex].m_n[2];
