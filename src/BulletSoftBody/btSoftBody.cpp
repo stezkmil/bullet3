@@ -4494,6 +4494,9 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][%f,%f,%f,1] \n", lineStart.x(), lineStart.y(), lineStart.z(),
 			lineEnd.x(), lineEnd.y(), lineEnd.z(), r, g, b);*/
 
+	if (penetrating)
+		return;
+
 	auto nodeIndex = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
 
 	if (nodeIndex == -1)
@@ -4581,9 +4584,12 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
-void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, btScalar* contactPointImpulseMagnitude)
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
+
+	if (penetrating)
+		return;
 
 	/*fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 	auto lineStart = contactPointOnSoftCollisionMesh;
@@ -5454,6 +5460,13 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>*
 						c->m_x.x(), c->m_x.y(), c->m_x.z());*/
 			}
 		}
+		else
+		{
+			for (int i = 0; i < m_nodes.size(); ++i)
+			{
+				nodesInCollision.insert(&m_nodes[i]);
+			}
+		}
 
 		// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
 		// values. If we got to high fraction values close to 1.0, then the soft would be unresponsive.
@@ -5490,6 +5503,8 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>*
 			auto& dst = nodeInCollision;
 
 			dst->m_x = dst->m_x.lerp(src.m_x, fraction);
+			dst->m_v *= 0.9;
+			dst->m_q *= 0.9;
 			//dst.m_q = dst.m_q.lerp(src.m_q, fraction);
 			/*dst.m_v = dst.m_v.lerp(src.m_v, fraction);
 		dst.m_vn = dst.m_vn.lerp(src.m_vn, fraction);

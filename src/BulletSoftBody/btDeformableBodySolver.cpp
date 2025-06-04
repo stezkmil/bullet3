@@ -624,6 +624,6 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 	auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 	auto contactPoint = resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB();  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 	auto normal = resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB;
-	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->getPartId0(), resultOut->getIndex0(), resultOut->getPartId1(), resultOut->getIndex1(), contactPoint, normal, cp.getDistance(),
+	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->getPartId0(), resultOut->getIndex0(), resultOut->getPartId1(), resultOut->getIndex1(), contactPoint, normal, cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING,
 										   &cp.m_appliedImpulse);
 }
