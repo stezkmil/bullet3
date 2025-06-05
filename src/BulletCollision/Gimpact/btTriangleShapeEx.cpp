@@ -850,9 +850,10 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		{
 			// Inversion so that smaller distance means bigger impulse, up to the maxDepth when distance is 0. Margin distance - marginEpsilon means 0 depth.
 
-			// marginEpsilon helps preserving contacts in certain situations. Without it, the resulting impulse would push the body out of the margin completely,
-			// which would then result in 0 manifolds, so a much bigger impulse would be generated, which would create a noticeable jerk in motion back into the
-			// margin. This discontinuity would happen periodically. Observed on the Lemovka scene.
+			// marginEpsilon helps preserving contacts in certain situations (consider a scene with gravity). Without it, the resulting impulse would push
+			// the body out of the margin completely, which would then result in 0 manifolds, so a much bigger unopposed impulse would be generated
+			// (due to a gravity fall), which would create a noticeable jerk in motion back into the margin. This discontinuity would happen periodically.
+			// Observed on the Lemovka scene.
 			contacts.m_penetration_depth = std::max(-dist * ((1.0 / (margin - marginEpsilon)) * maxDepth) + maxDepth, 0.0);
 			contacts.m_unmodified_depth = dist;
 		}

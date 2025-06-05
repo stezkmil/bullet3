@@ -314,6 +314,9 @@ public:
 		btMatrix3x3 m_effectiveMass;      // effective mass in contact
 		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
 		NodeSafe m_safe;
+		static constexpr int kMaxTetraMembershipPerNode = 32;
+		int m_tetraMembership[kMaxTetraMembershipPerNode];
+		int m_tetraMembershipCount;
 	};
 	/* Link			*/
 	ATTRIBUTE_ALIGNED16(struct)
@@ -1414,6 +1417,7 @@ public:
 		}
 	}
 
+	void lastSafeBorderGrow(int tetraIndex, std::set<btSoftBody::Node*>& nodesInCollision);
 	virtual void updateLastSafeWorldTransform(const std::set<int>* partial) override;
 	virtual void applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial) override;
 };

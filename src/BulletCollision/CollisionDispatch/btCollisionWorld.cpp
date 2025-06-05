@@ -1519,10 +1519,12 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		for (auto& updatedPair : islandsWithLastSafeUpdated)
 		{
 			auto* body = updatedPair.second;
-			if (body->isStaticObject() || body->getInternalType() == btCollisionObject::CO_SOFT_BODY)
+			if (body->isStaticObject())
 				continue;
 			body->updateLastSafeWorldTransform(nullptr);
 		}
+		// When there are penetrations, the softs are done in this loop separately because their partial update would never be done because the soft's penetration
+		// caused its island to be pruned away.
 		for (const auto& unstuckVectorElem : unstuckVector)
 		{
 			if (unstuckVectorElem.isSoft)

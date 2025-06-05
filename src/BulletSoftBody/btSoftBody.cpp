@@ -519,11 +519,20 @@ void btSoftBody::appendTetra(int node0,
 							 Material* mat)
 {
 	appendTetra(-1, mat);
-	Tetra& t = m_tetras[m_tetras.size() - 1];
+	auto tetraIndex = m_tetras.size() - 1;
+	Tetra& t = m_tetras[tetraIndex];
 	t.m_n[0] = &m_nodes[node0];
 	t.m_n[1] = &m_nodes[node1];
 	t.m_n[2] = &m_nodes[node2];
 	t.m_n[3] = &m_nodes[node3];
+	btAssert(m_nodes[node0].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
+	btAssert(m_nodes[node1].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
+	btAssert(m_nodes[node2].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
+	btAssert(m_nodes[node3].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
+	m_nodes[node0].m_tetraMembership[m_nodes[node0].m_tetraMembershipCount++] = tetraIndex;
+	m_nodes[node1].m_tetraMembership[m_nodes[node1].m_tetraMembershipCount++] = tetraIndex;
+	m_nodes[node2].m_tetraMembership[m_nodes[node2].m_tetraMembershipCount++] = tetraIndex;
+	m_nodes[node3].m_tetraMembership[m_nodes[node3].m_tetraMembershipCount++] = tetraIndex;
 	t.m_rv = VolumeOf(t.m_n[0]->m_x, t.m_n[1]->m_x, t.m_n[2]->m_x, t.m_n[3]->m_x);
 	m_bUpdateRtCst = true;
 }
@@ -4494,6 +4503,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][%f,%f,%f,1] \n", lineStart.x(), lineStart.y(), lineStart.z(),
 			lineEnd.x(), lineEnd.y(), lineEnd.z(), r, g, b);*/
 
+	// Penetrations do not generate impulses for softs. Penetrations are handled by the last safe position application.
 	if (penetrating)
 		return;
 
@@ -4588,6 +4598,7 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, 
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 
+	// Penetrations do not generate impulses for softs. Penetrations are handled by the last safe position application.
 	if (penetrating)
 		return;
 
@@ -4611,23 +4622,29 @@ void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, 
 		return;
 
 	//if (!origsDrawn)
-	/*{
-			for (auto i = 0; i < m_faces.size(); ++i)
-			{
-				auto& f = m_faces[i];
-				fprintf(stderr, "drawtriangle \"tri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-						f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-						f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-			}
-			for (auto i = 0; i < otherSoft->m_faces.size(); ++i)
-			{
-				auto& f = otherSoft->m_faces[i];
-				fprintf(stderr, "drawtriangle \"othertri%d\" [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
-						f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
-						f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
-			}
-			origsDrawn = true;
+	{
+		/*for (auto i = 0; i < m_faces.size(); ++i)
+		{
+			auto& f = m_faces[i];
+			fprintf(stderr, "drawline \"lin%d\" [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+					f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z());
+			fprintf(stderr, "drawline \"lin%d\" [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+			fprintf(stderr, "drawline \"lin%d\" [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+		}
+		for (auto i = 0; i < otherSoft->m_faces.size(); ++i)
+		{
+			auto& f = otherSoft->m_faces[i];
+			fprintf(stderr, "drawline \"otherlin%d\" [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+					f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z());
+			fprintf(stderr, "drawline \"otherlin%d\" [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[0]->m_x.x(), f.m_n[0]->m_x.y(), f.m_n[0]->m_x.z(),
+					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
+			fprintf(stderr, "drawline \"otherlin%d\" [%f, %f, %f] [%f, %f, %f]\n", i, f.m_n[1]->m_x.x(), f.m_n[1]->m_x.y(), f.m_n[1]->m_x.z(),
+					f.m_n[2]->m_x.x(), f.m_n[2]->m_x.y(), f.m_n[2]->m_x.z());
 		}*/
+		//origsDrawn = true;
+	}
 
 	/*fprintf(stderr, "createPointHelperObject \"contactpoint\" [%f, %f, %f] \n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 		fprintf(stderr, "createPointHelperObject \"n%d\" [%f, %f, %f] \n", getUserIndex(), n.m_x.x(), n.m_x.y(), n.m_x.z());
@@ -4749,7 +4766,7 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 		btVector3 vt = vr - vn * n;
 		btScalar vtNorm = vt.safeNorm();
 
-		//fprintf(stderr, "vn %f d %f rhs %f\n", vn, d, OVERLAP_REDUCTION_FACTOR * d / timeStep);
+		//fprintf(stderr, "vn %f\n", vn);
 		if (vn >= 0.0)
 		{
 			//fprintf(stderr, "CONTINUE\n");
@@ -4764,7 +4781,7 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		// Typical "collision" style impulse
 		btScalar penetration = 0.0;
-		const btScalar penetrationStiffness = 100.0;
+		const btScalar penetrationStiffness = 10000.0;
 		if (c.m_offset < 0.0)
 			penetration = c.m_offset * penetrationStiffness;
 		btScalar restitution = 0.0;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
@@ -5325,6 +5342,23 @@ bool btSoftBody::wantsSleeping()
 	return false;
 }
 
+// Surrounding nodes also, because my CD phase is not bulletproof (a fully tunnelled through triangle could cause an update here which should not happen).
+// So this is sort of 1 node border grow. It is better to be conservative here and update only the nodes I am sure they do not penetrate,
+// otherwise a position could be marked as safe even if it isn't - that is very bad. Naturally not even this is bulletproof - should the border grow be
+// by 1, 2 or 3... to be perfectly safe? So this can also be a source of headaches - better would be not to need this at all.
+void btSoftBody::lastSafeBorderGrow(int tetraIndex, std::set<btSoftBody::Node*>& nodesInCollision)
+{
+	for (auto i = 0; i < 4; ++i)
+		for (auto m = 0; m < m_tetras[tetraIndex].m_n[i]->m_tetraMembershipCount; ++m)
+		{
+			auto tetraMembershipIndex = m_tetras[tetraIndex].m_n[i]->m_tetraMembership[m];
+			for (auto j = 0; j < 4; ++j)
+			{
+				nodesInCollision.insert(m_tetras[tetraMembershipIndex].m_n[j]);
+			}
+		}
+}
+
 void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 {
 	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
@@ -5332,16 +5366,9 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 
 	if (partial)
 	{
-		fprintf(stderr, "framestart()\n");
-		std::vector<std::set<int>> nodeTetraMembership;
-		nodeTetraMembership.resize(m_nodes.size());
-		for (int i = 0; i < m_tetras.size(); ++i)
-		{
-			for (auto j = 0; j < 4; ++j)
-				nodeTetraMembership[m_tetras[i].m_n[j]->local_index].insert(i);
-		}
+		//fprintf(stderr, "framestart()\n");
 
-		std::set<const btSoftBody::Node*> nodesInCollision;
+		std::set<btSoftBody::Node*> nodesInCollision;
 		for (auto tetraIndex : *partial)
 		{
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
@@ -5349,21 +5376,15 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
 			nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
 
-			// Surrounding nodes also, because my CD phase is not bulletproof. So this is sort of 1 node border grow.
-			for (auto i = 0; i < 4; ++i)
-				for (auto tetra : nodeTetraMembership[m_tetras[tetraIndex].m_n[i]->local_index])
-				{
-					for (auto j = 0; j < 4; ++j)
-						nodesInCollision.insert(m_tetras[tetra].m_n[j]);
-				}
+			lastSafeBorderGrow(tetraIndex, nodesInCollision);
 		}
 
 		//fprintf(stderr, "update start -------------------------------------------\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
 		{
-			const auto& src = m_nodes[i];
+			auto& src = m_nodes[i];
 			auto inCol = nodesInCollision.contains(&src);
-			fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][%f,%f,0,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z(), inCol ? 1.0 : 0.0, inCol ? 0.0 : 1.0);
+			//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][%f,%f,0,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z(), inCol ? 1.0 : 0.0, inCol ? 0.0 : 1.0);
 			if (inCol)
 			{
 				//fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
@@ -5382,7 +5403,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
 		}
-		fprintf(stderr, "frameend()\n");
+		//fprintf(stderr, "frameend()\n");
 	}
 	else
 	{
@@ -5420,13 +5441,6 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>*
 		std::set<btSoftBody::Node*> nodesInCollision;
 		if (partial)
 		{
-			std::vector<std::set<int>> nodeTetraMembership;
-			nodeTetraMembership.resize(m_nodes.size());
-			for (int i = 0; i < m_tetras.size(); ++i)
-			{
-				for (auto j = 0; j < 4; ++j)
-					nodeTetraMembership[m_tetras[i].m_n[j]->local_index].insert(i);
-			}
 			for (auto tetraIndex : *partial)
 			{
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
@@ -5434,13 +5448,7 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>*
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
 				nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
 
-				// Surrounding nodes also, because my CD phase is not bulletproof. So this is sort of 1 node border grow.
-				for (auto i = 0; i < 4; ++i)
-					for (auto tetra : nodeTetraMembership[m_tetras[tetraIndex].m_n[i]->local_index])
-					{
-						for (auto j = 0; j < 4; ++j)
-							nodesInCollision.insert(m_tetras[tetra].m_n[j]);
-					}
+				lastSafeBorderGrow(tetraIndex, nodesInCollision);
 
 				/*auto& a = m_tetras[tetraIndex].m_n[0];
 				auto& b = m_tetras[tetraIndex].m_n[1];
