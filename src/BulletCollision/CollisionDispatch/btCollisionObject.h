@@ -38,6 +38,7 @@ struct btCollisionShapeData;
 #include "LinearMath/btAlignedObjectArray.h"
 
 #include <set>
+#include <map>
 
 typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
 
@@ -548,12 +549,12 @@ public:
 		return m_lastSafeWorldTransform;
 	}
 
-	virtual void updateLastSafeWorldTransform(const std::set<int>* partial)
+	virtual void updateLastSafeWorldTransform(const std::map<int, btScalar>* partial)
 	{
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial);
+	virtual void applyLastSafeWorldTransform(const std::map<int, btScalar>* partial);
 
 	void resetLastSafeApplyCounter()
 	{

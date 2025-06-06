@@ -916,6 +916,9 @@ public:
 
 	btScalar m_restLengthScale;
 	btScalar m_averagePrincipalStress;
+	btScalar m_lastSafeApplyDepthThreshold;
+	btScalar m_lastSafeApplyVelocityDamping;
+	btScalar m_softVsSoftContactStiffness;
 
 	bool m_reducedModel;  // Reduced deformable model flag
 
@@ -1417,9 +1420,9 @@ public:
 		}
 	}
 
-	void lastSafeBorderGrow(int tetraIndex, std::set<btSoftBody::Node*>& nodesInCollision);
-	virtual void updateLastSafeWorldTransform(const std::set<int>* partial) override;
-	virtual void applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial) override;
+	void lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, btScalar>& nodesInCollision);
+	virtual void updateLastSafeWorldTransform(const std::map<int, btScalar>* partial) override;
+	virtual void applyLastSafeWorldTransform(const std::map<int, btScalar>* partial) override;
 };
 
 #endif  //_BT_SOFT_BODY_H

@@ -249,6 +249,9 @@ void btSoftBody::initDefaults(btCollisionShape* collisionShape)
 	m_reducedModel = false;
 
 	m_averagePrincipalStress = 0.0;
+	m_lastSafeApplyDepthThreshold = 5.0;
+	m_lastSafeApplyVelocityDamping = 0.5;
+	m_softVsSoftContactStiffness = 100.0;
 }
 
 //
@@ -4503,10 +4506,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][%f,%f,%f,1] \n", lineStart.x(), lineStart.y(), lineStart.z(),
 			lineEnd.x(), lineEnd.y(), lineEnd.z(), r, g, b);*/
 
-	// Penetrations do not generate impulses for softs. Penetrations are handled by the last safe position application.
-	if (penetrating)
-		return;
-
 	auto nodeIndex = findClosestNodeByMapping(part0, index0, contactPointOnSoftCollisionMesh);
 
 	if (nodeIndex == -1)
@@ -4597,10 +4596,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
-
-	// Penetrations do not generate impulses for softs. Penetrations are handled by the last safe position application.
-	if (penetrating)
-		return;
 
 	/*fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 	auto lineStart = contactPointOnSoftCollisionMesh;
@@ -4781,9 +4776,8 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 
 		// Typical "collision" style impulse
 		btScalar penetration = 0.0;
-		const btScalar penetrationStiffness = 10000.0;
 		if (c.m_offset < 0.0)
-			penetration = c.m_offset * penetrationStiffness;
+			penetration = c.m_offset * m_softVsSoftContactStiffness;
 		btScalar restitution = 0.0;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
 		btScalar jCollision = -(1.0 + restitution) * (vn + penetration) / invMassSum;
 		btScalar jTotal = jCollision;
@@ -5346,38 +5340,47 @@ bool btSoftBody::wantsSleeping()
 // So this is sort of 1 node border grow. It is better to be conservative here and update only the nodes I am sure they do not penetrate,
 // otherwise a position could be marked as safe even if it isn't - that is very bad. Naturally not even this is bulletproof - should the border grow be
 // by 1, 2 or 3... to be perfectly safe? So this can also be a source of headaches - better would be not to need this at all.
-void btSoftBody::lastSafeBorderGrow(int tetraIndex, std::set<btSoftBody::Node*>& nodesInCollision)
+void btSoftBody::lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, btScalar>& nodesInCollision)
 {
-	for (auto i = 0; i < 4; ++i)
-		for (auto m = 0; m < m_tetras[tetraIndex].m_n[i]->m_tetraMembershipCount; ++m)
-		{
-			auto tetraMembershipIndex = m_tetras[tetraIndex].m_n[i]->m_tetraMembership[m];
-			for (auto j = 0; j < 4; ++j)
+	for (auto pass = 0; pass < growth; ++pass)
+	{
+		std::map<btSoftBody::Node*, btScalar> grownNodesInCollision;
+		for (auto& [node, dist] : nodesInCollision)
+			for (auto m = 0; m < node->m_tetraMembershipCount; ++m)
 			{
-				nodesInCollision.insert(m_tetras[tetraMembershipIndex].m_n[j]);
+				auto tetraMembershipIndex = node->m_tetraMembership[m];
+				for (auto j = 0; j < 4; ++j)
+				{
+					grownNodesInCollision.insert({m_tetras[tetraMembershipIndex].m_n[j], dist});
+				}
 			}
-		}
+		if (nodesInCollision.size() == grownNodesInCollision.size())
+			break;
+		nodesInCollision = grownNodesInCollision;
+	}
 }
 
-void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
+int kLastSafeGrowth = 1;
+
+void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* partial)
 {
 	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
-	// because the penetration contact generation also depends on this last safe data.
+	// because the penetration contact generation in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
+	// also depends on this last safe data.
 
 	if (partial)
 	{
 		//fprintf(stderr, "framestart()\n");
 
-		std::set<btSoftBody::Node*> nodesInCollision;
-		for (auto tetraIndex : *partial)
+		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
+		for (auto& [partTetraIndex, partDist] : *partial)
 		{
-			nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
-			nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
-			nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
-			nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
-
-			lastSafeBorderGrow(tetraIndex, nodesInCollision);
+			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[0], partDist});
+			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[1], partDist});
+			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[2], partDist});
+			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[3], partDist});
 		}
+		lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
 
 		//fprintf(stderr, "update start -------------------------------------------\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
@@ -5426,29 +5429,23 @@ void btSoftBody::updateLastSafeWorldTransform(const std::set<int>* partial)
 	}
 }
 
-void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial)
+void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* partial)
 {
-	// Disabled until I have some proof that it helps. I suspect that this move into safe position is
-	// negligible compared to the penetration contact generated based on the same last safe data.
-	// It seems to me that the penetration contact generation (in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
-	// using maxDepthPenetration) does the same job but better. This unstuck also introduces slight
-	// artifacts into the simulation (teeth like effect when two ropes collide), which is one more argument to keep it disabled.
-	// It should perhaps be reverified also for rigids, whether it is still improves some cases, because it is essentially the same thing in this aspect.
-	//return;
+	// Fallback to the last safe position for softs is done when the penetration reaches extreme levels. For example when
+	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
+	// but when the cube is squeezed into a very tight crevice, the impulses from the opposing crevice faces can cause an impulse ping-pong
+	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
-		//fprintf(stderr, "framestart()\n");
-		std::set<btSoftBody::Node*> nodesInCollision;
+		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
 		if (partial)
 		{
-			for (auto tetraIndex : *partial)
+			for (auto& [partTetraIndex, partDist] : *partial)
 			{
-				nodesInCollision.insert(m_tetras[tetraIndex].m_n[0]);
-				nodesInCollision.insert(m_tetras[tetraIndex].m_n[1]);
-				nodesInCollision.insert(m_tetras[tetraIndex].m_n[2]);
-				nodesInCollision.insert(m_tetras[tetraIndex].m_n[3]);
-
-				lastSafeBorderGrow(tetraIndex, nodesInCollision);
+				nodesInCollision.insert({m_tetras[partTetraIndex].m_n[0], partDist});
+				nodesInCollision.insert({m_tetras[partTetraIndex].m_n[1], partDist});
+				nodesInCollision.insert({m_tetras[partTetraIndex].m_n[2], partDist});
+				nodesInCollision.insert({m_tetras[partTetraIndex].m_n[3], partDist});
 
 				/*auto& a = m_tetras[tetraIndex].m_n[0];
 				auto& b = m_tetras[tetraIndex].m_n[1];
@@ -5467,63 +5464,33 @@ void btSoftBody::applyLastSafeWorldTransform(btScalar dist, const std::set<int>*
 				fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
 						c->m_x.x(), c->m_x.y(), c->m_x.z());*/
 			}
+			lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
 		}
 		else
 		{
+			btAssert(false);  // Softs should always be partial now
 			for (int i = 0; i < m_nodes.size(); ++i)
 			{
-				nodesInCollision.insert(&m_nodes[i]);
+				nodesInCollision.insert({&m_nodes[i], m_lastSafeApplyDepthThreshold});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
 			}
 		}
-
-		// The way the fraction is calculated for rigids does not work well for softs. Hardcode of 0.1 ensures that there is enough room for a mix with the existing
-		// values. If we got to high fraction values close to 1.0, then the soft would be unresponsive.
-		// Disadvantage is that it will never truly reach the safe destination, just approach it.
-
-		// Naturally, I am not happy with this heuristic. It would be best to just calculate the impulses so that this unstuck is never needed, but I was not able to do this.
-		// It can happen that a soft does not have its safe position updated in a long time, so this partial application of the safe position can cause noticeable
-		// stoppage of the soft body.
 
 		// TODO add scene names into a comment here where this helps. I am now not convinced that this has a significant benefit given how small the values of distForMaxFraction and maxFraction are.
 		// It seems to me that this unstuck will be completely overpowered by the unstuck impulses (because of const btScalar maxDepthPenetration = 5.0;)
 		// Is it also the case for rigids?
 
-		constexpr btScalar maxFraction = 1.0;
-		constexpr btScalar distForMaxFraction = 100.0;
-
-		/*numContacts = numContacts - 50;
-	numContacts = std::max(numContacts, 0);
-	auto normedNumContacts = numContacts / 50.0;
-	normedNumContacts = std::min(normedNumContacts, 1.0);
-	normedNumContacts = std::max(normedNumContacts, 0.0);*/
-
-		//dist = dist / distForMaxFraction;
-		//auto normedDist = std::min(dist, 1.0);
-		//normedDist = std::max(normedDist, 0.0);
-
-		auto fraction = maxFraction /** normedDist*/ /*maxFraction * normedNumContacts*/;
-		//fprintf(stderr, "fraction %f\n", fraction);
-		//fprintf(stderr, "apply\n");
-
-		for (auto nodeInCollision : nodesInCollision)
+		for (auto& [nodeInCollision, depth] : nodesInCollision)
 		{
-			const auto& src = nodeInCollision->m_safe;
-			auto& dst = nodeInCollision;
+			//fprintf(stderr, "node %d depth %f\n", nodeInCollision->local_index, depth);
+			if (depth >= m_lastSafeApplyDepthThreshold)
+			{
+				const auto& src = nodeInCollision->m_safe;
+				auto& dst = nodeInCollision;
 
-			dst->m_x = dst->m_x.lerp(src.m_x, fraction);
-			dst->m_v *= 0.9;
-			dst->m_q *= 0.9;
-			//dst.m_q = dst.m_q.lerp(src.m_q, fraction);
-			/*dst.m_v = dst.m_v.lerp(src.m_v, fraction);
-		dst.m_vn = dst.m_vn.lerp(src.m_vn, fraction);
-		dst.m_f = dst.m_f.lerp(src.m_f, fraction);
-		dst.m_n = dst.m_n.lerp(src.m_n, fraction);
-		dst.m_splitv = dst.m_splitv.lerp(src.m_splitv, fraction);
-		dst.m_im = dst.m_im * (1.0 - fraction) + src.m_im * fraction;
-		dst.m_area = dst.m_area * (1.0 - fraction) + src.m_area * fraction;
-
-		dst.m_effectiveMass = src.m_effectiveMass;
-		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
+				dst->m_v *= m_lastSafeApplyVelocityDamping;
+				dst->m_q *= m_lastSafeApplyVelocityDamping;
+				dst->m_x = src.m_x;
+			}
 		}
 	}
 }

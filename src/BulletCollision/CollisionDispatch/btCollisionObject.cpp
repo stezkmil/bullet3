@@ -148,7 +148,7 @@ void btCollisionObject::serializeSingleObject(class btSerializer* serializer) co
 	serializer->finalizeChunk(chunk, structType, BT_COLLISIONOBJECT_CODE, (void*)this);
 }
 
-void btCollisionObject::applyLastSafeWorldTransform(btScalar dist, const std::set<int>* partial)
+void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, btScalar>* partial)
 {
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{

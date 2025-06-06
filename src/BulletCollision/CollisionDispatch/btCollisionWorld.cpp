@@ -1318,14 +1318,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 	struct MappedType
 	{
 		btCollisionObject* mappedCollisionObject = nullptr;
-		btScalar distance = 0.0;
 		int numContacts = 0;
-		// Partial unstuck for softs would be nice, but so far I was unable to use it in a way which would not cause a soft body explosion...
-		// This is used for softs. For softs we can be more efficient and unstuck only the tetra nodes which are really stuck and leave the remaining nodes as they were.
-		// UPDATE: why this not such a great idea. It was tested to update last safe positions only for tetra nodes which are not part of a collision. It has
-		// worsened the case of a soft cube falling onto a flat ground, because the triangles which were part of the cube base side have tunelled completely through
-		// the ground and were thus not in a collision, therefore updating the safe positions of their tetras. Safe pos naturally should not have been updated for them.
-		std::set<int> stuckTetraIndices;
+		std::map<int, btScalar> stuckTetraIndices;
 	};
 	std::map<btCollisionObject*, MappedType> penetratingColliders;
 	for (int i = 0; i < numManifolds; i++)
@@ -1349,12 +1343,15 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					auto body0Iter = penetratingColliders.find(const_cast<btCollisionObject*>(contactManifold->getBody0()));
 					if (body0Iter == penetratingColliders.end())
 					{
-						std::set<int> stuckTetraIndices;
+						std::map<int, btScalar> stuckTetraIndices;
 						if (body0IsSoft)
-							stuckTetraIndices.merge(contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0));
+						{
+							auto indicesSet = contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0);
+							for (auto index : indicesSet)
+								stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+						}
 						MappedType val{
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody1()),
-							.distance = cp.getUnmodifiedDistance(),
 							.numContacts = numContacts,
 							.stuckTetraIndices = stuckTetraIndices};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody0()), val});
@@ -1362,8 +1359,17 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					else
 					{
 						if (body0IsSoft)
-							body0Iter->second.stuckTetraIndices.merge(contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0));
-						body0Iter->second.distance = max(body0Iter->second.distance, cp.getUnmodifiedDistance());
+						{
+							auto indicesSet = contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0);
+							for (auto index : indicesSet)
+							{
+								auto existingIter = body0Iter->second.stuckTetraIndices.find(index);
+								if (existingIter != body0Iter->second.stuckTetraIndices.end())
+									existingIter->second = max(existingIter->second, cp.getUnmodifiedDistance());
+								else
+									body0Iter->second.stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+							}
+						}
 					}
 				}
 
@@ -1372,12 +1378,15 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					auto body1Iter = penetratingColliders.find(const_cast<btCollisionObject*>(contactManifold->getBody1()));
 					if (body1Iter == penetratingColliders.end())
 					{
-						std::set<int> stuckTetraIndices;
+						std::map<int, btScalar> stuckTetraIndices;
 						if (body1IsSoft)
-							stuckTetraIndices.merge(contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1));
+						{
+							auto indicesSet = contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1);
+							for (auto index : indicesSet)
+								stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+						}
 						MappedType val{
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody0()),
-							.distance = cp.getUnmodifiedDistance(),
 							.numContacts = numContacts,
 							.stuckTetraIndices = stuckTetraIndices};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody1()), val});
@@ -1385,8 +1394,17 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 					else
 					{
 						if (body1IsSoft)
-							body1Iter->second.stuckTetraIndices.merge(contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1));
-						body1Iter->second.distance = max(body1Iter->second.distance, cp.getUnmodifiedDistance());
+						{
+							auto indicesSet = contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1);
+							for (auto index : indicesSet)
+							{
+								auto existingIter = body1Iter->second.stuckTetraIndices.find(index);
+								if (existingIter != body1Iter->second.stuckTetraIndices.end())
+									existingIter->second = max(existingIter->second, cp.getUnmodifiedDistance());
+								else
+									body1Iter->second.stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+							}
+						}
 					}
 				}
 			}
@@ -1453,9 +1471,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		btCollisionObject* body;
 		const btCollisionObject* opposingBody;
 		bool isSoft;
-		btScalar distance;
 		int numContacts = 0;
-		std::set<int> stuckTetraIndices;
+		std::map<int, btScalar> stuckTetraIndices;
 	};
 
 	std::vector<VectorElem> unstuckVector;
@@ -1469,7 +1486,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		{
 			// We got into the penetration which I consider to be an invalid state. In this case, top priority for me is unstuck.
 			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
-			unstuckVector.push_back({body, penColIter->second.mappedCollisionObject, body->getInternalType() == btCollisionObject::CO_SOFT_BODY, penColIter->second.distance, penColIter->second.numContacts, penColIter->second.stuckTetraIndices});
+			unstuckVector.push_back({body, penColIter->second.mappedCollisionObject, body->getInternalType() == btCollisionObject::CO_SOFT_BODY, penColIter->second.numContacts, penColIter->second.stuckTetraIndices});
 
 			auto eraseRange = islandsWithLastSafeUpdated.equal_range(body->getIslandTag2());
 			islandsWithLastSafeUpdated.erase(eraseRange.first, eraseRange.second);
@@ -1483,7 +1500,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		auto isSoft = unstuckVectorElem.isSoft;
 		auto opposingIsSoft = opposingBody->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 		auto bothSoft = isSoft && opposingIsSoft;
-		auto dist = unstuckVectorElem.distance;
 		auto numContacts = unstuckVectorElem.numContacts;
 
 		if (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK)
@@ -1496,7 +1512,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 
 			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
 			//if (!bothSoft)  // Currently not done for soft vs soft. Will have to come up with something later for this case. Currently applyLastSafeWorldTransform does not work so great for this case.
-			body->applyLastSafeWorldTransform(dist, &unstuckVectorElem.stuckTetraIndices);
+			body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
 			if (!isSoft && !m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
 
