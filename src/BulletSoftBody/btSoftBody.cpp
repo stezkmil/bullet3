@@ -5435,6 +5435,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* part
 	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
 	// but when the cube is squeezed into a very tight crevice, the impulses from the opposing crevice faces can cause an impulse ping-pong
 	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
+	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
@@ -5474,10 +5475,6 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* part
 				nodesInCollision.insert({&m_nodes[i], m_lastSafeApplyDepthThreshold});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
 			}
 		}
-
-		// TODO add scene names into a comment here where this helps. I am now not convinced that this has a significant benefit given how small the values of distForMaxFraction and maxFraction are.
-		// It seems to me that this unstuck will be completely overpowered by the unstuck impulses (because of const btScalar maxDepthPenetration = 5.0;)
-		// Is it also the case for rigids?
 
 		for (auto& [nodeInCollision, depth] : nodesInCollision)
 		{
