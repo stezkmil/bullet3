@@ -15625,7 +15625,7 @@ bool PhysicsServerCommandProcessor::pickBody(const btVector3& rayFromWorld, cons
 							m_data->m_pickedSoftBody = psb;
 							psb->setActivationState(DISABLE_DEACTIVATION);
 							const btSoftBody::Face& f = psb->m_faces[face_id];
-							btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(100, 0, &f, nullptr, btVector4(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0), pickPos, m_data->m_maxPickingForce);
+							btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(100, 0, &f, nullptr, nullptr, pickPos, m_data->m_maxPickingForce);
 							m_data->m_mouseForce = mouse_force;
 
 							deformWorld->addForce(psb, mouse_force);
