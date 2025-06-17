@@ -1,4 +1,4 @@
-/*
+﻿/*
 Bullet Continuous Collision Detection and Physics Library
 Copyright (c) 2003-2006 Erwin Coumans  https://bulletphysics.org
 
@@ -1205,6 +1205,33 @@ static inline btVector3 BaryCoord(const btVector3& a,
 						  btCross(c - p, a - p).length()};
 	const btScalar isum = 1 / (w[0] + w[1] + w[2]);
 	return (btVector3(w[1] * isum, w[2] * isum, w[0] * isum));
+}
+
+static inline btVector4 BaryCoord(const btVector3& a,
+								  const btVector3& b,
+								  const btVector3& c,
+								  const btVector3& d,
+								  const btVector3& p)
+{
+	// signed volume of a tetrahedron (factor 6 cancels out later)
+	auto vol = [](const btVector3& p0,
+				  const btVector3& p1,
+				  const btVector3& p2,
+				  const btVector3& p3) -> btScalar
+	{
+		return (p1 - p0).dot((p2 - p0).cross(p3 - p0));
+	};
+
+	const btScalar V = vol(a, b, c, d);  // total volume
+	btAssert(btFabs(V) > SIMD_EPSILON);  // degenerate check
+
+	const btScalar invV = 1.0f / V;
+	const btScalar l0 = vol(p, b, c, d) * invV;  // opposite vertex a
+	const btScalar l1 = vol(a, p, c, d) * invV;  // opposite vertex b
+	const btScalar l2 = vol(a, b, p, d) * invV;  // opposite vertex c
+	const btScalar l3 = vol(a, b, c, p) * invV;  // opposite vertex d
+
+	return btVector4(l0, l1, l2, l3);  // λ0+λ1+λ2+λ3 == 1
 }
 
 //
