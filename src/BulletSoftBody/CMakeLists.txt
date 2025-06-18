@@ -24,6 +24,7 @@ SET(BulletSoftBody_SRCS
 	btDeformableMultiBodyDynamicsWorld.cpp
 	btDeformableContactConstraint.cpp
 	poly34.cpp
+	btDeformableMousePickingForce.cpp
 
 	BulletReducedDeformableBody/btReducedDeformableBody.cpp
 	BulletReducedDeformableBody/btReducedDeformableBodyHelpers.cpp
