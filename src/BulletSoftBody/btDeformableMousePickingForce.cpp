@@ -256,11 +256,11 @@ void btDeformableMousePickingForce::addScaledDampingForce(btScalar scale, TVStac
 		force[n->index] -= f;
 	}
 	// Should add a rotation to preserve the grab orientation, but I did not observe any positive effects even with high values of m_kRot
-	if (m_kRot > btScalar(0) /*&& theta > btScalar(1e-4)*/)
-	{
-		btVector3 torque = m_kRot * theta * axis;
-		applyTorqueSpring(torque, force);
-	}
+	//if (m_kRot > btScalar(0) /*&& theta > btScalar(1e-4)*/)
+	//{
+	//	btVector3 torque = m_kRot * theta * axis;
+	//	applyTorqueSpring(torque, force);
+	//}
 }
 
 // Jacobian‑vector products and energies are kept identical to the previous
