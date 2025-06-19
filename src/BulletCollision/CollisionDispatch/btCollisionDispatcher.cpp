@@ -39,6 +39,8 @@ btCollisionDispatcher::btCollisionDispatcher(btCollisionConfiguration* collision
 	int i;
 
 	setNearCallback(defaultNearCallback);
+	m_ptrForProgressReportCallback = nullptr;
+	m_progressReportCallback = nullptr;
 
 	m_collisionAlgorithmPoolAllocator = collisionConfiguration->getCollisionAlgorithmPool();
 
@@ -95,7 +97,9 @@ btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObj
 			return 0;
 		}
 	}
-	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+	bool forceAllContacts0 = body0->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
+	bool forceAllContacts1 = body1->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
+	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY || forceAllContacts0 || forceAllContacts1;
 	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold);
 	manifold->m_index1a = m_manifoldsPtr.size();
 	m_manifoldsPtr.push_back(manifold);
@@ -232,6 +236,8 @@ public:
 
 	virtual bool processOverlap(btBroadphasePair& pair)
 	{
+		if (m_dispatcher->getProgressReportCallback())
+			(*m_dispatcher->getProgressReportCallback())(m_dispatcher->getPtrForProgressReportCallback(), m_overlap_index, m_total_overlap_count);
 		return (*m_dispatcher->getNearCallback())(pair, *m_dispatcher, m_dispatchInfo);
 	}
 };
