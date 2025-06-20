@@ -49,8 +49,6 @@ btPersistentManifold::btPersistentManifold()
 {
 	if (!m_unlimitedCacheSize)
 		m_pointCache.resize(MANIFOLD_CACHE_SIZE);
-	else
-		m_pointCache.reserve(MANIFOLD_CACHE_SIZE_UNLIMITED);
 }
 
 #ifdef DEBUG_PERSISTENCY

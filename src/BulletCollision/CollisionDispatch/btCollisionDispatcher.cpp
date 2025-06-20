@@ -71,7 +71,7 @@ btCollisionDispatcher::~btCollisionDispatcher()
 {
 }
 
-btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1)
+btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1, size_t unlimitedSizeManifoldHint)
 {
 	//btAssert(gNumManifold < 65535);
 
@@ -100,7 +100,7 @@ btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObj
 	bool forceAllContacts0 = body0->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
 	bool forceAllContacts1 = body1->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
 	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY || forceAllContacts0 || forceAllContacts1;
-	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold);
+	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold, unlimitedSizeManifoldHint);
 	manifold->m_index1a = m_manifoldsPtr.size();
 	m_manifoldsPtr.push_back(manifold);
 

@@ -154,7 +154,7 @@ public:
 
 	virtual ~btCollisionDispatcher();
 
-	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1);
+	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1, size_t unlimitedSizeManifoldHint = 10);
 
 	virtual void releaseManifold(btPersistentManifold* manifold);
 

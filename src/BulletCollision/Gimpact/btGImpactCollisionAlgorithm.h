@@ -76,9 +76,9 @@ protected:
 	btCollisionAlgorithm* m_algorithmForSoftVsSoft;
 
 	//! Creates a new contact point
-	SIMD_FORCE_INLINE btPersistentManifold* newContactManifold(const btCollisionObject* body0, const btCollisionObject* body1)
+	SIMD_FORCE_INLINE btPersistentManifold* newContactManifold(const btCollisionObject* body0, const btCollisionObject* body1, size_t unlimitedSizeManifoldHint)
 	{
-		m_manifoldPtr = m_dispatcher->getNewManifold(body0, body1);
+		m_manifoldPtr = m_dispatcher->getNewManifold(body0, body1, unlimitedSizeManifoldHint);
 		return m_manifoldPtr;
 	}
 
@@ -127,11 +127,11 @@ protected:
 	}
 
 	// Call before process collision
-	SIMD_FORCE_INLINE void checkManifold(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap)
+	SIMD_FORCE_INLINE void checkManifold(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, size_t unlimitedSizeManifoldHint = 10)
 	{
 		if (getLastManifold() == 0)
 		{
-			newContactManifold(body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject());
+			newContactManifold(body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject(), unlimitedSizeManifoldHint);
 		}
 
 		m_resultOut->setPersistentManifold(getLastManifold());
@@ -167,7 +167,7 @@ protected:
 						 const btCollisionObjectWrapper* body1Wrap,
 						 const btVector3& point,
 						 const btVector3& normal,
-						 btScalar distance, btScalar unmodified_distance);
+						 btScalar distance, btScalar unmodified_distance, size_t unlimitedSizeManifoldHint);
 
 	//! Collision routines
 	//!@{
@@ -189,13 +189,15 @@ protected:
 									const btCollisionObjectWrapper* body0Wrap,
 									const btCollisionObjectWrapper* body1Wrap,
 									const btGImpactMeshShapePart* shape0,
-									const btGImpactMeshShapePart* shape1);
+									const btGImpactMeshShapePart* shape1,
+									bool findAllContacts);
 
 	void collide_sat_triangles_aux(const btCollisionObjectWrapper* body0Wrap,
 								   const btCollisionObjectWrapper* body1Wrap,
 								   const btGImpactMeshShapePart* shape0,
 								   const btGImpactMeshShapePart* shape1,
-								   const btPairSet& auxPairSet);
+								   const btPairSet& auxPairSet,
+								   bool findAllContacts);
 
 	void shape_vs_shape_collision(
 		const btCollisionObjectWrapper* body0,

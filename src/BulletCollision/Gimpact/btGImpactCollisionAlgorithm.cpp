@@ -212,11 +212,12 @@ void btGImpactCollisionAlgorithm::addContactPoint(const btCollisionObjectWrapper
 												  const btVector3& point,
 												  const btVector3& normal,
 												  btScalar distance,
-												  btScalar unmodified_distance)
+												  btScalar unmodified_distance,
+												  size_t unlimitedSizeManifoldHint)
 {
 	m_resultOut->setShapeIdentifiersA(m_part0, m_triface0);
 	m_resultOut->setShapeIdentifiersB(m_part1, m_triface1);
-	checkManifold(body0Wrap, body1Wrap);
+	checkManifold(body0Wrap, body1Wrap, unlimitedSizeManifoldHint);
 	m_resultOut->addContactPoint(normal, point, distance, unmodified_distance);
 }
 
@@ -577,21 +578,28 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 															 const btCollisionObjectWrapper* body0Wrap,
 															 const btCollisionObjectWrapper* body1Wrap,
 															 const btGImpactMeshShapePart* shape0,
-															 const btGImpactMeshShapePart* shape1)
+															 const btGImpactMeshShapePart* shape1,
+															 bool findAllContacts)
 {
 	if (perThreadIntermediateResults)
 	{
 		bool anyPenetrating = false;
+		size_t manifoldSizeHint = 0;
 		for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
 		{
-			for (const auto& ir : perThreadIntermediateResult)
+			if (findAllContacts)
+				manifoldSizeHint += perThreadIntermediateResult.size();
+			// This heuristic was causing some bad shakes on the NARAZNIK_mod scene on the bumper ends
+			/*for (const auto& ir : perThreadIntermediateResult)
 			{
 				if (ir.depth > 0.0)
+				{
 					anyPenetrating = true;
-				break;
+					break;
+				}
 			}
-			if (anyPenetrating)
-				break;
+			if (anyPenetrating && !findAllContacts)
+				break;*/
 		}
 		for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
 		{
@@ -605,7 +613,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 								ir.point,
 								ir.normal,
 								ir.depth,
-								ir.unmodified_depth);
+								ir.unmodified_depth, manifoldSizeHint);
 			}
 		}
 	}
@@ -619,7 +627,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 							ir.point,
 							ir.normal,
 							ir.depth,
-							ir.unmodified_depth);
+							ir.unmodified_depth, 10);
 		}
 	}
 
@@ -631,7 +639,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 															const btCollisionObjectWrapper* body1Wrap,
 															const btGImpactMeshShapePart* shape0,
 															const btGImpactMeshShapePart* shape1,
-															const btPairSet& auxPairSet)
+															const btPairSet& auxPairSet,
+															bool findAllContacts)
 {
 	btGimpactVsGimpactGroupedParams grpParams;
 	collide_sat_triangles_pre(body0Wrap, body1Wrap, shape0, shape1, grpParams);
@@ -642,7 +651,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 		btGImpactPairEval::EvalPair(*pairIter, grpParams, false, false, nullptr, &intermediateResults);
 	}
 
-	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1);
+	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1, findAllContacts);
 }
 
 void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
@@ -685,12 +694,14 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool isGhost1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
 	bool isForceAllContacts0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
 	bool isForceAllContacts1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
+	bool isForceAllContacts = isForceAllContacts0 || isForceAllContacts1;
+	bool isSoft = body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 	bool isBarrier0 = !isGhost0 && (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost0
 	bool isBarrier1 = !isGhost1 && (body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost1
 	bool findOnlyFirstPenetratingPair = isTol0 || isTol1;
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstPenetratingPair |= generateManifoldForGhost;
-	if (isForceAllContacts0 || isForceAllContacts1)
+	if (isForceAllContacts)
 		findOnlyFirstPenetratingPair = false;
 
 	if (isTolLow0 && isTolLow1 || (isTolLow0 && isBarrier1) || (isTolLow1 && isBarrier0))
@@ -758,7 +769,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	{
 		const btGImpactMeshShapePart* shapepart0 = static_cast<const btGImpactMeshShapePart*>(shape0);
 		const btGImpactMeshShapePart* shapepart1 = static_cast<const btGImpactMeshShapePart*>(shape1);
-		collide_sat_triangles_post(&perThreadIntermediateResults, nullptr, body0Wrap, body1Wrap, shapepart0, shapepart1);
+		collide_sat_triangles_post(&perThreadIntermediateResults, nullptr, body0Wrap, body1Wrap, shapepart0, shapepart1, isForceAllContacts || isSoft);
 	}
 
 	//printf("pairset.size() %d\n", pairset.size());
@@ -772,7 +783,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 #ifdef BULLET_TRIANGLE_COLLISION
 		collide_gjk_triangles(body0Wrap, body1Wrap, shapepart0, shapepart1, &pairset[0].m_index1, pairset.size());
 #else
-		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet);
+		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet, isForceAllContacts || isSoft);
 #endif
 
 		// TODO this section seems misplaced from the Bullet architecture viewpoint. The m_dispatcher->needsResponse call should not be replicated here, but we should
@@ -1085,14 +1096,14 @@ void btGImpactCollisionAlgorithm::gimpacttrimeshpart_vs_plane_collision(
 				addContactPoint(body1Wrap, body0Wrap,
 								vertex,
 								-plane,
-								distance, distance);
+								distance, distance, 10);
 			}
 			else
 			{
 				addContactPoint(body0Wrap, body1Wrap,
 								vertex,
 								plane,
-								distance, distance);
+								distance, distance, 10);
 			}
 		}
 	}

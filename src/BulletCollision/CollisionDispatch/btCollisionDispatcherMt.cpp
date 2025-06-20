@@ -39,7 +39,7 @@ btCollisionDispatcherMt::btCollisionDispatcherMt(btCollisionConfiguration* confi
 	m_grainSize = grainSize;  // iterations per task
 }
 
-btPersistentManifold* btCollisionDispatcherMt::getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1)
+btPersistentManifold* btCollisionDispatcherMt::getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1, size_t unlimitedSizeManifoldHint)
 {
 	//optional relative contact breaking threshold, turned on by default (use setDispatcherFlags to switch off feature for improved performance)
 
@@ -64,7 +64,7 @@ btPersistentManifold* btCollisionDispatcherMt::getNewManifold(const btCollisionO
 		}
 	}
 	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY;
-	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold);
+	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold, unlimitedSizeManifoldHint);
 	if (!m_batchUpdating)
 	{
 		// batch updater will update manifold pointers array after finishing, so
