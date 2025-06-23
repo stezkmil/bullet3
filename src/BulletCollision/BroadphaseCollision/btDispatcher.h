@@ -98,6 +98,8 @@ public:
 
 	virtual void clearManifold(btPersistentManifold* manifold) = 0;
 
+	virtual bool needsCollisionUsingAABBSimilarity(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1) = 0;
+
 	virtual bool needsCollision(const btCollisionObject* body0, const btCollisionObject* body1) = 0;
 
 	virtual bool needsResponse(const btCollisionObject* body0, const btCollisionObject* body1) = 0;

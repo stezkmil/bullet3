@@ -72,11 +72,14 @@ protected:
 	btPreviouslyFoundPairMap previouslyConsumedTime;
 
 public:
+	btScalar m_aabbSimilarityThreshold;
+
 	enum DispatcherFlags
 	{
 		CD_STATIC_STATIC_REPORTED = 1,
 		CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD = 2,
-		CD_DISABLE_CONTACTPOOL_DYNAMIC_ALLOCATION = 4
+		CD_DISABLE_CONTACTPOOL_DYNAMIC_ALLOCATION = 4,
+		CD_USE_AABB_SIMILARITY_THRESHOLD = 8
 	};
 
 	int getDispatcherFlags() const
@@ -164,6 +167,8 @@ public:
 	btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const int body0ShapeType, const int body1ShapeType, btPersistentManifold* sharedManifold, ebtDispatcherQueryType algoType);
 
 	virtual bool needsCollision(const btCollisionObject* body0, const btCollisionObject* body1);
+
+	virtual bool needsCollisionUsingAABBSimilarity(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1);
 
 	virtual bool needsResponse(const btCollisionObject* body0, const btCollisionObject* body1);
 
