@@ -589,7 +589,10 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 		{
 			if (findAllContacts)
 				manifoldSizeHint += perThreadIntermediateResult.size();
-			// This heuristic was causing some bad shakes on the NARAZNIK_mod scene on the bumper ends
+			// This heuristic can not really work for softs. Some far end of a soft body might not be involved in any collisions,
+			// so it needs the non-pen contacts. They can not be just discarded for the whole soft body. To be concrete, this heuristics was causing some bad
+			// shakes on the NARAZNIK_mod scene on the bumper ends. For rigids, this heuristic might be valid in its core, but it has to reverified
+			// if it really brings any practical benefits.
 			/*for (const auto& ir : perThreadIntermediateResult)
 			{
 				if (ir.depth > 0.0)
