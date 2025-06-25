@@ -172,7 +172,9 @@ protected:
 	void setContactCounts(const btCollisionObjectWrapper* body0Wrap,
 						  const btCollisionObjectWrapper* body1Wrap,
 						  size_t contactCount0,
-						  size_t contactCount1);
+						  size_t contactCount1,
+						  int totalTriangleCount0,
+						  int totalTriangleCount1);
 
 	//! Collision routines
 	//!@{

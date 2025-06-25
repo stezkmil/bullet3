@@ -224,14 +224,17 @@ void btGImpactCollisionAlgorithm::addContactPoint(const btCollisionObjectWrapper
 void btGImpactCollisionAlgorithm::setContactCounts(const btCollisionObjectWrapper* body0Wrap,
 												   const btCollisionObjectWrapper* body1Wrap,
 												   size_t contactCount0,
-												   size_t contactCount1)
+												   size_t contactCount1,
+												   int totalTriangleCount0, int totalTriangleCount1)
 {
 	m_resultOut->setShapeIdentifiersA(m_part0, 0);
 	m_resultOut->setShapeIdentifiersB(m_part1, 0);
 	checkManifold(body0Wrap, body1Wrap);
 	btPersistentManifold::btCountGather countGather;
-	countGather.m_body0PointsForAllTris = contactCount0;
-	countGather.m_body1PointsForAllTris = contactCount1;
+	countGather.m_body0Contacts = contactCount0;
+	countGather.m_body1Contacts = contactCount1;
+	countGather.m_body0TriangleCount = totalTriangleCount0;
+	countGather.m_body1TriangleCount = totalTriangleCount1;
 	m_resultOut->setContactCounts(countGather);
 }
 
@@ -650,8 +653,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 		}
 		if (findOnlyContactCounts)
 		{
-			body0Wrap->getCollisionObject()->;
-			setContactCounts(body0Wrap, body1Wrap, trifacesForCounts0->size(), trifacesForCounts1->size());
+			setContactCounts(body0Wrap, body1Wrap, trifacesForCounts0->size(), trifacesForCounts1->size(),
+							 shape0->getPrimitiveManager()->get_primitive_count(), shape1->getPrimitiveManager()->get_primitive_count());
 		}
 	}
 	if (intermediateResults)

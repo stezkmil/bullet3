@@ -74,10 +74,10 @@ btPersistentManifold : public btTypedObject
 public:
 	struct btCountGather
 	{
-		int m_body0PointsForAllTris = 0;
-		int m_body0AllTris = 0;
-		int m_body1PointsForAllTris = 0;
-		int m_body1AllTris = 0;
+		int m_body0Contacts = 0;
+		int m_body0TriangleCount = 0;
+		int m_body1Contacts = 0;
+		int m_body1TriangleCount = 0;
 	};
 
 private:
