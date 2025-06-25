@@ -221,6 +221,20 @@ void btGImpactCollisionAlgorithm::addContactPoint(const btCollisionObjectWrapper
 	m_resultOut->addContactPoint(normal, point, distance, unmodified_distance);
 }
 
+void btGImpactCollisionAlgorithm::setContactCounts(const btCollisionObjectWrapper* body0Wrap,
+												   const btCollisionObjectWrapper* body1Wrap,
+												   size_t contactCount0,
+												   size_t contactCount1)
+{
+	m_resultOut->setShapeIdentifiersA(m_part0, 0);
+	m_resultOut->setShapeIdentifiersB(m_part1, 0);
+	checkManifold(body0Wrap, body1Wrap);
+	btPersistentManifold::btCountGather countGather;
+	countGather.m_body0PointsForAllTris = contactCount0;
+	countGather.m_body1PointsForAllTris = contactCount1;
+	m_resultOut->setContactCounts(countGather);
+}
+
 void btGImpactCollisionAlgorithm::shape_vs_shape_collision(
 	const btCollisionObjectWrapper* body0Wrap,
 	const btCollisionObjectWrapper* body1Wrap,
@@ -579,12 +593,19 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 															 const btCollisionObjectWrapper* body1Wrap,
 															 const btGImpactMeshShapePart* shape0,
 															 const btGImpactMeshShapePart* shape1,
-															 bool findAllContacts)
+															 bool findAllContacts,
+															 bool findOnlyContactCounts)
 {
 	if (perThreadIntermediateResults)
 	{
 		bool anyPenetrating = false;
 		size_t manifoldSizeHint = 0;
+		std::unique_ptr<std::set<int>> trifacesForCounts0, trifacesForCounts1;
+		if (findOnlyContactCounts)
+		{
+			trifacesForCounts0 = std::make_unique<std::set<int>>();
+			trifacesForCounts1 = std::make_unique<std::set<int>>();
+		}
 		for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
 		{
 			if (findAllContacts)
@@ -610,14 +631,27 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 			{
 				if (anyPenetrating && ir.depth <= 0.0)  // This one is non pen. so it can be wrong. For example a triangle which has completely tunneled through and now it would cause a contact with a normal which would oppose the pen. ones.
 					continue;
-				m_triface0 = ir.index0;
-				m_triface1 = ir.index1;
-				addContactPoint(body0Wrap, body1Wrap,
-								ir.point,
-								ir.normal,
-								ir.depth,
-								ir.unmodified_depth, manifoldSizeHint);
+				if (findOnlyContactCounts)
+				{
+					trifacesForCounts0->insert(ir.index0);
+					trifacesForCounts1->insert(ir.index1);
+				}
+				else
+				{
+					m_triface0 = ir.index0;
+					m_triface1 = ir.index1;
+					addContactPoint(body0Wrap, body1Wrap,
+									ir.point,
+									ir.normal,
+									ir.depth,
+									ir.unmodified_depth, manifoldSizeHint);
+				}
 			}
+		}
+		if (findOnlyContactCounts)
+		{
+			body0Wrap->getCollisionObject()->;
+			setContactCounts(body0Wrap, body1Wrap, trifacesForCounts0->size(), trifacesForCounts1->size());
 		}
 	}
 	if (intermediateResults)
@@ -643,7 +677,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 															const btGImpactMeshShapePart* shape0,
 															const btGImpactMeshShapePart* shape1,
 															const btPairSet& auxPairSet,
-															bool findAllContacts)
+															bool findAllContacts,
+															bool findOnlyContactCounts)
 {
 	btGimpactVsGimpactGroupedParams grpParams;
 	collide_sat_triangles_pre(body0Wrap, body1Wrap, shape0, shape1, grpParams);
@@ -654,7 +689,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 		btGImpactPairEval::EvalPair(*pairIter, grpParams, false, false, nullptr, &intermediateResults);
 	}
 
-	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1, findAllContacts);
+	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1, findAllContacts, findOnlyContactCounts);
 }
 
 void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
@@ -695,16 +730,16 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool isTolLow1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisionsLow();
 	bool isGhost0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
 	bool isGhost1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
-	bool isForceAllContacts0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
-	bool isForceAllContacts1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
-	bool isForceAllContacts = isForceAllContacts0 || isForceAllContacts1;
+	bool isOnlyGatherContactCounts0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
+	bool isOnlyGatherContactCounts1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
+	bool isOnlyGatherContactCounts = isOnlyGatherContactCounts0 || isOnlyGatherContactCounts1;
 	bool isSoft = body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 	bool isBarrier0 = !isGhost0 && (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost0
 	bool isBarrier1 = !isGhost1 && (body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost1
 	bool findOnlyFirstPenetratingPair = isTol0 || isTol1;
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstPenetratingPair |= generateManifoldForGhost;
-	if (isForceAllContacts)
+	if (isOnlyGatherContactCounts)
 		findOnlyFirstPenetratingPair = false;
 
 	if (isTolLow0 && isTolLow1 || (isTolLow0 && isBarrier1) || (isTolLow1 && isBarrier0))
@@ -772,7 +807,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	{
 		const btGImpactMeshShapePart* shapepart0 = static_cast<const btGImpactMeshShapePart*>(shape0);
 		const btGImpactMeshShapePart* shapepart1 = static_cast<const btGImpactMeshShapePart*>(shape1);
-		collide_sat_triangles_post(&perThreadIntermediateResults, nullptr, body0Wrap, body1Wrap, shapepart0, shapepart1, isForceAllContacts || isSoft);
+		collide_sat_triangles_post(&perThreadIntermediateResults, nullptr, body0Wrap, body1Wrap, shapepart0, shapepart1, isSoft, isOnlyGatherContactCounts);
 	}
 
 	//printf("pairset.size() %d\n", pairset.size());
@@ -786,7 +821,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 #ifdef BULLET_TRIANGLE_COLLISION
 		collide_gjk_triangles(body0Wrap, body1Wrap, shapepart0, shapepart1, &pairset[0].m_index1, pairset.size());
 #else
-		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet, isForceAllContacts || isSoft);
+		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet, isSoft, isOnlyGatherContactCounts);
 #endif
 
 		// TODO this section seems misplaced from the Bullet architecture viewpoint. The m_dispatcher->needsResponse call should not be replicated here, but we should

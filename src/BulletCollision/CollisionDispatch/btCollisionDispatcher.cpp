@@ -98,10 +98,11 @@ btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObj
 			return 0;
 		}
 	}
-	bool forceAllContacts0 = body0->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
-	bool forceAllContacts1 = body1->getCollisionFlags() & btCollisionObject::CF_FORCE_COLLISION_DETECTION_OF_ALL_CONTACTS;
-	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY || forceAllContacts0 || forceAllContacts1;
-	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold, unlimitedSizeManifoldHint);
+	bool onlyGatherContactCounts0 = body0->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
+	bool onlyGatherContactCounts1 = body1->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
+	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+	bool onlyGatherContactCounts = onlyGatherContactCounts0 || onlyGatherContactCounts1;
+	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold, unlimitedSizeManifoldHint, onlyGatherContactCounts);
 	manifold->m_index1a = m_manifoldsPtr.size();
 	m_manifoldsPtr.push_back(manifold);
 

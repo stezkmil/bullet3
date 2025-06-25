@@ -40,6 +40,7 @@ bool gContactCalcArea3Points = true;
 btPersistentManifold::btPersistentManifold()
 	: btTypedObject(BT_PERSISTENT_MANIFOLD_TYPE),
 	  m_unlimitedCacheSize(false),
+	  m_onlyGatherCounts(false),
 	  m_body0(0),
 	  m_body1(0),
 	  m_cachedPoints(0),

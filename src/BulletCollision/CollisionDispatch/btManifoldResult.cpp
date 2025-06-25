@@ -214,3 +214,8 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 		gContactStartedCallback(m_manifoldPtr);
 	}
 }
+
+void btManifoldResult::setContactCounts(const btPersistentManifold::btCountGather& countGather)
+{
+	m_manifoldPtr->setCountGather(countGather);
+}

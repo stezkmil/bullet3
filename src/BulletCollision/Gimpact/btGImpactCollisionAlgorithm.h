@@ -169,6 +169,11 @@ protected:
 						 const btVector3& normal,
 						 btScalar distance, btScalar unmodified_distance, size_t unlimitedSizeManifoldHint);
 
+	void setContactCounts(const btCollisionObjectWrapper* body0Wrap,
+						  const btCollisionObjectWrapper* body1Wrap,
+						  size_t contactCount0,
+						  size_t contactCount1);
+
 	//! Collision routines
 	//!@{
 
@@ -190,14 +195,15 @@ protected:
 									const btCollisionObjectWrapper* body1Wrap,
 									const btGImpactMeshShapePart* shape0,
 									const btGImpactMeshShapePart* shape1,
-									bool findAllContacts);
+									bool findAllContacts, bool findOnlyContactCounts);
 
 	void collide_sat_triangles_aux(const btCollisionObjectWrapper* body0Wrap,
 								   const btCollisionObjectWrapper* body1Wrap,
 								   const btGImpactMeshShapePart* shape0,
 								   const btGImpactMeshShapePart* shape1,
 								   const btPairSet& auxPairSet,
-								   bool findAllContacts);
+								   bool findAllContacts,
+								   bool findOnlyContactCounts);
 
 	void shape_vs_shape_collision(
 		const btCollisionObjectWrapper* body0,
