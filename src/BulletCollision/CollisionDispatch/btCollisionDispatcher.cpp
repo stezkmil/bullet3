@@ -224,19 +224,6 @@ bool btCollisionDispatcher::needsCollisionUsingAABBSimilarity(btBroadphaseProxy*
 		const btVector3& aabbMin1 = proxy1->m_aabbMin;
 		const btVector3& aabbMax1 = proxy1->m_aabbMax;
 
-#ifdef BT_DEBUG
-		if (aabbMin0.x() > aabbMax1.x() ||
-			aabbMax0.x() < aabbMin1.x() ||
-			aabbMin0.y() > aabbMax1.y() ||
-			aabbMax0.y() < aabbMin1.y() ||
-			aabbMin0.z() > aabbMax1.z() ||
-			aabbMax0.z() < aabbMin1.z())
-		{
-			btAssert(false);  // After the broadphase, the encountered proxy pairs should always collide
-			return false;
-		}
-#endif  //BT_DEBUG
-
 		btVector3 interMin(btMax(aabbMin0.x(), aabbMin1.x()),
 						   btMax(aabbMin0.y(), aabbMin1.y()),
 						   btMax(aabbMin0.z(), aabbMin1.z()));
