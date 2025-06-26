@@ -2,7 +2,7 @@
 #include "btGImpactShape.h"
 
 bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
-								 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair,
+								 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstTriPair,
 								 bool isSelfCollision,
 								 ThreadLocalGImpactResult* perThreadIntermediateResults,
 								 std::list<btGImpactIntermediateResult>* intermediateResults)
@@ -52,7 +52,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 				if (contact_data.m_point_count >= 1)
 				{
 					bool insert = true;
-					if (findOnlyFirstPenetratingPair && contact_data.m_penetration_depth >= 0.0)  // Ever since there is marginEpsilon in btPrimitiveTriangle::find_triangle_collision_alt_method_outer, the equal sign in the ">= 0.0" comparison has to be there, because 0.0 is now a very common non-penetrating result even in the margin zone
+					if (findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING && contact_data.m_penetration_depth >= 0.0)  // Ever since there is marginEpsilon in btPrimitiveTriangle::find_triangle_collision_alt_method_outer, the equal sign in the ">= 0.0" comparison has to be there, because 0.0 is now a very common non-penetrating result even in the margin zone
 						insert = false;
 					if (insert)
 					{

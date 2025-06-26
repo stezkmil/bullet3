@@ -277,11 +277,11 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact_find_pairs(
 	const btGimpactVsGimpactGroupedParams& grpParams,
 	const btTransform& trans0,
 	const btTransform& trans1,
-	ThreadLocalGImpactResult& perThreadIntermediateResults, btPairSet& auxPairSet, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair)
+	ThreadLocalGImpactResult& perThreadIntermediateResults, btPairSet& auxPairSet, btFindOnlyFirstPairEnum findOnlyFirstTriPair)
 {
 	if (grpParams.shape0->hasBoxSet() && grpParams.shape1->hasBoxSet())
 	{
-		btGImpactBoxSet::find_collision(grpParams.shape0->getBoxSet(), trans0, grpParams.shape1->getBoxSet(), trans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstPenetratingPair, grpParams);
+		btGImpactBoxSet::find_collision(grpParams.shape0->getBoxSet(), trans0, grpParams.shape1->getBoxSet(), trans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstTriPair, grpParams);
 	}
 	else
 	{
@@ -689,7 +689,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 	std::list<btGImpactIntermediateResult> intermediateResults;
 	for (auto pairIter = auxPairSet.begin(); pairIter != auxPairSet.end(); ++pairIter)
 	{
-		btGImpactPairEval::EvalPair(*pairIter, grpParams, false, false, nullptr, &intermediateResults);
+		btGImpactPairEval::EvalPair(*pairIter, grpParams, btFindOnlyFirstPairEnum::DISABLED, false, nullptr, &intermediateResults);
 	}
 
 	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1, findAllContacts, findOnlyContactCounts);
@@ -739,11 +739,11 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool isSoft = body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 	bool isBarrier0 = !isGhost0 && (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost0
 	bool isBarrier1 = !isGhost1 && (body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost1
-	btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair = isTol0 || isTol1;
+	btFindOnlyFirstPairEnum findOnlyFirstTriPair = (isTol0 || isTol1) ? btFindOnlyFirstPairEnum::PENETRATING : btFindOnlyFirstPairEnum::DISABLED;
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
-	findOnlyFirstPenetratingPair |= generateManifoldForGhost;
+	findOnlyFirstTriPair = generateManifoldForGhost ? btFindOnlyFirstPairEnum::PENETRATING : findOnlyFirstTriPair;
 	if (isOnlyGatherContactCounts)
-		findOnlyFirstPenetratingPair = false;
+		findOnlyFirstTriPair = btFindOnlyFirstPairEnum::DISABLED;
 
 	if (isTolLow0 && isTolLow1 || (isTolLow0 && isBarrier1) || (isTolLow1 && isBarrier0))
 	{
@@ -784,7 +784,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	}
 
 	auto start = std::chrono::steady_clock::now();
-	gimpact_vs_gimpact_find_pairs(grpParams, grpParams.orgtrans0, grpParams.orgtrans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstPenetratingPair);
+	gimpact_vs_gimpact_find_pairs(grpParams, grpParams.orgtrans0, grpParams.orgtrans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstTriPair);
 	auto end = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 	m_dispatcher->addPreviouslyConsumedTime({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()}, duration.count());
@@ -799,7 +799,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	if (!pairsExist)
 		return;
 
-	if (findOnlyFirstPenetratingPair && !generateManifoldForGhost)
+	if (findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING && !generateManifoldForGhost)
 	{
 		m_dispatcher->addInitialCollisionParticipant({body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject()});
 		return;

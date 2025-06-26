@@ -445,7 +445,7 @@ public:
 	static void find_collision(const btGImpactQuantizedBvh* boxset1, const btTransform& trans1,
 							   const btGImpactQuantizedBvh* boxset2, const btTransform& trans2,
 							   ThreadLocalGImpactResult& perThreadIntermediateResults, btPairSet& auxPairSet,
-							   btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair,
+							   btFindOnlyFirstPairEnum findOnlyFirstTriPair,
 							   const btGimpactVsGimpactGroupedParams& grpParams);
 };
 

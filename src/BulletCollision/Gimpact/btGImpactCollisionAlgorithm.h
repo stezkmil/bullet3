@@ -224,7 +224,7 @@ protected:
 		const btTransform& trans1,
 		ThreadLocalGImpactResult& perThreadIntermediateResults,
 		btPairSet& auxPairSet,
-		btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair);
+		btFindOnlyFirstPairEnum findOnlyFirstTriPair);
 
 	void gimpact_vs_shape_find_pairs(
 		const btTransform& trans0,
