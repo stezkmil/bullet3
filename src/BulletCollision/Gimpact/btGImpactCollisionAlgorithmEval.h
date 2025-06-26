@@ -35,6 +35,13 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 
 #include <tbb/tbb.h>
 
+enum class btFindOnlyFirstPairEnum
+{
+	DISABLED = 0,
+	PENETRATING = 1,
+	TOUCHING = 2
+};
+
 struct btGImpactIntermediateResult
 {
 	btVector3 point;
@@ -64,7 +71,7 @@ struct btGimpactVsGimpactGroupedParams
 struct btGImpactPairEval
 {
 	static bool EvalPair(const GIM_PAIR& pair,
-						 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair, bool isSelfCollision,
+						 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair, bool isSelfCollision,
 						 ThreadLocalGImpactResult* perThreadIntermediateResults,
 						 std::list<btGImpactIntermediateResult>* intermediateResults);
 };

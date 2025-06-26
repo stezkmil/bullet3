@@ -2,7 +2,7 @@
 #include "btGImpactShape.h"
 
 bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
-								 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair,
+								 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair,
 								 bool isSelfCollision,
 								 ThreadLocalGImpactResult* perThreadIntermediateResults,
 								 std::list<btGImpactIntermediateResult>* intermediateResults)

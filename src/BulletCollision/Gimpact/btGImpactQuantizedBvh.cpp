@@ -429,7 +429,7 @@ SIMD_FORCE_INLINE bool _quantized_node_collision(
 static void _find_quantized_collision_pairs_recursive_ser(
 	const btGImpactQuantizedBvh* boxset0, const btGImpactQuantizedBvh* boxset1, btPairSet* collision_pairs,
 	const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0,
-	int node0, int node1, bool complete_primitive_tests, bool findOnlyFirstPenetratingPair)
+	int node0, int node1, bool complete_primitive_tests, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair)
 {
 	if (findOnlyFirstPenetratingPair)
 	{
@@ -501,7 +501,7 @@ static void _find_quantized_collision_pairs_stack_ser(
 	const btGImpactQuantizedBvh* boxset0, const btGImpactQuantizedBvh* boxset1,
 	btPairSet* collision_pairs,
 	const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0,
-	int node0, int node1, bool complete_primitive_tests, bool findOnlyFirstPenetratingPair)
+	int node0, int node1, bool complete_primitive_tests, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair)
 {
 	std::stack<std::tuple<int, int, bool>> pairStack;
 	pairStack.push({node0, node1, complete_primitive_tests});
@@ -578,7 +578,7 @@ static void _find_quantized_collision_pairs_stack_par(
 	const btGImpactQuantizedBvh* boxset0, const btGImpactQuantizedBvh* boxset1,
 	btPairSet* collision_pairs,
 	const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0,
-	int node0, int node1, bool complete_primitive_tests, bool findOnlyFirstPenetratingPair)
+	int node0, int node1, bool complete_primitive_tests, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair)
 {
 	std::mutex collision_pairs_mutex;
 	typedef std::tuple<int, int, bool> ElemType;
@@ -658,7 +658,7 @@ struct GroupedParams
 	const btGImpactQuantizedBvh* boxset1;
 	ThreadLocalGImpactResult& perThreadIntermediateResults;
 	const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0;
-	bool findOnlyFirstPenetratingPair;
+	btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair;
 	bool isSelfCollision;
 	std::atomic<bool>& firstPenetratingPairFound;
 	int threadLaunchStopLevel;
@@ -667,7 +667,7 @@ struct GroupedParams
 				  const btGImpactQuantizedBvh* boxset1,
 				  ThreadLocalGImpactResult& perThreadIntermediateResults,
 				  const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0,
-				  bool findOnlyFirstPenetratingPair,
+				  btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair,
 				  bool isSelfCollision,
 				  std::atomic<bool>& firstPenetratingPairFound,
 				  int threadLaunchStopLevel,
@@ -847,7 +847,7 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0, const btTransform& trans0,
 										   const btGImpactQuantizedBvh* boxset1, const btTransform& trans1,
 										   ThreadLocalGImpactResult& perThreadIntermediateResults, btPairSet& auxPairSet,
-										   bool findOnlyFirstPenetratingPair,
+										   btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair,
 										   const btGimpactVsGimpactGroupedParams& grpParams)
 {
 	if (boxset0->getNodeCount() == 0 || boxset1->getNodeCount() == 0) return;

@@ -277,7 +277,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact_find_pairs(
 	const btGimpactVsGimpactGroupedParams& grpParams,
 	const btTransform& trans0,
 	const btTransform& trans1,
-	ThreadLocalGImpactResult& perThreadIntermediateResults, btPairSet& auxPairSet, bool findOnlyFirstPenetratingPair)
+	ThreadLocalGImpactResult& perThreadIntermediateResults, btPairSet& auxPairSet, btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair)
 {
 	if (grpParams.shape0->hasBoxSet() && grpParams.shape1->hasBoxSet())
 	{
@@ -739,7 +739,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool isSoft = body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 	bool isBarrier0 = !isGhost0 && (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost0
 	bool isBarrier1 = !isGhost1 && (body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost1
-	bool findOnlyFirstPenetratingPair = isTol0 || isTol1;
+	btFindOnlyFirstPairEnum findOnlyFirstPenetratingPair = isTol0 || isTol1;
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstPenetratingPair |= generateManifoldForGhost;
 	if (isOnlyGatherContactCounts)
