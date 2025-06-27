@@ -775,8 +775,8 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		}
 	}
 
-	auxPairSet.clear();
-	perThreadIntermediateResults.clear();
+	auxPairSet.clear();                    // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
+	perThreadIntermediateResults.clear();  // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
 
 	btGimpactVsGimpactGroupedParams grpParams;
 
@@ -820,6 +820,9 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 
 	//printf("pairset.size() %d\n", pairset.size());
 
+	// We do not need this data anymore here and it can be quite hefty if for example the CF_ONLY_GATHER_CONTACT_COUNTS is used
+	perThreadIntermediateResults.clear();
+
 	if (shape0->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART &&
 		shape1->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART)
 	{
@@ -830,6 +833,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		collide_gjk_triangles(body0Wrap, body1Wrap, shapepart0, shapepart1, &pairset[0].m_index1, pairset.size());
 #else
 		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet, isSoft, isOnlyGatherContactCounts);
+		auxPairSet.clear();
 #endif
 
 		// TODO this section seems misplaced from the Bullet architecture viewpoint. The m_dispatcher->needsResponse call should not be replicated here, but we should

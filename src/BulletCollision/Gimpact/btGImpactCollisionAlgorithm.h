@@ -100,6 +100,12 @@ protected:
 			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSoftVsRigid);
 			m_algorithmForSoftVsRigid = NULL;
 		}
+		if (m_algorithmForSoftVsSoft)
+		{
+			m_algorithmForSoftVsSoft->~btCollisionAlgorithm();
+			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSoftVsSoft);
+			m_algorithmForSoftVsSoft = NULL;
+		}
 	}
 
 	SIMD_FORCE_INLINE void destroyContactManifolds()
