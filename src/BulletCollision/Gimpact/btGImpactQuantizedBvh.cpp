@@ -660,7 +660,7 @@ struct GroupedParams
 	const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0;
 	btFindOnlyFirstPairEnum findOnlyFirstTriPair;
 	bool isSelfCollision;
-	std::atomic<bool>& firstPenetratingPairFound;
+	std::atomic<bool>& firstTriPairFound;
 	int threadLaunchStopLevel;
 	btGimpactVsGimpactGroupedParams grpParams;
 	GroupedParams(const btGImpactQuantizedBvh* boxset0,
@@ -669,9 +669,9 @@ struct GroupedParams
 				  const BT_BOX_BOX_TRANSFORM_CACHE& trans_cache_1to0,
 				  btFindOnlyFirstPairEnum findOnlyFirstTriPair,
 				  bool isSelfCollision,
-				  std::atomic<bool>& firstPenetratingPairFound,
+				  std::atomic<bool>& firstTriPairFound,
 				  int threadLaunchStopLevel,
-				  const btGimpactVsGimpactGroupedParams& grpParams) : boxset0(boxset0), boxset1(boxset1), perThreadIntermediateResults(perThreadIntermediateResults), trans_cache_1to0(trans_cache_1to0), findOnlyFirstTriPair(findOnlyFirstTriPair), isSelfCollision(isSelfCollision), firstPenetratingPairFound(firstPenetratingPairFound), threadLaunchStopLevel(threadLaunchStopLevel), grpParams(grpParams)
+				  const btGimpactVsGimpactGroupedParams& grpParams) : boxset0(boxset0), boxset1(boxset1), perThreadIntermediateResults(perThreadIntermediateResults), trans_cache_1to0(trans_cache_1to0), findOnlyFirstTriPair(findOnlyFirstTriPair), isSelfCollision(isSelfCollision), firstTriPairFound(firstTriPairFound), threadLaunchStopLevel(threadLaunchStopLevel), grpParams(grpParams)
 	{
 	}
 };
@@ -679,9 +679,9 @@ struct GroupedParams
 // This is the most promising candidate so far
 static void _find_quantized_collision_pairs_recursive_par(GroupedParams& groupedParams, int node0, int node1, int level, bool complete_primitive_tests)
 {
-	if (groupedParams.findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING)
+	if (groupedParams.findOnlyFirstTriPair != btFindOnlyFirstPairEnum::DISABLED)
 	{
-		if (groupedParams.firstPenetratingPairFound)
+		if (groupedParams.firstTriPairFound)
 		{
 			return;
 		}
@@ -748,10 +748,10 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 		if (groupedParams.boxset1->isLeafNode(node1))
 		{
 			// collision result
-			if (groupedParams.findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING)
+			if (groupedParams.findOnlyFirstTriPair != btFindOnlyFirstPairEnum::DISABLED)
 			{
 				if (btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstTriPair, groupedParams.isSelfCollision, &groupedParams.perThreadIntermediateResults, nullptr))
-					groupedParams.firstPenetratingPairFound = true;
+					groupedParams.firstTriPairFound = true;
 			}
 			return;
 		}
@@ -866,7 +866,7 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	//series0.write_message(diagnostic::normal_importance, 0, "start ser");
 
 	//auto start = std::chrono::steady_clock::now();
-	std::atomic<bool> firstPenetratingPairFound = false;
+	std::atomic<bool> firstTriPairFound = false;
 	auto boxset0Depth = std::log2(boxset0->getNodeCount() + 1);
 	auto boxset1Depth = std::log2(boxset1->getNodeCount() + 1);
 	// It has been empirically observed that the best performance is obtained when the stop level is three quarters of total tree depth.
@@ -877,7 +877,7 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	// previously
 	if (grpParams.previouslyConsumedTime <= 100 || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::TOUCHING)
 		threadLaunchStopLevel = 0;
-	GroupedParams groupedParams(boxset0, boxset1, perThreadIntermediateResults, trans_cache_1to0, findOnlyFirstTriPair, boxset0 == boxset1, firstPenetratingPairFound, threadLaunchStopLevel, grpParams);
+	GroupedParams groupedParams(boxset0, boxset1, perThreadIntermediateResults, trans_cache_1to0, findOnlyFirstTriPair, boxset0 == boxset1, firstTriPairFound, threadLaunchStopLevel, grpParams);
 	_find_quantized_collision_pairs_recursive_par(groupedParams, 0, 0, 0, true);
 	//auto end = std::chrono::steady_clock::now();
 

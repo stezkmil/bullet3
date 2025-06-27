@@ -733,6 +733,9 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool isTolLow1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisionsLow();
 	bool isGhost0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
 	bool isGhost1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
+	bool isOnlyFindFirstTouch0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH;
+	bool isOnlyFindFirstTouch1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH;
+	bool isOnlyFindFirstTouch = isOnlyFindFirstTouch0 || isOnlyFindFirstTouch1;
 	bool isOnlyGatherContactCounts0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
 	bool isOnlyGatherContactCounts1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
 	bool isOnlyGatherContactCounts = isOnlyGatherContactCounts0 || isOnlyGatherContactCounts1;
@@ -744,6 +747,8 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	findOnlyFirstTriPair = generateManifoldForGhost ? btFindOnlyFirstPairEnum::PENETRATING : findOnlyFirstTriPair;
 	if (isOnlyGatherContactCounts)
 		findOnlyFirstTriPair = btFindOnlyFirstPairEnum::DISABLED;
+	if (findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING && isOnlyFindFirstTouch)
+		findOnlyFirstTriPair = btFindOnlyFirstPairEnum::TOUCHING;
 
 	if (isTolLow0 && isTolLow1 || (isTolLow0 && isBarrier1) || (isTolLow1 && isBarrier0))
 	{
