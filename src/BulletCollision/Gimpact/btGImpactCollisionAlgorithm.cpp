@@ -591,7 +591,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 }
 
 void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGImpactResult* perThreadIntermediateResults,
-															 const std::list<btGImpactIntermediateResult>* intermediateResults,
+															 const std::vector<btGImpactIntermediateResult>* intermediateResults,
 															 const btCollisionObjectWrapper* body0Wrap,
 															 const btCollisionObjectWrapper* body1Wrap,
 															 const btGImpactMeshShapePart* shape0,
@@ -686,7 +686,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 	btGimpactVsGimpactGroupedParams grpParams;
 	collide_sat_triangles_pre(body0Wrap, body1Wrap, shape0, shape1, grpParams);
 
-	std::list<btGImpactIntermediateResult> intermediateResults;
+	std::vector<btGImpactIntermediateResult> intermediateResults;
 	for (auto pairIter = auxPairSet.begin(); pairIter != auxPairSet.end(); ++pairIter)
 	{
 		btGImpactPairEval::EvalPair(*pairIter, grpParams, btFindOnlyFirstPairEnum::DISABLED, false, nullptr, &intermediateResults);

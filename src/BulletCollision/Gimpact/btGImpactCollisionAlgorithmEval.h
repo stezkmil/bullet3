@@ -51,7 +51,7 @@ struct btGImpactIntermediateResult
 	int index0, index1;
 };
 
-typedef tbb::enumerable_thread_specific<std::list<btGImpactIntermediateResult>> ThreadLocalGImpactResult;
+typedef tbb::enumerable_thread_specific<std::vector<btGImpactIntermediateResult>> ThreadLocalGImpactResult;
 
 class btGImpactMeshShapePart;
 
@@ -73,7 +73,7 @@ struct btGImpactPairEval
 	static bool EvalPair(const GIM_PAIR& pair,
 						 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstTriPair, bool isSelfCollision,
 						 ThreadLocalGImpactResult* perThreadIntermediateResults,
-						 std::list<btGImpactIntermediateResult>* intermediateResults);
+						 std::vector<btGImpactIntermediateResult>* intermediateResults);
 };
 
 #endif  //BT_GIMPACT_BVH_CONCAVE_COLLISION_ALGORITHM_H

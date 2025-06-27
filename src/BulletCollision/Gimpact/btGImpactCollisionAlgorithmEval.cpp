@@ -5,7 +5,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 								 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstTriPair,
 								 bool isSelfCollision,
 								 ThreadLocalGImpactResult* perThreadIntermediateResults,
-								 std::list<btGImpactIntermediateResult>* intermediateResults)
+								 std::vector<btGImpactIntermediateResult>* intermediateResults)
 {
 	btPrimitiveTriangle ptri0;
 	btPrimitiveTriangle ptri1;

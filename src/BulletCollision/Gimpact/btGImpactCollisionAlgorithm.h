@@ -198,7 +198,7 @@ protected:
 								   btGimpactVsGimpactGroupedParams& grpParams);
 
 	void collide_sat_triangles_post(const ThreadLocalGImpactResult* perThreadIntermediateResults,
-									const std::list<btGImpactIntermediateResult>* intermediateResults,
+									const std::vector<btGImpactIntermediateResult>* intermediateResults,
 									const btCollisionObjectWrapper* body0Wrap,
 									const btCollisionObjectWrapper* body1Wrap,
 									const btGImpactMeshShapePart* shape0,
