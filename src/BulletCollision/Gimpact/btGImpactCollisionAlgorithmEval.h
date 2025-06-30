@@ -51,6 +51,7 @@ struct btGImpactIntermediateResult
 	int index0, index1;
 };
 
+// Experimentally switching to vectors, because they give better results (when destroying the vectors) when the number of contacts is huge (contact count collecting mode)
 typedef tbb::enumerable_thread_specific<std::vector<btGImpactIntermediateResult>> ThreadLocalGImpactResult;
 
 class btGImpactMeshShapePart;
