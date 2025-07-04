@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_COLLISION__DISPATCHER_H
 #define BT_COLLISION__DISPATCHER_H
 
@@ -42,6 +41,8 @@ class btCollisionDispatcher;
 ///user can override this nearcallback for collision filtering and more finegrained control over collision detection
 typedef bool (*btNearCallback)(btBroadphasePair& collisionPair, btCollisionDispatcher& dispatcher, const btDispatcherInfo& dispatchInfo);
 
+typedef void (*btProgressReportCallback)(void* ptr, int index, int total);
+
 ///btCollisionDispatcher supports algorithms that handle ConvexConvex and ConvexConcave collision pairs.
 ///Time of Impact, Closest Points and Penetration Depth.
 class btCollisionDispatcher : public btDispatcher
@@ -52,6 +53,9 @@ protected:
 	btAlignedObjectArray<btPersistentManifold*> m_manifoldsPtr;
 
 	btNearCallback m_nearCallback;
+
+	void* m_ptrForProgressReportCallback;
+	btProgressReportCallback m_progressReportCallback;
 
 	btPoolAllocator* m_collisionAlgorithmPoolAllocator;
 
@@ -68,11 +72,14 @@ protected:
 	btPreviouslyFoundPairMap previouslyConsumedTime;
 
 public:
+	btScalar m_aabbSimilarityThreshold;
+
 	enum DispatcherFlags
 	{
 		CD_STATIC_STATIC_REPORTED = 1,
 		CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD = 2,
-		CD_DISABLE_CONTACTPOOL_DYNAMIC_ALLOCATION = 4
+		CD_DISABLE_CONTACTPOOL_DYNAMIC_ALLOCATION = 4,
+		CD_USE_AABB_SIMILARITY_THRESHOLD = 8
 	};
 
 	int getDispatcherFlags() const
@@ -134,15 +141,15 @@ public:
 
 	btPersistentManifold* getManifoldByIndexInternal(int index)
 	{
-		btAssert(index>=0);
-		btAssert(index<m_manifoldsPtr.size());
+		btAssert(index >= 0);
+		btAssert(index < m_manifoldsPtr.size());
 		return m_manifoldsPtr[index];
 	}
 
 	const btPersistentManifold* getManifoldByIndexInternal(int index) const
 	{
-		btAssert(index>=0);
-		btAssert(index<m_manifoldsPtr.size());
+		btAssert(index >= 0);
+		btAssert(index < m_manifoldsPtr.size());
 		return m_manifoldsPtr[index];
 	}
 
@@ -150,7 +157,7 @@ public:
 
 	virtual ~btCollisionDispatcher();
 
-	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1);
+	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1, size_t unlimitedSizeManifoldHint = 10);
 
 	virtual void releaseManifold(btPersistentManifold* manifold);
 
@@ -160,6 +167,8 @@ public:
 	btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const int body0ShapeType, const int body1ShapeType, btPersistentManifold* sharedManifold, ebtDispatcherQueryType algoType);
 
 	virtual bool needsCollision(const btCollisionObject* body0, const btCollisionObject* body1);
+
+	virtual bool needsCollisionUsingAABBSimilarity(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1);
 
 	virtual bool needsResponse(const btCollisionObject* body0, const btCollisionObject* body1);
 
@@ -173,6 +182,22 @@ public:
 	btNearCallback getNearCallback() const
 	{
 		return m_nearCallback;
+	}
+
+	void setProgressReportCallback(void* ptr, btProgressReportCallback progressReportCallback)
+	{
+		m_ptrForProgressReportCallback = ptr;
+		m_progressReportCallback = progressReportCallback;
+	}
+
+	btProgressReportCallback getProgressReportCallback() const
+	{
+		return m_progressReportCallback;
+	}
+
+	void* getPtrForProgressReportCallback() const
+	{
+		return m_ptrForProgressReportCallback;
 	}
 
 	//by default, Bullet will use this near callback

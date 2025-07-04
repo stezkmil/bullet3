@@ -40,17 +40,17 @@ bool gContactCalcArea3Points = true;
 btPersistentManifold::btPersistentManifold()
 	: btTypedObject(BT_PERSISTENT_MANIFOLD_TYPE),
 	  m_unlimitedCacheSize(false),
+	  m_onlyGatherCounts(false),
 	  m_body0(0),
 	  m_body1(0),
 	  m_cachedPoints(0),
 	  m_companionIdA(0),
 	  m_companionIdB(0),
-	  m_index1a(0)
+	  m_index1a(0),
+	  m_responseProcessedEarly(false)
 {
 	if (!m_unlimitedCacheSize)
 		m_pointCache.resize(MANIFOLD_CACHE_SIZE);
-	else
-		m_pointCache.reserve(MANIFOLD_CACHE_SIZE_UNLIMITED);
 }
 
 #ifdef DEBUG_PERSISTENCY

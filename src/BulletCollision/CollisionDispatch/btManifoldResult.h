@@ -78,7 +78,7 @@ public:
 
 	btManifoldResult(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap);
 
-	virtual ~btManifoldResult(){};
+	virtual ~btManifoldResult() {};
 
 	void setPersistentManifold(btPersistentManifold* manifoldPtr)
 	{
@@ -107,6 +107,8 @@ public:
 	}
 
 	virtual void addContactPoint(const btVector3& normalOnBInWorld, const btVector3& pointInWorld, btScalar depth, btScalar unmodified_depth) override;
+
+	void setContactCounts(const btPersistentManifold::btCountGather& countGather);
 
 	SIMD_FORCE_INLINE void refreshContactPoints()
 	{

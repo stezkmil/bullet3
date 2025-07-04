@@ -58,7 +58,6 @@ enum btContactManifoldTypes
 };
 
 #define MANIFOLD_CACHE_SIZE 4
-#define MANIFOLD_CACHE_SIZE_UNLIMITED 200000
 
 ///btPersistentManifold is a contact point cache, it stays persistent as long as objects are overlapping in the broadphase.
 ///Those contact points are created by the collision narrow phase.
@@ -72,8 +71,19 @@ enum btContactManifoldTypes
 ATTRIBUTE_ALIGNED16(class)
 btPersistentManifold : public btTypedObject
 {
+public:
+	struct btCountGather
+	{
+		int m_body0Contacts = 0;
+		int m_body0TriangleCount = 0;
+		int m_body1Contacts = 0;
+		int m_body1TriangleCount = 0;
+	};
+
+private:
 	std::vector<btManifoldPoint> m_pointCache;
 	bool m_unlimitedCacheSize;
+	bool m_onlyGatherCounts;
 
 	/// this two body pointers can point to the physics rigidbody class.
 	const btCollisionObject* m_body0;
@@ -83,6 +93,8 @@ btPersistentManifold : public btTypedObject
 
 	btScalar m_contactBreakingThreshold;
 	btScalar m_contactProcessingThreshold;
+
+	btCountGather m_countGather;
 
 	/// sort cached points so most isolated points come first
 	int sortCachedPoints(const btManifoldPoint& pt);
@@ -97,11 +109,14 @@ public:
 
 	int m_index1a;
 
+	bool m_responseProcessedEarly;
+
 	btPersistentManifold();
 
-	btPersistentManifold(const btCollisionObject* body0, const btCollisionObject* body1, int, btScalar contactBreakingThreshold, btScalar contactProcessingThreshold, bool unlimitedCacheSize)
+	btPersistentManifold(const btCollisionObject* body0, const btCollisionObject* body1, int, btScalar contactBreakingThreshold, btScalar contactProcessingThreshold, bool unlimitedCacheSize, size_t unlimitedCacheSizeHint, bool onlyGatherCounts)
 		: btTypedObject(BT_PERSISTENT_MANIFOLD_TYPE),
 		  m_unlimitedCacheSize(unlimitedCacheSize),
+		  m_onlyGatherCounts(onlyGatherCounts),
 		  m_body0(body0),
 		  m_body1(body1),
 		  m_cachedPoints(0),
@@ -109,12 +124,13 @@ public:
 		  m_contactProcessingThreshold(contactProcessingThreshold),
 		  m_companionIdA(0),
 		  m_companionIdB(0),
-		  m_index1a(0)
+		  m_index1a(0),
+		  m_responseProcessedEarly(false)
 	{
 		if (!m_unlimitedCacheSize)
 			m_pointCache.resize(MANIFOLD_CACHE_SIZE);
 		else
-			m_pointCache.reserve(MANIFOLD_CACHE_SIZE_UNLIMITED);
+			m_pointCache.reserve(unlimitedCacheSizeHint);
 	}
 
 	SIMD_FORCE_INLINE const btCollisionObject* getBody0() const { return m_body0; }
@@ -157,6 +173,21 @@ public:
 	bool isUnlimitedCacheSize() const
 	{
 		return m_unlimitedCacheSize;
+	}
+
+	bool isOnlyGatherContactCounts() const
+	{
+		return m_onlyGatherCounts;
+	}
+
+	const btCountGather& getCountGather() const
+	{
+		return m_countGather;
+	}
+
+	void setCountGather(const btCountGather& countGather)
+	{
+		m_countGather = countGather;
 	}
 
 	///@todo: get this margin from the current physics / collision environment

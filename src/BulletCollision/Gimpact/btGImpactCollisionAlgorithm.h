@@ -76,9 +76,9 @@ protected:
 	btCollisionAlgorithm* m_algorithmForSoftVsSoft;
 
 	//! Creates a new contact point
-	SIMD_FORCE_INLINE btPersistentManifold* newContactManifold(const btCollisionObject* body0, const btCollisionObject* body1)
+	SIMD_FORCE_INLINE btPersistentManifold* newContactManifold(const btCollisionObject* body0, const btCollisionObject* body1, size_t unlimitedSizeManifoldHint)
 	{
-		m_manifoldPtr = m_dispatcher->getNewManifold(body0, body1);
+		m_manifoldPtr = m_dispatcher->getNewManifold(body0, body1, unlimitedSizeManifoldHint);
 		return m_manifoldPtr;
 	}
 
@@ -99,6 +99,12 @@ protected:
 			m_algorithmForSoftVsRigid->~btCollisionAlgorithm();
 			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSoftVsRigid);
 			m_algorithmForSoftVsRigid = NULL;
+		}
+		if (m_algorithmForSoftVsSoft)
+		{
+			m_algorithmForSoftVsSoft->~btCollisionAlgorithm();
+			m_dispatcher->freeCollisionAlgorithm(m_algorithmForSoftVsSoft);
+			m_algorithmForSoftVsSoft = NULL;
 		}
 	}
 
@@ -127,11 +133,11 @@ protected:
 	}
 
 	// Call before process collision
-	SIMD_FORCE_INLINE void checkManifold(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap)
+	SIMD_FORCE_INLINE void checkManifold(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, size_t unlimitedSizeManifoldHint = 10)
 	{
 		if (getLastManifold() == 0)
 		{
-			newContactManifold(body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject());
+			newContactManifold(body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject(), unlimitedSizeManifoldHint);
 		}
 
 		m_resultOut->setPersistentManifold(getLastManifold());
@@ -167,7 +173,14 @@ protected:
 						 const btCollisionObjectWrapper* body1Wrap,
 						 const btVector3& point,
 						 const btVector3& normal,
-						 btScalar distance, btScalar unmodified_distance);
+						 btScalar distance, btScalar unmodified_distance, size_t unlimitedSizeManifoldHint);
+
+	void setContactCounts(const btCollisionObjectWrapper* body0Wrap,
+						  const btCollisionObjectWrapper* body1Wrap,
+						  size_t contactCount0,
+						  size_t contactCount1,
+						  int totalTriangleCount0,
+						  int totalTriangleCount1);
 
 	//! Collision routines
 	//!@{
@@ -185,17 +198,20 @@ protected:
 								   btGimpactVsGimpactGroupedParams& grpParams);
 
 	void collide_sat_triangles_post(const ThreadLocalGImpactResult* perThreadIntermediateResults,
-									const std::list<btGImpactIntermediateResult>* intermediateResults,
+									const std::vector<btGImpactIntermediateResult>* intermediateResults,
 									const btCollisionObjectWrapper* body0Wrap,
 									const btCollisionObjectWrapper* body1Wrap,
 									const btGImpactMeshShapePart* shape0,
-									const btGImpactMeshShapePart* shape1);
+									const btGImpactMeshShapePart* shape1,
+									bool findAllContacts, bool findOnlyContactCounts);
 
 	void collide_sat_triangles_aux(const btCollisionObjectWrapper* body0Wrap,
 								   const btCollisionObjectWrapper* body1Wrap,
 								   const btGImpactMeshShapePart* shape0,
 								   const btGImpactMeshShapePart* shape1,
-								   const btPairSet& auxPairSet);
+								   const btPairSet& auxPairSet,
+								   bool findAllContacts,
+								   bool findOnlyContactCounts);
 
 	void shape_vs_shape_collision(
 		const btCollisionObjectWrapper* body0,
@@ -214,7 +230,7 @@ protected:
 		const btTransform& trans1,
 		ThreadLocalGImpactResult& perThreadIntermediateResults,
 		btPairSet& auxPairSet,
-		bool findOnlyFirstPenetratingPair);
+		btFindOnlyFirstPairEnum findOnlyFirstTriPair);
 
 	void gimpact_vs_shape_find_pairs(
 		const btTransform& trans0,

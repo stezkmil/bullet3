@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_OVERLAPPING_PAIR_CACHE_H
 #define BT_OVERLAPPING_PAIR_CACHE_H
 
@@ -32,6 +31,10 @@ typedef btAlignedObjectArray<btBroadphasePair> btBroadphasePairArray;
 
 struct btOverlapCallback
 {
+	int m_overlap_index, m_total_overlap_count;
+	btOverlapCallback() : m_overlap_index(0), m_total_overlap_count(0)
+	{
+	}
 	virtual ~btOverlapCallback()
 	{
 	}
@@ -66,7 +69,7 @@ public:
 	virtual void cleanOverlappingPair(btBroadphasePair& pair, btDispatcher* dispatcher) = 0;
 
 	virtual int getNumOverlappingPairs() const = 0;
-	virtual bool needsBroadphaseCollision(btBroadphaseProxy * proxy0, btBroadphaseProxy * proxy1) const = 0;
+	virtual bool needsBroadphaseCollision(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1) const = 0;
 	virtual btOverlapFilterCallback* getOverlapFilterCallback() = 0;
 	virtual void cleanProxyFromPairs(btBroadphaseProxy* proxy, btDispatcher* dispatcher) = 0;
 

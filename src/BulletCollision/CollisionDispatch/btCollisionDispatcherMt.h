@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_COLLISION_DISPATCHER_MT_H
 #define BT_COLLISION_DISPATCHER_MT_H
 
@@ -29,7 +28,7 @@ class btCollisionDispatcherMt : public btCollisionDispatcher
 public:
 	btCollisionDispatcherMt(btCollisionConfiguration* config, int grainSize = 40);
 
-	virtual btPersistentManifold* getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1) BT_OVERRIDE;
+	virtual btPersistentManifold* getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1, size_t unlimitedSizeManifoldHint = 10) BT_OVERRIDE;
 	virtual void releaseManifold(btPersistentManifold* manifold) BT_OVERRIDE;
 
 	virtual void dispatchAllCollisionPairs(btOverlappingPairCache* pairCache, const btDispatcherInfo& info, btDispatcher* dispatcher) BT_OVERRIDE;

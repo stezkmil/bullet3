@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btOverlappingPairCache.h"
 
 #include "btDispatcher.h"
@@ -337,12 +336,14 @@ void* btHashedOverlappingPairCache::removeOverlappingPair(btBroadphaseProxy* pro
 void btHashedOverlappingPairCache::processAllOverlappingPairs(btOverlapCallback* callback, btDispatcher* dispatcher)
 {
 	BT_PROFILE("btHashedOverlappingPairCache::processAllOverlappingPairs");
-	int i;
+	int i, cnt;
 
 	//	printf("m_overlappingPairArray.size()=%d\n",m_overlappingPairArray.size());
-	for (i = 0; i < m_overlappingPairArray.size();)
+	callback->m_total_overlap_count = m_overlappingPairArray.size();
+	for (i = 0, cnt = 0; i < m_overlappingPairArray.size();)
 	{
 		btBroadphasePair* pair = &m_overlappingPairArray[i];
+		callback->m_overlap_index = cnt;
 		if (callback->processOverlap(*pair))
 		{
 			removeOverlappingPair(pair->m_pProxy0, pair->m_pProxy1, dispatcher);
@@ -351,6 +352,7 @@ void btHashedOverlappingPairCache::processAllOverlappingPairs(btOverlapCallback*
 		{
 			i++;
 		}
+		++cnt;
 	}
 }
 

@@ -35,6 +35,13 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 
 #include <tbb/tbb.h>
 
+enum class btFindOnlyFirstPairEnum : uint8_t
+{
+	DISABLED = 0,
+	PENETRATING = 1,
+	TOUCHING = 2
+};
+
 struct btGImpactIntermediateResult
 {
 	btVector3 point;
@@ -44,7 +51,7 @@ struct btGImpactIntermediateResult
 	int index0, index1;
 };
 
-typedef tbb::enumerable_thread_specific<std::list<btGImpactIntermediateResult>> ThreadLocalGImpactResult;
+typedef tbb::enumerable_thread_specific<std::vector<btGImpactIntermediateResult>> ThreadLocalGImpactResult;
 
 class btGImpactMeshShapePart;
 
@@ -64,9 +71,9 @@ struct btGimpactVsGimpactGroupedParams
 struct btGImpactPairEval
 {
 	static bool EvalPair(const GIM_PAIR& pair,
-						 btGimpactVsGimpactGroupedParams& grpParams, bool findOnlyFirstPenetratingPair, bool isSelfCollision,
+						 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstTriPair, bool isSelfCollision,
 						 ThreadLocalGImpactResult* perThreadIntermediateResults,
-						 std::list<btGImpactIntermediateResult>* intermediateResults);
+						 std::vector<btGImpactIntermediateResult>* intermediateResults);
 };
 
 #endif  //BT_GIMPACT_BVH_CONCAVE_COLLISION_ALGORITHM_H

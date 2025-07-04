@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_DISPATCHER_H
 #define BT_DISPATCHER_H
 #include "LinearMath/btScalar.h"
@@ -93,11 +92,13 @@ public:
 	virtual btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, btPersistentManifold* sharedManifold, ebtDispatcherQueryType queryType) = 0;
 	virtual btCollisionAlgorithm* findAlgorithm(const btCollisionObjectWrapper* body0Wrap, const btCollisionObjectWrapper* body1Wrap, const int body0ShapeType, const int body1ShapeType, btPersistentManifold* sharedManifold, ebtDispatcherQueryType queryType) = 0;
 
-	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1) = 0;
+	virtual btPersistentManifold* getNewManifold(const btCollisionObject* b0, const btCollisionObject* b1, size_t unlimitedSizeManifoldHint = 10) = 0;
 
 	virtual void releaseManifold(btPersistentManifold* manifold) = 0;
 
 	virtual void clearManifold(btPersistentManifold* manifold) = 0;
+
+	virtual bool needsCollisionUsingAABBSimilarity(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1) = 0;
 
 	virtual bool needsCollision(const btCollisionObject* body0, const btCollisionObject* body1) = 0;
 

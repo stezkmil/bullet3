@@ -606,6 +606,7 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 		softBody->defaultCollisionHandler(collisionObjectWrap);
 	else
 	{
+		resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 		auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 		softBody->skinSoftRigidCollisionHandler(collisionObjectWrap, resultOut->getPartId0(), resultOut->getIndex0(),
 												resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB(),  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
@@ -621,6 +622,7 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 
 void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, btManifoldResultForSkin* resultOut)
 {
+	resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 	auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 	auto contactPoint = resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB();  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 	auto normal = resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB;

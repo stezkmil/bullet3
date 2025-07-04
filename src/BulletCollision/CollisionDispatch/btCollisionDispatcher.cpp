@@ -34,11 +34,14 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #endif
 
 btCollisionDispatcher::btCollisionDispatcher(btCollisionConfiguration* collisionConfiguration) : m_dispatcherFlags(btCollisionDispatcher::CD_USE_RELATIVE_CONTACT_BREAKING_THRESHOLD),
-																								 m_collisionConfiguration(collisionConfiguration)
+																								 m_collisionConfiguration(collisionConfiguration),
+																								 m_aabbSimilarityThreshold(0.9)
 {
 	int i;
 
 	setNearCallback(defaultNearCallback);
+	m_ptrForProgressReportCallback = nullptr;
+	m_progressReportCallback = nullptr;
 
 	m_collisionAlgorithmPoolAllocator = collisionConfiguration->getCollisionAlgorithmPool();
 
@@ -69,7 +72,7 @@ btCollisionDispatcher::~btCollisionDispatcher()
 {
 }
 
-btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1)
+btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObject* body0, const btCollisionObject* body1, size_t unlimitedSizeManifoldHint)
 {
 	//btAssert(gNumManifold < 65535);
 
@@ -95,8 +98,11 @@ btPersistentManifold* btCollisionDispatcher::getNewManifold(const btCollisionObj
 			return 0;
 		}
 	}
+	bool onlyGatherContactCounts0 = body0->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
+	bool onlyGatherContactCounts1 = body1->getCollisionFlags() & btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS;
 	bool unlimitedSizeManifold = body0->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1->getInternalType() == btCollisionObject::CO_SOFT_BODY;
-	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold);
+	bool onlyGatherContactCounts = onlyGatherContactCounts0 || onlyGatherContactCounts1;
+	btPersistentManifold* manifold = new (mem) btPersistentManifold(body0, body1, 0, contactBreakingThreshold, contactProcessingThreshold, unlimitedSizeManifold, unlimitedSizeManifoldHint, onlyGatherContactCounts);
 	manifold->m_index1a = m_manifoldsPtr.size();
 	m_manifoldsPtr.push_back(manifold);
 
@@ -206,6 +212,41 @@ bool btCollisionDispatcher::needsCollision(const btCollisionObject* body0, const
 	return needsCollision;
 }
 
+bool btCollisionDispatcher::needsCollisionUsingAABBSimilarity(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1)
+{
+	if (m_dispatcherFlags & btCollisionDispatcher::CD_USE_AABB_SIMILARITY_THRESHOLD)
+	{
+		// IoU. Intersection over Union metric.
+
+		const btVector3& aabbMin0 = proxy0->m_aabbMin;
+		const btVector3& aabbMax0 = proxy0->m_aabbMax;
+
+		const btVector3& aabbMin1 = proxy1->m_aabbMin;
+		const btVector3& aabbMax1 = proxy1->m_aabbMax;
+
+		btVector3 interMin(btMax(aabbMin0.x(), aabbMin1.x()),
+						   btMax(aabbMin0.y(), aabbMin1.y()),
+						   btMax(aabbMin0.z(), aabbMin1.z()));
+
+		btVector3 interMax(btMin(aabbMax0.x(), aabbMax1.x()),
+						   btMin(aabbMax0.y(), aabbMax1.y()),
+						   btMin(aabbMax0.z(), aabbMax1.z()));
+
+		btVector3 interSize = interMax - interMin;
+		btScalar interVol = interSize.x() * interSize.y() * interSize.z();
+
+		btVector3 size1 = aabbMax0 - aabbMin0;
+		btVector3 size2 = aabbMax1 - aabbMin1;
+		btScalar vol1 = size1.x() * size1.y() * size1.z();
+		btScalar vol2 = size2.x() * size2.y() * size2.z();
+
+		btScalar iou = interVol / (vol1 + vol2 - interVol);
+
+		return iou >= m_aabbSimilarityThreshold;
+	}
+	return true;
+}
+
 ///interface for iterating all overlapping collision pairs, no matter how those pairs are stored (array, set, map etc)
 ///this is useful for the collision dispatcher.
 class btCollisionPairCallback : public btOverlapCallback
@@ -232,6 +273,8 @@ public:
 
 	virtual bool processOverlap(btBroadphasePair& pair)
 	{
+		if (m_dispatcher->getProgressReportCallback())
+			(*m_dispatcher->getProgressReportCallback())(m_dispatcher->getPtrForProgressReportCallback(), m_overlap_index, m_total_overlap_count);
 		return (*m_dispatcher->getNearCallback())(pair, *m_dispatcher, m_dispatchInfo);
 	}
 };
@@ -261,7 +304,7 @@ bool btCollisionDispatcher::defaultNearCallback(btBroadphasePair& collisionPair,
 	btCollisionObject* colObj0 = (btCollisionObject*)collisionPair.m_pProxy0->m_clientObject;
 	btCollisionObject* colObj1 = (btCollisionObject*)collisionPair.m_pProxy1->m_clientObject;
 
-	bool needsCollision = dispatcher.needsCollision(colObj0, colObj1);
+	bool needsCollision = dispatcher.needsCollisionUsingAABBSimilarity(collisionPair.m_pProxy0, collisionPair.m_pProxy1) && dispatcher.needsCollision(colObj0, colObj1);
 	if (needsCollision)
 	{
 		btCollisionObjectWrapper obj0Wrap(0, colObj0->getCollisionShape(), colObj0, colObj0->getWorldTransform(), -1, -1);
