@@ -46,7 +46,8 @@ btPersistentManifold::btPersistentManifold()
 	  m_cachedPoints(0),
 	  m_companionIdA(0),
 	  m_companionIdB(0),
-	  m_index1a(0)
+	  m_index1a(0),
+	  m_responseProcessedEarly(false)
 {
 	if (!m_unlimitedCacheSize)
 		m_pointCache.resize(MANIFOLD_CACHE_SIZE);

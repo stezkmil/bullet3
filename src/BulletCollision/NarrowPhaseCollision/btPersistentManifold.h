@@ -109,6 +109,8 @@ public:
 
 	int m_index1a;
 
+	bool m_responseProcessedEarly;
+
 	btPersistentManifold();
 
 	btPersistentManifold(const btCollisionObject* body0, const btCollisionObject* body1, int, btScalar contactBreakingThreshold, btScalar contactProcessingThreshold, bool unlimitedCacheSize, size_t unlimitedCacheSizeHint, bool onlyGatherCounts)
@@ -122,7 +124,8 @@ public:
 		  m_contactProcessingThreshold(contactProcessingThreshold),
 		  m_companionIdA(0),
 		  m_companionIdB(0),
-		  m_index1a(0)
+		  m_index1a(0),
+		  m_responseProcessedEarly(false)
 	{
 		if (!m_unlimitedCacheSize)
 			m_pointCache.resize(MANIFOLD_CACHE_SIZE);
