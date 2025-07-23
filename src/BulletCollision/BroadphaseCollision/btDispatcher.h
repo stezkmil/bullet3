@@ -85,7 +85,7 @@ class btDispatcher
 public:
 	typedef std::set<std::pair<const btCollisionObject*, const btCollisionObject*>> btInitialCollisionParticipants;
 	typedef std::set<const btCollisionObject*> btInitialCollisionParticipantsSingle;
-	typedef std::map<std::pair<int, int>, int> btPreviouslyFoundPairMap;
+	typedef std::map<std::pair<int, int>, std::tuple<int, bool>> btPreviouslyFoundPairMap;  // value int is the time itself, bool is whether the value is up to date
 
 	virtual ~btDispatcher();
 
