@@ -229,7 +229,7 @@ void btDeformableMultiBodyDynamicsWorld::applyRepulsionForce(btScalar timeStep)
 	for (int i = 0; i < m_softBodies.size(); i++)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (psb->isActive())
+		if (psb->isActive() && !psb->isStaticObject())
 		{
 			psb->applyRepulsionForce(timeStep, true);
 		}
@@ -243,7 +243,7 @@ void btDeformableMultiBodyDynamicsWorld::performGeometricCollisions(btScalar tim
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (psb->isActive())
+		if (psb->isActive() && !psb->isStaticObject())
 		{
 			m_softBodies[i]->updateFaceTree(true, false);
 			m_softBodies[i]->updateNodeTree(true, false);
@@ -261,7 +261,7 @@ void btDeformableMultiBodyDynamicsWorld::performGeometricCollisions(btScalar tim
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
 			btSoftBody* psb = m_softBodies[i];
-			if (psb->isActive())
+			if (psb->isActive() && !psb->isStaticObject())
 			{
 				// clear contact points in the previous iteration
 				psb->m_faceNodeContactsCCD.clear();
@@ -287,7 +287,7 @@ void btDeformableMultiBodyDynamicsWorld::performGeometricCollisions(btScalar tim
 			{
 				btSoftBody* psb1 = m_softBodies[i];
 				btSoftBody* psb2 = m_softBodies[j];
-				if (psb1->isActive() && psb2->isActive())
+				if (psb1->isActive() && !psb1->isStaticObject() && psb2->isActive() && !psb2->isStaticObject())
 				{
 					if (m_softBodies[i]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE || m_softBodies[j]->getCollisionShape()->getShapeType() != SOFTBODY_SHAPE_PROXYTYPE)
 						continue;
@@ -300,7 +300,7 @@ void btDeformableMultiBodyDynamicsWorld::performGeometricCollisions(btScalar tim
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
 			btSoftBody* psb = m_softBodies[i];
-			if (psb->isActive())
+			if (psb->isActive() && !psb->isStaticObject())
 			{
 				penetration_count += psb->m_faceNodeContactsCCD.size();
 				;
@@ -315,7 +315,7 @@ void btDeformableMultiBodyDynamicsWorld::performGeometricCollisions(btScalar tim
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
 			btSoftBody* psb = m_softBodies[i];
-			if (psb->isActive())
+			if (psb->isActive() && !psb->isStaticObject())
 			{
 				psb->applyRepulsionForce(timeStep, false);
 			}
@@ -329,7 +329,7 @@ void btDeformableMultiBodyDynamicsWorld::softBodySelfCollision()
 	for (int i = 0; i < m_softBodies.size(); i++)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (psb->isActive())
+		if (psb->isActive() && !psb->isStaticObject())
 		{
 			psb->defaultCollisionHandler(psb);
 		}
@@ -620,7 +620,7 @@ void btDeformableMultiBodyDynamicsWorld::clearGravity()
 	for (int i = 0; i < m_nonStaticRigidBodies.size(); i++)
 	{
 		btRigidBody* body = m_nonStaticRigidBodies[i];
-		if (body->isActive())
+		if (body->isActive() && !body->isStaticObject())
 		{
 			body->clearGravity();
 		}

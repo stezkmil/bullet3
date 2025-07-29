@@ -86,8 +86,8 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 	{
 		// add damping matrix
 		m_lf[i]->addScaledDampingForceDifferential(-m_dt, x, b);
-        // Always integrate picking force implicitly for stability.
-        if (m_implicit || m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
+		// Always integrate picking force implicitly for stability.
+		if (m_implicit || m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
 		{
 			m_lf[i]->addScaledElasticForceDifferential(-m_dt * m_dt, x, b);
 		}
@@ -140,7 +140,7 @@ void btDeformableBackwardEulerObjective::applyForce(TVStack& force, bool setZero
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			counter += psb->m_nodes.size();
 			continue;
@@ -177,7 +177,7 @@ void btDeformableBackwardEulerObjective::computeResidual(btScalar dt, TVStack& r
 	// add implicit force
 	for (int i = 0; i < m_lf.size(); ++i)
 	{
-        // Always integrate picking force implicitly for stability.
+		// Always integrate picking force implicitly for stability.
 		if (m_implicit || m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
 		{
 			m_lf[i]->addScaledForces(dt, residual);
@@ -238,7 +238,7 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
 			btSoftBody* psb = m_softBodies[i];
-			if (psb->isActive())
+			if (psb->isActive() && !psb->isStaticObject())
 			{
 				for (int j = 0; j < psb->m_nodes.size(); ++j)
 				{
@@ -259,7 +259,7 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (psb->isActive())
+		if (psb->isActive() && !psb->isStaticObject())
 		{
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{

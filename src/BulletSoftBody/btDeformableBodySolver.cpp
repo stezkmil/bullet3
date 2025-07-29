@@ -268,7 +268,7 @@ void btDeformableBodySolver::updateVelocity()
 	{
 		btSoftBody* psb = m_softBodies[i];
 		psb->m_maxSpeedSquared = 0;
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			counter += psb->m_nodes.size();
 			continue;
@@ -300,7 +300,7 @@ void btDeformableBodySolver::updateTempPosition()
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			counter += psb->m_nodes.size();
 			continue;
@@ -333,7 +333,7 @@ void btDeformableBodySolver::setupDeformableSolve(bool implicit)
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			counter += psb->m_nodes.size();
 			continue;
@@ -393,7 +393,7 @@ void btDeformableBodySolver::predictMotion(btScalar solverdt)
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
 			btSoftBody* psb = m_softBodies[i];
-			if (psb->isActive())
+			if (psb->isActive() && !psb->isStaticObject())
 			{
 				for (int j = 0; j < psb->m_nodes.size(); ++j)
 				{
@@ -406,7 +406,7 @@ void btDeformableBodySolver::predictMotion(btScalar solverdt)
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (psb->isActive())
+		if (psb->isActive() && !psb->isStaticObject())
 		{
 			/* Clear contacts when softbody is active*/
 			psb->m_nodeRigidContacts.resize(0);
@@ -489,7 +489,7 @@ void btDeformableBodySolver::updateSoftBodies()
 	for (int i = 0; i < m_softBodies.size(); i++)
 	{
 		btSoftBody* psb = (btSoftBody*)m_softBodies[i];
-		if (psb->isActive())
+		if (psb->isActive() && !psb->isStaticObject())
 		{
 			psb->updateNormals();
 		}
