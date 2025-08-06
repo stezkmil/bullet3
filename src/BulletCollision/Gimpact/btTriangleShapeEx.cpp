@@ -830,7 +830,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	btVector3 a_closest_out, b_closest_out;
 	bool ret = false;
 	const btScalar maxDepth = margin * marginZoneRecoveryStrengthFactor;
-	const btScalar maxDepthPenetration = 5.0;  // So that two pipes in cd_debug_flexi4.VRUT do not phase through each other
+	const btScalar maxDepthPenetration = 2.0;  // So that two pipes in cd_debug_flexi4.VRUT do not phase through each other
 
 	auto create_contact = [&]()
 	{
@@ -863,26 +863,31 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	dist = sqrtf(dist_sq_out);
 	if (ret && dist_sq_out != 0.0 && dist < margin)
 	{
-		/*fprintf(stderr, "drawtriangle \"col tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
-				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
-				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
-		fprintf(stderr, "drawtriangle \"col tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
-				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
-				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());*/
+		//fprintf(stderr, "drawtriangle \"touch tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+		//		m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
+		//		m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+		//fprintf(stderr, "drawtriangle \"touch tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+		//		other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
+		//		other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
 		// In the margin zone. No actual penetration yet. Calculating m_separating_normal is very easy thanks to this.
 		create_contact();
+
+		//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][0,1,0,1]\n", contacts.m_points[0].x(), contacts.m_points[0].y(), contacts.m_points[0].z());
+		//auto end = b_closest_out;
+		//fprintf(stderr, "drawline \"ln\" [%f,%f,%f][%f,%f,%f][0,1,0,1]\n", contacts.m_points[0].x(), contacts.m_points[0].y(), contacts.m_points[0].z(), end.x(), end.y(), end.z());
+
 		return true;
 	}
 	else if (ret && dist_sq_out == 0.0)
 	{
 		// Triangle penetration. Use the last safe transforms.
 
-		/*fprintf(stderr, "drawtriangle \"col tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
-				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
-				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
-		fprintf(stderr, "drawtriangle \"col tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
-				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
-				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());*/
+		//fprintf(stderr, "drawtriangle \"pen tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+		//		m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
+		//		m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+		//fprintf(stderr, "drawtriangle \"pen tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+		//		other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
+		//		other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
 
 		if (doUnstuck)
 		{
@@ -904,6 +909,10 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 
 			dist = sqrtf(dist_sq_out);
 			create_contact();
+
+			//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][1,0,0,1]\n", contacts.m_points[0].x(), contacts.m_points[0].y(), contacts.m_points[0].z());
+			//auto end = b_closest_out;
+			//fprintf(stderr, "drawline \"ln\" [%f,%f,%f][%f,%f,%f][1,0,0,1]\n", contacts.m_points[0].x(), contacts.m_points[0].y(), contacts.m_points[0].z(), end.x(), end.y(), end.z());
 
 			// Take the collision point from the original penetrating position because we really care only about the normal direction from the safe triangle_triangle_distance
 			contacts.m_points[0] = a_closest_out_pen;

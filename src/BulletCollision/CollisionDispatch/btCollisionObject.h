@@ -396,7 +396,8 @@ public:
 		// will be generated, which can push it into a stuck state in the opposite direction. Stuck states can cause severe slowdowns (to such extent that it is a TODO to investigate why they are so bad)
 		// in such places, so a stuck check counter is set - it is checked in btDiscreteDynamicsWorld::processLastSafeTransforms
 		// TODO try to find a use case to check if it is still valid. Remove if not.
-		constexpr auto stuckCheckCounter = 2;
+		// UPDATE short circuiting it by setting the counter to 0. Now it seems that this "panic" tolerance is too confusing for the users. Let's try it without it and rely on last safe positions to get us out of the penetrations.
+		constexpr auto stuckCheckCounter = 0;
 		setUserIndex2(stuckCheckCounter);
 		// When the toleration is done, this returns the activation state to normal
 		// Update: Ever since using m_deferedcollide = true, this should not be a problem anymore
