@@ -121,7 +121,8 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 	bool isSwapped = m_manifoldPtr->getBody0() != m_body0Wrap->getCollisionObject();
 	bool isNewCollision = m_manifoldPtr->getNumContacts() == 0;
 
-	btVector3 pointA = pointInWorld - normalOnBInWorld * unmodified_depth;
+	//btVector3 pointA = pointInWorld - normalOnBInWorld * unmodified_depth; // Ideally there should be this commented out line, but it causes problematic impulse magnitudes on the Lemovka scene. More detailed investigation if this produces correct impulse magnitudes would be needed.
+	btVector3 pointA = pointInWorld + normalOnBInWorld * depth;
 
 	btVector3 localA;
 	btVector3 localB;
