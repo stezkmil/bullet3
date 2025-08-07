@@ -926,6 +926,10 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			auto otherCentroidDistToSafe = (otherCentroid - otherSafeCentroid).length();
 
 			auto centroidDistSum = thisCentroidDistToSafe + otherCentroidDistToSafe;
+			// It can be tempting to just set m_unmodified_depth to 0 for penetrating contacts, so that the pointOnA is the same as pointOnB, which would
+			// eliminate the question of where the other point should be, but it does not yield good results. For example the
+			// manifoldPoint.m_distance1 = (manifoldPoint.m_positionWorldOnA - manifoldPoint.m_positionWorldOnB).dot(manifoldPoint.m_normalWorldOnB);
+			// will not give good results. Practically, worsening of stoppages was observed on the box_array_pile scene.
 			contacts.m_unmodified_depth = centroidDistSum;
 			centroidDistSum = std::min(centroidDistSum, maxDepthPenetration);
 			centroidDistSum = std::max(centroidDistSum, maxDepth);
