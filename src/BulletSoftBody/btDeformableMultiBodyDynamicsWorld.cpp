@@ -114,63 +114,77 @@ void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlap
 	}
 }
 
+int fooStep = 0;
+
 void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 {
 	BT_PROFILE("internalSingleStepSimulation");
-	if (0 != m_internalPreTickCallback)
+	if (!(fooStep % 2))
 	{
-		(*m_internalPreTickCallback)(this, timeStep);
+		if (0 != m_internalPreTickCallback)
+		{
+			(*m_internalPreTickCallback)(this, timeStep);
+		}
+		reinitialize(timeStep);
+
+		// add gravity to velocity of rigid and multi bodys
+		applyRigidBodyGravity(timeStep);
+
+		///apply gravity and explicit force to velocity, predict motion
+		predictUnconstraintMotion(timeStep);
 	}
-	reinitialize(timeStep);
 
-	// add gravity to velocity of rigid and multi bodys
-	applyRigidBodyGravity(timeStep);
-
-	///apply gravity and explicit force to velocity, predict motion
-	predictUnconstraintMotion(timeStep);
-
-	//fprintf(stderr, "framestart()\n");
+	fprintf(stderr, "framestart()\n");
 	///perform collision detection that involves rigid/multi bodies
 	performDiscreteCollisionDetection();
 
-	if (0 != m_internalPostDiscreteCollisionDetectionTickCallback)
+	if (!(fooStep % 2))
 	{
-		(*m_internalPostDiscreteCollisionDetectionTickCallback)(this, timeStep);
+		if (0 != m_internalPostDiscreteCollisionDetectionTickCallback)
+		{
+			(*m_internalPostDiscreteCollisionDetectionTickCallback)(this, timeStep);
+		}
+
+		btMultiBodyDynamicsWorld::calculateSimulationIslands();
+
+		updateLastSafeTransforms();
 	}
+	else
+		fprintf(stderr, "drawpoint \"VERIFY\" [0,0,0][1,1,1,1] \n");
 
-	btMultiBodyDynamicsWorld::calculateSimulationIslands();
+	fprintf(stderr, "frameend()\n");
 
-	updateLastSafeTransforms();
-
-	//fprintf(stderr, "frameend()\n");
-
-	beforeSolverCallbacks(timeStep);
-
-	// ///solve contact constraints and then deformable bodies momemtum equation
-	solveConstraints(timeStep);
-
-	afterSolverCallbacks(timeStep);
-
-	performDeformableCollisionDetection();
-
-	applyRepulsionForce(timeStep);
-
-	performGeometricCollisions(timeStep);
-
-	integrateTransforms(timeStep);
-
-	///update vehicle simulation
-	btMultiBodyDynamicsWorld::updateActions(timeStep);
-
-	updateActivationState(timeStep);
-
-	if (0 != m_internalTickCallback)
+	if (!(fooStep % 2))
 	{
-		(*m_internalTickCallback)(this, timeStep);
+		beforeSolverCallbacks(timeStep);
+
+		// ///solve contact constraints and then deformable bodies momemtum equation
+		solveConstraints(timeStep);
+
+		afterSolverCallbacks(timeStep);
+
+		performDeformableCollisionDetection();
+
+		applyRepulsionForce(timeStep);
+
+		performGeometricCollisions(timeStep);
+
+		integrateTransforms(timeStep);
+
+		///update vehicle simulation
+		btMultiBodyDynamicsWorld::updateActions(timeStep);
+
+		updateActivationState(timeStep);
+
+		if (0 != m_internalTickCallback)
+		{
+			(*m_internalTickCallback)(this, timeStep);
+		}
 	}
 
 	// End solver-wise simulation step
 	// ///////////////////////////////
+	++fooStep;
 }
 
 void btDeformableMultiBodyDynamicsWorld::performDeformableCollisionDetection()

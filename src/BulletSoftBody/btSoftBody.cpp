@@ -5387,7 +5387,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 		{
 			auto& src = m_nodes[i];
 			auto inCol = nodesInCollision.contains(&src);
-			//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f][%f,%f,0,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z(), inCol ? 1.0 : 0.0, inCol ? 0.0 : 1.0);
+			fprintf(stderr, "drawpoint \"partial pt\" [%f,%f,%f][%f,%f,0,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z(), inCol ? 1.0 : 0.0, inCol ? 0.0 : 1.0);
 			if (inCol)
 			{
 				//fprintf(stderr, "node %d pos %f %f %f in col, not updating\n", i, src.m_x.x(), src.m_x.y(), src.m_x.z());
@@ -5415,6 +5415,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 			const auto& src = m_nodes[i];
 			auto& dst = m_nodes[i].m_safe;
 			dst.m_x = src.m_x;
+			fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z());
 			/*dst.m_q = src.m_q;
 		dst.m_v = src.m_v;
 		dst.m_vn = src.m_vn;
@@ -5486,6 +5487,8 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* part
 
 				dst->m_v *= m_lastSafeApplyVelocityDamping;
 				dst->m_q *= m_lastSafeApplyVelocityDamping;
+				fprintf(stderr, "drawpoint \"apply pt\" [%f,%f,%f][0,0,1,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z());
+				fprintf(stderr, "drawline \"apply ln\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", dst->m_x.x(), dst->m_x.y(), dst->m_x.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
 				dst->m_x = src.m_x;
 			}
 		}

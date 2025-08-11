@@ -863,12 +863,12 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	dist = sqrtf(dist_sq_out);
 	if (ret && dist_sq_out != 0.0 && dist < margin)
 	{
-		//fprintf(stderr, "drawtriangle \"touch tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
-		//		m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
-		//		m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
-		//fprintf(stderr, "drawtriangle \"touch tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
-		//		other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
-		//		other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+		/*fprintf(stderr, "drawtriangle \"touch tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
+				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+		fprintf(stderr, "drawtriangle \"touch tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
+				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());*/
 		// In the margin zone. No actual penetration yet. Calculating m_separating_normal is very easy thanks to this.
 		create_contact();
 
@@ -882,12 +882,12 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	{
 		// Triangle penetration. Use the last safe transforms.
 
-		//fprintf(stderr, "drawtriangle \"pen tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
-		//		m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
-		//		m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
-		//fprintf(stderr, "drawtriangle \"pen tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
-		//		other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
-		//		other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+		fprintf(stderr, "drawtriangle \"pen tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
+				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+		fprintf(stderr, "drawtriangle \"pen tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
+				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
 
 		if (doUnstuck)
 		{
