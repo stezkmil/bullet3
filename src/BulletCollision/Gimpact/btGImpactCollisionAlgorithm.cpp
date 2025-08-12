@@ -792,9 +792,6 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	auto start = std::chrono::steady_clock::now();
 	gimpact_vs_gimpact_find_pairs(grpParams, grpParams.orgtrans0, grpParams.orgtrans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstTriPair);
 
-	//if (!btCollisionObject::gEnableColWrite)
-	//	return;
-
 	auto end = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 	m_dispatcher->addPreviouslyConsumedTime({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()}, {duration.count(), true});

@@ -1511,7 +1511,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 				body->resetLastSafeApplyCounter();
 
 			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
-			//if (!bothSoft)  // Currently not done for soft vs soft. Will have to come up with something later for this case. Currently applyLastSafeWorldTransform does not work so great for this case.
+
 			body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
 			if (!isSoft && !m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
@@ -1540,7 +1540,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			body->updateLastSafeWorldTransform(nullptr);
 		}
 		// When there are penetrations, the softs are done in this loop separately because their partial update would never be done because the soft's penetration
-		// caused its island to be pruned away.
+		// caused its island to be pruned away from islandsWithLastSafeUpdated.
 		for (const auto& unstuckVectorElem : unstuckVector)
 		{
 			if (unstuckVectorElem.isSoft)

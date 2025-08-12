@@ -140,6 +140,7 @@ public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	static btScalar gFrictionOverride;
+	static bool gDebug;
 
 	enum CollisionFlags
 	{

@@ -111,13 +111,17 @@ protected:
 	SIMD_FORCE_INLINE void destroyContactManifolds()
 	{
 		if (m_manifoldPtr == NULL) return;
-		m_dispatcher->releaseManifold(m_manifoldPtr);
+		if (btCollisionObject::gDebug)
+			m_dispatcher->clearManifold(m_manifoldPtr);
+		else
+			m_dispatcher->releaseManifold(m_manifoldPtr);
 		m_manifoldPtr = NULL;
 	}
 
 	SIMD_FORCE_INLINE void clearCache()
 	{
 		destroyContactManifolds();
+
 		destroyConvexAlgorithm();
 		destroyAlgorithmForSofts();
 

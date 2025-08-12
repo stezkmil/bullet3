@@ -869,6 +869,43 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		fprintf(stderr, "drawtriangle \"touch tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
 				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
 				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());*/
+
+		auto thisLastSafe = thisBackup;
+		auto otherLastSafe = otherBackup;
+		thisLastSafe.applyTransform(thisTransformLastSafe);
+		otherLastSafe.applyTransform(otherTransformLastSafe);
+
+		thisLastSafe.buildTriPlane();
+		otherLastSafe.buildTriPlane();
+
+		fprintf(stderr, "drawline \"touch line\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z());
+		fprintf(stderr, "drawline \"touch line\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
+				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+		fprintf(stderr, "drawline \"touch line\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
+				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
+
+		fprintf(stderr, "drawline \"touch line other\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z());
+		fprintf(stderr, "drawline \"touch line other\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
+				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+		fprintf(stderr, "drawline \"touch line other\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
+				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+
+		fprintf(stderr, "drawline \"touch line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
+				thisLastSafe.m_vertices[1].x(), thisLastSafe.m_vertices[1].y(), thisLastSafe.m_vertices[1].z());
+		fprintf(stderr, "drawline \"touch line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
+				thisLastSafe.m_vertices[2].x(), thisLastSafe.m_vertices[2].y(), thisLastSafe.m_vertices[2].z());
+		fprintf(stderr, "drawline \"touch line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[1].x(), thisLastSafe.m_vertices[1].y(), thisLastSafe.m_vertices[1].z(),
+				thisLastSafe.m_vertices[2].x(), thisLastSafe.m_vertices[2].y(), thisLastSafe.m_vertices[2].z());
+
+		fprintf(stderr, "drawline \"touch line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[0].x(), otherLastSafe.m_vertices[0].y(), otherLastSafe.m_vertices[0].z(),
+				otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z());
+		fprintf(stderr, "drawline \"touch line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[0].x(), otherLastSafe.m_vertices[0].y(), otherLastSafe.m_vertices[0].z(),
+				otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+		fprintf(stderr, "drawline \"touch line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
+				otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+
 		// In the margin zone. No actual penetration yet. Calculating m_separating_normal is very easy thanks to this.
 		create_contact();
 
@@ -924,6 +961,20 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			auto otherCentroid = (other.m_vertices[0] + other.m_vertices[1] + other.m_vertices[2]) / 3.0;
 			auto otherSafeCentroid = (otherLastSafe.m_vertices[0] + otherLastSafe.m_vertices[1] + otherLastSafe.m_vertices[2]) / 3.0;
 			auto otherCentroidDistToSafe = (otherCentroid - otherSafeCentroid).length();
+
+			fprintf(stderr, "drawline \"pen line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
+					thisLastSafe.m_vertices[1].x(), thisLastSafe.m_vertices[1].y(), thisLastSafe.m_vertices[1].z());
+			fprintf(stderr, "drawline \"pen line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
+					thisLastSafe.m_vertices[2].x(), thisLastSafe.m_vertices[2].y(), thisLastSafe.m_vertices[2].z());
+			fprintf(stderr, "drawline \"pen line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[1].x(), thisLastSafe.m_vertices[1].y(), thisLastSafe.m_vertices[1].z(),
+					thisLastSafe.m_vertices[2].x(), thisLastSafe.m_vertices[2].y(), thisLastSafe.m_vertices[2].z());
+
+			fprintf(stderr, "drawline \"pen line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[0].x(), otherLastSafe.m_vertices[0].y(), otherLastSafe.m_vertices[0].z(),
+					otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z());
+			fprintf(stderr, "drawline \"pen line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[0].x(), otherLastSafe.m_vertices[0].y(), otherLastSafe.m_vertices[0].z(),
+					otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+			fprintf(stderr, "drawline \"pen line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
+					otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
 
 			auto centroidDistSum = thisCentroidDistToSafe + otherCentroidDistToSafe;
 			// It can be tempting to just set m_unmodified_depth to 0 for penetrating contacts, so that the pointOnA is the same as pointOnB, which would
