@@ -5380,7 +5380,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[2], partDist});
 			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[3], partDist});
 		}
-		lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
+		//lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
 
 		//fprintf(stderr, "update start -------------------------------------------\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
@@ -5395,6 +5395,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 				continue;
 			}
 			auto& dst = m_nodes[i].m_safe;
+			fprintf(stderr, "drawpoint \"partial pt old safe\" [%f,%f,%f][1,1,1,1] \n", dst.m_x.x(), dst.m_x.y(), dst.m_x.z());
 			dst.m_x = src.m_x;
 			/*dst.m_q = src.m_q;
 		dst.m_v = src.m_v;
@@ -5415,6 +5416,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 		{
 			const auto& src = m_nodes[i];
 			auto& dst = m_nodes[i].m_safe;
+			fprintf(stderr, "drawpoint \"whole pt old safe\" [%f,%f,%f][1,1,1,1] \n", dst.m_x.x(), dst.m_x.y(), dst.m_x.z());
 			dst.m_x = src.m_x;
 			fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z());
 			/*dst.m_q = src.m_q;

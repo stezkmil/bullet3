@@ -189,17 +189,17 @@ bool btPrimitiveTriangle::intersectSegmentTriangle(btVector3 p, const btVector3&
 
 	btVector3 ap(p - triangle.m_vertices[0]);
 
-	float t = ap.dot(n);
-	if (t < 0.0f || t > d)
+	btScalar t = ap.dot(n);
+	if (t < 0.0 || t > d)
 		return false;
 
 	btVector3 e(qp.cross(ap));
-	float v = ac.dot(e);
-	if (v < 0.0f || v > d)
+	btScalar v = ac.dot(e);
+	if (v < 0.0 || v > d)
 		return false;
 
-	float w = -ab.dot(e);
-	if (w < 0.0f || v + w > d)
+	btScalar w = -ab.dot(e);
+	if (w < 0.0 || v + w > d)
 		return false;
 
 	// Segment intersect triangle, compute intersetionPoint
@@ -906,6 +906,10 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		fprintf(stderr, "drawline \"touch line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
 				otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
 
+		if (thisLastSafe.m_vertices[0].z() < 0.0 || thisLastSafe.m_vertices[1].z() < 0.0 || thisLastSafe.m_vertices[2].z() < 0.0 ||
+			otherLastSafe.m_vertices[0].z() < 0.0 || otherLastSafe.m_vertices[1].z() < 0.0 || otherLastSafe.m_vertices[2].z() < 0.0)
+			int dbg = 0;
+
 		// In the margin zone. No actual penetration yet. Calculating m_separating_normal is very easy thanks to this.
 		create_contact();
 
@@ -975,6 +979,10 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 					otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
 			fprintf(stderr, "drawline \"pen line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
 					otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+
+			if (thisLastSafe.m_vertices[0].z() < 0.0 || thisLastSafe.m_vertices[1].z() < 0.0 || thisLastSafe.m_vertices[2].z() < 0.0 ||
+				otherLastSafe.m_vertices[0].z() < 0.0 || otherLastSafe.m_vertices[1].z() < 0.0 || otherLastSafe.m_vertices[2].z() < 0.0)
+				int dbg = 0;
 
 			auto centroidDistSum = thisCentroidDistToSafe + otherCentroidDistToSafe;
 			// It can be tempting to just set m_unmodified_depth to 0 for penetrating contacts, so that the pointOnA is the same as pointOnB, which would
