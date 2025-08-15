@@ -208,11 +208,11 @@ void btDeformableMousePickingForce::addScaledExplicitForce(btScalar s, TVStack& 
 void btDeformableMousePickingForce::addScaledElasticForce(btScalar scale, TVStack& force)
 {
 	//fprintf(stderr, "framestart()\n");
-	btScalar theta;
-	btVector3 axis;
-	orientationError(theta, axis);
-	btScalar orientationBasedStiffnessBoost = transBoost(theta);
-	btScalar k = scale * m_elasticStiffness * orientationBasedStiffnessBoost;
+	//btScalar theta;
+	//btVector3 axis;
+	//orientationError(theta, axis);
+	//btScalar orientationBasedStiffnessBoost = transBoost(theta);
+	btScalar k = scale * m_elasticStiffness /* * orientationBasedStiffnessBoost*/;
 	for (int i = 0; i < getIndexCount(); ++i)
 	{
 		const btSoftBody::Node* n = getNode(i);
@@ -237,11 +237,11 @@ void btDeformableMousePickingForce::addScaledElasticForce(btScalar scale, TVStac
 // --------------- damping -------------------------------------------------
 void btDeformableMousePickingForce::addScaledDampingForce(btScalar scale, TVStack& force)
 {
-	btScalar theta;
-	btVector3 axis;
-	orientationError(theta, axis);
-	btScalar orientationBasedStiffnessBoost = transBoost(theta);
-	btScalar k = scale * m_dampingStiffness * orientationBasedStiffnessBoost;
+	//btScalar theta;
+	//btVector3 axis;
+	//orientationError(theta, axis);
+	//btScalar orientationBasedStiffnessBoost = transBoost(theta);
+	btScalar k = scale * m_dampingStiffness /** orientationBasedStiffnessBoost*/;
 	for (int i = 0; i < getIndexCount(); ++i)
 	{
 		const btSoftBody::Node* n = getNode(i);
@@ -269,11 +269,11 @@ void btDeformableMousePickingForce::addScaledDampingForce(btScalar scale, TVStac
 
 void btDeformableMousePickingForce::addScaledDampingForceDifferential(btScalar scale, const TVStack& dv, TVStack& df)
 {
-	btScalar theta;
-	btVector3 axis;
-	orientationError(theta, axis);
-	btScalar orientationBasedStiffnessBoost = transBoost(theta);
-	btScalar k = m_dampingStiffness * scale * orientationBasedStiffnessBoost;  // keep linear
+	//btScalar theta;
+	//btVector3 axis;
+	//orientationError(theta, axis);
+	//btScalar orientationBasedStiffnessBoost = transBoost(theta);
+	btScalar k = m_dampingStiffness * scale /** orientationBasedStiffnessBoost*/;  // keep linear
 	for (int i = 0; i < getIndexCount(); ++i)
 	{
 		const btSoftBody::Node* n = getNode(i);
@@ -291,15 +291,15 @@ void btDeformableMousePickingForce::buildDampingForceDifferentialDiagonal(btScal
 
 double btDeformableMousePickingForce::totalElasticEnergy(btScalar)
 {
-	btScalar theta;
-	btVector3 axis;
-	orientationError(theta, axis);
-	btScalar orientationBasedStiffnessBoost = transBoost(theta);
+	//btScalar theta;
+	//btVector3 axis;
+	//orientationError(theta, axis);
+	//btScalar orientationBasedStiffnessBoost = transBoost(theta);
 	double e = 0;
 	for (int i = 0; i < getIndexCount(); ++i)
 	{
 		btVector3 diff = (getNode(i)->m_q - m_mouse_transform.getOrigin()) - m_node_to_mouse_q[i];
-		btVector3 f = m_elasticStiffness * diff * orientationBasedStiffnessBoost;
+		btVector3 f = m_elasticStiffness * diff /** orientationBasedStiffnessBoost*/;
 		if (f.safeNorm() > m_maxForce)
 		{
 			f.safeNormalize();
@@ -312,20 +312,20 @@ double btDeformableMousePickingForce::totalElasticEnergy(btScalar)
 double btDeformableMousePickingForce::totalDampingEnergy(btScalar dt)
 {
 	double e = 0;
-	btScalar theta;
-	btVector3 axis;
-	orientationError(theta, axis);
-	btScalar orientationBasedStiffnessBoost = transBoost(theta);
+	//btScalar theta;
+	//btVector3 axis;
+	//orientationError(theta, axis);
+	//btScalar orientationBasedStiffnessBoost = transBoost(theta);
 	for (int i = 0; i < getIndexCount(); ++i)
 	{
 		const btSoftBody::Node* n = getNode(i);
 		btVector3 diff = (n->m_x - m_mouse_transform.getOrigin()) - m_node_to_mouse_x[i];
 		btVector3 v = n->m_v;
-		btVector3 f = m_dampingStiffness * v * orientationBasedStiffnessBoost;
+		btVector3 f = m_dampingStiffness * v /** orientationBasedStiffnessBoost*/;
 		if (diff.norm() > SIMD_EPSILON)
 		{
 			btVector3 dir = diff.normalized();
-			f = m_dampingStiffness * v.dot(dir) * dir * orientationBasedStiffnessBoost;
+			f = m_dampingStiffness * v.dot(dir) * dir /** orientationBasedStiffnessBoost*/;
 		}
 		e -= f.dot(v) / dt;
 	}
@@ -334,11 +334,11 @@ double btDeformableMousePickingForce::totalDampingEnergy(btScalar dt)
 
 void btDeformableMousePickingForce::addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df)
 {
-	btScalar theta;
-	btVector3 axis;
-	orientationError(theta, axis);
-	btScalar orientationBasedStiffnessBoost = transBoost(theta);
-	btScalar k = scale * m_elasticStiffness * orientationBasedStiffnessBoost;  // linear diff uses base k
+	//btScalar theta;
+	//btVector3 axis;
+	//orientationError(theta, axis);
+	//btScalar orientationBasedStiffnessBoost = transBoost(theta);
+	btScalar k = scale * m_elasticStiffness /** orientationBasedStiffnessBoost*/;  // linear diff uses base k
 	for (int i = 0; i < getIndexCount(); ++i)
 	{
 		const btSoftBody::Node* n = getNode(i);
