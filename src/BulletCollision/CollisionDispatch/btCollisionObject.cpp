@@ -22,6 +22,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"
 
 btScalar btCollisionObject::gFrictionOverride = -1.0;
+#ifdef BT_SAFE_UPDATE_DEBUG
+bool btCollisionObject::gDebug = false;
+#endif
 
 btCollisionObject::btCollisionObject()
 	: m_interpolationLinearVelocity(0.f, 0.f, 0.f),
@@ -148,7 +151,7 @@ void btCollisionObject::serializeSingleObject(class btSerializer* serializer) co
 	serializer->finalizeChunk(chunk, structType, BT_COLLISIONOBJECT_CODE, (void*)this);
 }
 
-void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, btScalar>* partial)
+void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{

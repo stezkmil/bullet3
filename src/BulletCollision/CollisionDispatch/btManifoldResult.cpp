@@ -121,7 +121,7 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 	bool isSwapped = m_manifoldPtr->getBody0() != m_body0Wrap->getCollisionObject();
 	bool isNewCollision = m_manifoldPtr->getNumContacts() == 0;
 
-	//btVector3 pointA = pointInWorld - normalOnBInWorld * unmodified_depth; // Ideally there should be this commented out line, but it causes problematic impulse magintudes on the Lemovka scene. More detailed investigation if this produces correct impulse magnitudes would be needed.
+	//btVector3 pointA = pointInWorld - normalOnBInWorld * unmodified_depth; // Ideally there should be this commented out line, but it causes problematic impulse magnitudes on the Lemovka scene. More detailed investigation if this produces correct impulse magnitudes would be needed.
 	btVector3 pointA = pointInWorld + normalOnBInWorld * depth;
 
 	btVector3 localA;
@@ -141,6 +141,12 @@ void btManifoldResult::addContactPoint(const btVector3& normalOnBInWorld, const 
 	btManifoldPoint newPt(localA, localB, normalOnBInWorld, depth, unmodified_depth);
 	newPt.m_positionWorldOnA = pointA;
 	newPt.m_positionWorldOnB = pointInWorld;
+
+	//fprintf(stderr, "drawpoint \"pointInWorld\" [%f,%f,%f][1,0,0,1]\n", pointInWorld.x(), pointInWorld.y(), pointInWorld.z());
+	//auto end = pointInWorld - normalOnBInWorld * unmodified_depth;
+	//fprintf(stderr, "drawpoint \"end\" [%f,%f,%f][0,1,0,1]\n", end.x(), end.y(), end.z());
+	//fprintf(stderr, "drawline \"ln\" [%f,%f,%f][%f,%f,%f][0,1,0,1]\n", pointInWorld.x(), pointInWorld.y(), pointInWorld.z(), end.x(), end.y(), end.z());
+
 	if (penetration)
 		newPt.m_contactPointFlags |= BT_CONTACT_FLAG_PENETRATING;
 

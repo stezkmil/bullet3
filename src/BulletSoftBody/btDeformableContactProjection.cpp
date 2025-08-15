@@ -93,7 +93,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			continue;
 		}
@@ -227,7 +227,7 @@ void btDeformableContactProjection::setProjection()
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			continue;
 		}
@@ -357,7 +357,7 @@ void btDeformableContactProjection::setProjection()
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			continue;
 		}
@@ -479,7 +479,7 @@ void btDeformableContactProjection::setLagrangeMultiplier()
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
-		if (!psb->isActive())
+		if (!psb->isActive() || psb->isStaticObject())
 		{
 			continue;
 		}

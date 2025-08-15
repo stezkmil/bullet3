@@ -583,7 +583,8 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 	}
 	else
 	{
-		grpParams.previouslyConsumedTime = 0;
+		std::get<0>(grpParams.previouslyConsumedTime) = 0;
+		std::get<1>(grpParams.previouslyConsumedTime) = false;
 	}
 
 	shape0->lockChildShapes();
@@ -790,9 +791,10 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 
 	auto start = std::chrono::steady_clock::now();
 	gimpact_vs_gimpact_find_pairs(grpParams, grpParams.orgtrans0, grpParams.orgtrans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstTriPair);
+
 	auto end = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	m_dispatcher->addPreviouslyConsumedTime({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()}, duration.count());
+	m_dispatcher->addPreviouslyConsumedTime({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()}, {duration.count(), true});
 
 	bool pairsExist = false;
 	for (auto perThreadIter = perThreadIntermediateResults.begin(); perThreadIter != perThreadIntermediateResults.end(); ++perThreadIter)

@@ -1315,11 +1315,13 @@ public:
 void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies)
 {
 	int numManifolds = getDispatcher()->getNumManifolds();
+
 	struct MappedType
 	{
 		btCollisionObject* mappedCollisionObject = nullptr;
 		int numContacts = 0;
-		std::map<int, btScalar> stuckTetraIndices;
+		std::map<int, StuckTetraIndicesMapped> stuckTetraIndices;
+		bool anyPenetration = false;
 	};
 	std::map<btCollisionObject*, MappedType> penetratingColliders;
 	for (int i = 0; i < numManifolds; i++)
@@ -1334,26 +1336,28 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			bool penetration = cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING;
 			bool phaseThrough = (contactManifold->getBody0()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE) ||
 								(contactManifold->getBody1()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE);
-			if (penetration && !phaseThrough)
+			if (!phaseThrough)
 			{
 				//fprintf(stderr, "dist %f\n", cp.getUnmodifiedDistance());
 				//fprintf(stderr, "id0 %d id1 %d userind0 %d userind1 %d cp.m_partId0 %d cp.m_index0 %d cp.m_partId1 %d cp.m_index1 %d\n", contactManifold->getBody0()->getUserIndex(), contactManifold->getBody1()->getUserIndex(), contactManifold->getBody0()->getUserIndex2(), contactManifold->getBody1()->getUserIndex2(), cp.m_partId0, cp.m_index0, cp.m_partId1, cp.m_index1);
 				{
 					bool body0IsSoft = contactManifold->getBody0()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+
 					auto body0Iter = penetratingColliders.find(const_cast<btCollisionObject*>(contactManifold->getBody0()));
 					if (body0Iter == penetratingColliders.end())
 					{
-						std::map<int, btScalar> stuckTetraIndices;
+						std::map<int, StuckTetraIndicesMapped> stuckTetraIndices;
 						if (body0IsSoft)
 						{
 							auto indicesSet = contactManifold->getBody0()->getCollisionShape()->getMappingForTri(cp.m_partId0, cp.m_index0);
 							for (auto index : indicesSet)
-								stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+								stuckTetraIndices.insert({index, {cp.getUnmodifiedDistance(), penetration, {cp.m_normalWorldOnB}}});
 						}
 						MappedType val{
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody1()),
 							.numContacts = numContacts,
-							.stuckTetraIndices = stuckTetraIndices};
+							.stuckTetraIndices = stuckTetraIndices,
+							.anyPenetration = penetration};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody0()), val});
 					}
 					else
@@ -1365,30 +1369,37 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 							{
 								auto existingIter = body0Iter->second.stuckTetraIndices.find(index);
 								if (existingIter != body0Iter->second.stuckTetraIndices.end())
-									existingIter->second = max(existingIter->second, cp.getUnmodifiedDistance());
+								{
+									existingIter->second.depth = max(existingIter->second.depth, cp.getUnmodifiedDistance());
+									existingIter->second.penetrating |= penetration;
+									existingIter->second.opposingNormals.emplace_back(cp.m_normalWorldOnB);
+								}
 								else
-									body0Iter->second.stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+									body0Iter->second.stuckTetraIndices.insert({index, {cp.getUnmodifiedDistance(), penetration, {cp.m_normalWorldOnB}}});
 							}
 						}
+						body0Iter->second.anyPenetration |= penetration;
 					}
 				}
 
 				{
 					bool body1IsSoft = contactManifold->getBody1()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
+
 					auto body1Iter = penetratingColliders.find(const_cast<btCollisionObject*>(contactManifold->getBody1()));
 					if (body1Iter == penetratingColliders.end())
 					{
-						std::map<int, btScalar> stuckTetraIndices;
+						std::map<int, StuckTetraIndicesMapped> stuckTetraIndices;
 						if (body1IsSoft)
 						{
 							auto indicesSet = contactManifold->getBody1()->getCollisionShape()->getMappingForTri(cp.m_partId1, cp.m_index1);
 							for (auto index : indicesSet)
-								stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+								stuckTetraIndices.insert({index, {cp.getUnmodifiedDistance(), penetration, {-cp.m_normalWorldOnB}}});
 						}
 						MappedType val{
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody0()),
 							.numContacts = numContacts,
-							.stuckTetraIndices = stuckTetraIndices};
+							.stuckTetraIndices = stuckTetraIndices,
+							.anyPenetration = penetration};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody1()), val});
 					}
 					else
@@ -1400,16 +1411,27 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 							{
 								auto existingIter = body1Iter->second.stuckTetraIndices.find(index);
 								if (existingIter != body1Iter->second.stuckTetraIndices.end())
-									existingIter->second = max(existingIter->second, cp.getUnmodifiedDistance());
+								{
+									existingIter->second.depth = max(existingIter->second.depth, cp.getUnmodifiedDistance());
+									existingIter->second.penetrating |= penetration;
+									existingIter->second.opposingNormals.emplace_back(-cp.m_normalWorldOnB);
+								}
 								else
-									body1Iter->second.stuckTetraIndices.insert({index, cp.getUnmodifiedDistance()});
+									body1Iter->second.stuckTetraIndices.insert({index, {cp.getUnmodifiedDistance(), penetration, {-cp.m_normalWorldOnB}}});
 							}
 						}
+						body1Iter->second.anyPenetration |= penetration;
 					}
 				}
 			}
 		}
 	}
+
+	for (auto iter = penetratingColliders.begin(); iter != penetratingColliders.end();)
+		if (!iter->second.anyPenetration)
+			iter = penetratingColliders.erase(iter);
+		else
+			++iter;
 
 	bool anyPenetrations = !penetratingColliders.empty();
 
@@ -1472,7 +1494,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		const btCollisionObject* opposingBody;
 		bool isSoft;
 		int numContacts = 0;
-		std::map<int, btScalar> stuckTetraIndices;
+		std::map<int, StuckTetraIndicesMapped> stuckTetraIndices;
 	};
 
 	std::vector<VectorElem> unstuckVector;
@@ -1511,7 +1533,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 				body->resetLastSafeApplyCounter();
 
 			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
-			//if (!bothSoft)  // Currently not done for soft vs soft. Will have to come up with something later for this case. Currently applyLastSafeWorldTransform does not work so great for this case.
+
 			body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
 			if (!isSoft && !m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
@@ -1540,7 +1562,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			body->updateLastSafeWorldTransform(nullptr);
 		}
 		// When there are penetrations, the softs are done in this loop separately because their partial update would never be done because the soft's penetration
-		// caused its island to be pruned away.
+		// caused its island to be pruned away from islandsWithLastSafeUpdated.
 		for (const auto& unstuckVectorElem : unstuckVector)
 		{
 			if (unstuckVectorElem.isSoft)

@@ -89,7 +89,7 @@ void btReducedDeformableBodySolver::predictReduceDeformableMotion(btScalar solve
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btReducedDeformableBody* rsb = static_cast<btReducedDeformableBody*>(m_softBodies[i]);
-		if (!rsb->isActive())
+		if (!rsb->isActive() || rsb->isStaticObject())
 		{
 			continue;
 		}
@@ -199,7 +199,7 @@ void btReducedDeformableBodySolver::setConstraints(const btContactSolverInfo& in
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btReducedDeformableBody* rsb = static_cast<btReducedDeformableBody*>(m_softBodies[i]);
-		if (!rsb->isActive())
+		if (!rsb->isActive() || rsb->isStaticObject())
 		{
 			continue;
 		}
