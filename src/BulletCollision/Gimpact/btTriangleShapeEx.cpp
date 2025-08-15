@@ -878,6 +878,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		thisLastSafe.buildTriPlane();
 		otherLastSafe.buildTriPlane();
 
+#ifdef BT_SAFE_UPDATE_DEBUG
 		fprintf(stderr, "drawline \"touch line\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
 				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z());
 		fprintf(stderr, "drawline \"touch line\" [%f,%f,%f][%f,%f,%f][0.5,0.5,0.5,0.5]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
@@ -905,6 +906,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 				otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
 		fprintf(stderr, "drawline \"touch line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
 				otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+#endif
 
 		if (thisLastSafe.m_vertices[0].z() < 0.0 || thisLastSafe.m_vertices[1].z() < 0.0 || thisLastSafe.m_vertices[2].z() < 0.0 ||
 			otherLastSafe.m_vertices[0].z() < 0.0 || otherLastSafe.m_vertices[1].z() < 0.0 || otherLastSafe.m_vertices[2].z() < 0.0)
@@ -923,12 +925,14 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	{
 		// Triangle penetration. Use the last safe transforms.
 
+#ifdef BT_SAFE_UPDATE_DEBUG
 		fprintf(stderr, "drawtriangle \"pen tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
 				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),
 				m_vertices[2].x(), m_vertices[2].y(), m_vertices[2].z());
 		fprintf(stderr, "drawtriangle \"pen tri other\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", other.m_vertices[0].x(), other.m_vertices[0].y(), other.m_vertices[0].z(),
 				other.m_vertices[1].x(), other.m_vertices[1].y(), other.m_vertices[1].z(),
 				other.m_vertices[2].x(), other.m_vertices[2].y(), other.m_vertices[2].z());
+#endif
 
 		if (doUnstuck)
 		{
@@ -966,6 +970,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 			auto otherSafeCentroid = (otherLastSafe.m_vertices[0] + otherLastSafe.m_vertices[1] + otherLastSafe.m_vertices[2]) / 3.0;
 			auto otherCentroidDistToSafe = (otherCentroid - otherSafeCentroid).length();
 
+#ifdef BT_SAFE_UPDATE_DEBUG
 			fprintf(stderr, "drawline \"pen line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
 					thisLastSafe.m_vertices[1].x(), thisLastSafe.m_vertices[1].y(), thisLastSafe.m_vertices[1].z());
 			fprintf(stderr, "drawline \"pen line safe\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", thisLastSafe.m_vertices[0].x(), thisLastSafe.m_vertices[0].y(), thisLastSafe.m_vertices[0].z(),
@@ -979,6 +984,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 					otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
 			fprintf(stderr, "drawline \"pen line safe other\" [%f,%f,%f][%f,%f,%f][1,1,1,0.5]\n", otherLastSafe.m_vertices[1].x(), otherLastSafe.m_vertices[1].y(), otherLastSafe.m_vertices[1].z(),
 					otherLastSafe.m_vertices[2].x(), otherLastSafe.m_vertices[2].y(), otherLastSafe.m_vertices[2].z());
+#endif
 
 			if (thisLastSafe.m_vertices[0].z() < 0.0 || thisLastSafe.m_vertices[1].z() < 0.0 || thisLastSafe.m_vertices[2].z() < 0.0 ||
 				otherLastSafe.m_vertices[0].z() < 0.0 || otherLastSafe.m_vertices[1].z() < 0.0 || otherLastSafe.m_vertices[2].z() < 0.0)

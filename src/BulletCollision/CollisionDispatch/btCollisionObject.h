@@ -58,8 +58,6 @@ struct StuckTetraIndicesMapped
 #define btCollisionObjectDataName "btCollisionObjectFloatData"
 #endif
 
-//#define BT_SAFE_UPDATE_DEBUG 1
-
 /// btCollisionObject can be used to manage collision detection objects.
 /// btCollisionObject maintains all information that is needed for a collision detection: Shape, Transform and AABB proxy.
 /// They can be added to the btCollisionWorld.
@@ -150,7 +148,9 @@ public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	static btScalar gFrictionOverride;
+#ifdef BT_SAFE_UPDATE_DEBUG
 	static bool gDebug;
+#endif
 
 	enum CollisionFlags
 	{
