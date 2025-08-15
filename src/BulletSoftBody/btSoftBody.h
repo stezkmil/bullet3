@@ -1420,9 +1420,9 @@ public:
 		}
 	}
 
-	void lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, btScalar>& nodesInCollision);
-	virtual void updateLastSafeWorldTransform(const std::map<int, btScalar>* partial) override;
-	virtual void applyLastSafeWorldTransform(const std::map<int, btScalar>* partial) override;
+	void lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, StuckTetraIndicesMapped>& nodesInCollision);
+	virtual void updateLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial) override;
+	virtual void applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial) override;
 };
 
 #endif  //_BT_SOFT_BODY_H

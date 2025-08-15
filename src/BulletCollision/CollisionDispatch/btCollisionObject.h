@@ -39,8 +39,16 @@ struct btCollisionShapeData;
 
 #include <set>
 #include <map>
+#include <vector>
 
 typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
+
+struct StuckTetraIndicesMapped
+{
+	btScalar depth;
+	bool penetrating;
+	std::vector<btVector3> opposingNormals;
+};
 
 #ifdef BT_USE_DOUBLE_PRECISION
 #define btCollisionObjectData btCollisionObjectDoubleData
@@ -49,6 +57,8 @@ typedef btAlignedObjectArray<class btCollisionObject*> btCollisionObjectArray;
 #define btCollisionObjectData btCollisionObjectFloatData
 #define btCollisionObjectDataName "btCollisionObjectFloatData"
 #endif
+
+//#define BT_SAFE_UPDATE_DEBUG 1
 
 /// btCollisionObject can be used to manage collision detection objects.
 /// btCollisionObject maintains all information that is needed for a collision detection: Shape, Transform and AABB proxy.
@@ -553,12 +563,12 @@ public:
 		return m_lastSafeWorldTransform;
 	}
 
-	virtual void updateLastSafeWorldTransform(const std::map<int, btScalar>* partial)
+	virtual void updateLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 	{
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(const std::map<int, btScalar>* partial);
+	virtual void applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial);
 
 	void resetLastSafeApplyCounter()
 	{

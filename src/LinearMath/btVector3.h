@@ -16,7 +16,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_VECTOR3_H
 #define BT_VECTOR3_H
 
@@ -100,7 +99,8 @@ public:
 public:
 #else                                            //__CELLOS_LV2__ __SPU__
 #if defined(BT_USE_SSE) || defined(BT_USE_NEON)  // _WIN32 || ARM
-	union {
+	union
+	{
 		btSimdFloat4 mVec128;
 		btScalar m_floats[4];
 	};
@@ -545,6 +545,8 @@ public:
 						 m_floats[2] + (v.m_floats[2] - m_floats[2]) * t);
 #endif
 	}
+
+	SIMD_FORCE_INLINE btVector3 rejectFrom(const btVector3& N);
 
 	/**@brief Elementwise multiply this vector by the other 
    * @param v The other vector */
@@ -1292,6 +1294,13 @@ struct btVector3DoubleData
 {
 	double m_floats[4];
 };
+
+SIMD_FORCE_INLINE btVector3 btVector3::rejectFrom(const btVector3& N)
+{
+	const btScalar n2 = N.dot(N);
+	if (n2 <= SIMD_EPSILON) return *this;
+	return *this - (this->dot(N) / n2) * N;
+}
 
 SIMD_FORCE_INLINE void btVector3::serializeFloat(struct btVector3FloatData& dataOut) const
 {
