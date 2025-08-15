@@ -5373,14 +5373,16 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 		//fprintf(stderr, "framestart()\n");
 
 		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
+		std::vector<std::array<btSoftBody::Node*, 4>> tets_dbg;
 		for (auto& [partTetraIndex, partDist] : *partial)
 		{
 			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[0], partDist});
 			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[1], partDist});
 			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[2], partDist});
 			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[3], partDist});
+			tets_dbg.push_back({m_tetras[partTetraIndex].m_n[0], m_tetras[partTetraIndex].m_n[1], m_tetras[partTetraIndex].m_n[2], m_tetras[partTetraIndex].m_n[3]});
 		}
-		//lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
+		lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
 
 		//fprintf(stderr, "update start -------------------------------------------\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
@@ -5407,6 +5409,23 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, btScalar>* par
 		dst.m_splitv = src.m_splitv;
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
+		}
+
+		for (auto tet : tets_dbg)
+		{
+			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z());
+			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z());
+			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
+			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
+			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z(), tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z());
+			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
+
+			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z());
+			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z());
+			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
+			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
+			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z(), tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z());
+			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
 		}
 		//fprintf(stderr, "frameend()\n");
 	}
@@ -5443,7 +5462,6 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* part
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
-		std::vector<std::array<btSoftBody::Node*, 4>> tets_dbg;
 		if (partial)
 		{
 			for (auto& [partTetraIndex, partDist] : *partial)
@@ -5456,9 +5474,6 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* part
 					else if (partDist > iter->second)
 						iter->second = partDist;
 				}
-
-				if (partDist >= m_lastSafeApplyDepthThreshold)
-					tets_dbg.push_back({m_tetras[partTetraIndex].m_n[0], m_tetras[partTetraIndex].m_n[1], m_tetras[partTetraIndex].m_n[2], m_tetras[partTetraIndex].m_n[3]});
 
 				/*auto& a = m_tetras[tetraIndex].m_n[0];
 				auto& b = m_tetras[tetraIndex].m_n[1];
@@ -5486,23 +5501,6 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, btScalar>* part
 			{
 				nodesInCollision.insert({&m_nodes[i], m_lastSafeApplyDepthThreshold});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
 			}
-		}
-
-		for (auto tet : tets_dbg)
-		{
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z(), tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
-
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z(), tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
 		}
 
 		for (auto& [nodeInCollision, depth] : nodesInCollision)
