@@ -875,8 +875,12 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	// The tbb parallel calls increase the _find_quantized_collision_pairs_recursive_par duration from about 1us to anything between 20-80us,
 	// so the tbb parallel calls pay off only when there was at least some significant time spent in _find_quantized_collision_pairs_recursive_par
 	// previously
-	//if (std::get<0>(grpParams.previouslyConsumedTime) <= 100 || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::TOUCHING)
-	threadLaunchStopLevel = 0;
+	bool disableParallel = false;
+#ifdef BT_SAFE_UPDATE_DEBUG
+	disableParallel = true;
+#endif
+	if (std::get<0>(grpParams.previouslyConsumedTime) <= 100 || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::TOUCHING || disableParallel)
+		threadLaunchStopLevel = 0;
 	GroupedParams groupedParams(boxset0, boxset1, perThreadIntermediateResults, trans_cache_1to0, findOnlyFirstTriPair, boxset0 == boxset1, firstTriPairFound, threadLaunchStopLevel, grpParams);
 	_find_quantized_collision_pairs_recursive_par(groupedParams, 0, 0, 0, true);
 	//auto end = std::chrono::steady_clock::now();
