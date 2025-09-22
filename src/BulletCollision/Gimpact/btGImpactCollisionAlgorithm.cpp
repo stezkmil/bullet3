@@ -728,10 +728,10 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		return;
 	}
 
-	bool isTol0 = body0Wrap->getCollisionObject()->isToleratingInitialCollisions();
-	bool isTol1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisions();
 	bool isTolLow0 = body0Wrap->getCollisionObject()->isToleratingInitialCollisionsLow();
 	bool isTolLow1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisionsLow();
+	bool isTolAll0 = body0Wrap->getCollisionObject()->isToleratingInitialCollisionsAll();
+	bool isTolAll1 = body1Wrap->getCollisionObject()->isToleratingInitialCollisionsAll();
 	bool isGhost0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
 	bool isGhost1 = body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_NO_CONTACT_RESPONSE;
 	bool isOnlyFindFirstTouch0 = body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH;
@@ -743,7 +743,13 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	bool isSoft = body0Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY || body1Wrap->getCollisionObject()->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 	bool isBarrier0 = !isGhost0 && (body0Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost0
 	bool isBarrier1 = !isGhost1 && (body1Wrap->getCollisionObject()->getCollisionFlags() & btCollisionObject::CF_STATIC_OBJECT);  // I never set CF_NO_CONTACT_RESPONSE to barriers, so this is why I check for !isGhost1
-	btFindOnlyFirstPairEnum findOnlyFirstTriPair = (isTol0 || isTol1) ? btFindOnlyFirstPairEnum::PENETRATING : btFindOnlyFirstPairEnum::DISABLED;
+	btFindOnlyFirstPairEnum findOnlyFirstTriPair = (isTolAll0 || isTolAll1) ? btFindOnlyFirstPairEnum::PENETRATING : btFindOnlyFirstPairEnum::DISABLED;
+	if (body0Wrap->getCollisionObject()->isToleratingCertainInitialCollisions() || body1Wrap->getCollisionObject()->isToleratingCertainInitialCollisions())
+	{
+		bool tolerated0 = body0Wrap->getCollisionObject()->checkIsTolerated(body1Wrap->getCollisionObject());
+		bool tolerated1 = body1Wrap->getCollisionObject()->checkIsTolerated(body0Wrap->getCollisionObject());
+		findOnlyFirstTriPair = (tolerated0 || tolerated1) ? btFindOnlyFirstPairEnum::PENETRATING : findOnlyFirstTriPair;
+	}
 	bool generateManifoldForGhost = isGhost0 || isGhost1;
 	findOnlyFirstTriPair = generateManifoldForGhost ? btFindOnlyFirstPairEnum::PENETRATING : findOnlyFirstTriPair;
 	if (isOnlyGatherContactCounts)

@@ -300,6 +300,16 @@ public:
 		return m_objectsWithToleratedCollision.size() >= 1;
 	}
 
+	bool isToleratingInitialCollisionsAll() const
+	{
+		return m_objectsWithToleratedCollision.size() == 1;
+	}
+
+	bool isToleratingCertainInitialCollisions() const
+	{
+		return m_objectsWithToleratedCollision.size() > 1;
+	}
+
 	btCollisionObject();
 
 	virtual ~btCollisionObject();
