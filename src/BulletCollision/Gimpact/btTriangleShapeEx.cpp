@@ -835,9 +835,13 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 	auto create_contact = [&]()
 	{
 		btVector3 diff = a_closest_out - b_closest_out;
+		btVector3 dir;
 		if (dist == 0.0)
 			dist = diff.length();
-		btVector3 dir = diff / dist;
+		if (dist == 0.0)
+			dir = btVector3(0.0, 0.0, 0.0);
+		else
+			dir = diff / dist;
 		contacts.m_point_count = 1;
 		contacts.m_points[0] = a_closest_out;
 		contacts.m_separating_normal = btVector4(dir.x(), dir.y(), dir.z(), 1.0);
