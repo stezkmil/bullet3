@@ -839,7 +839,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 		if (dist == 0.0)
 			dist = diff.length();
 		if (dist == 0.0)
-			dir = btVector3(0.0, 0.0, 0.0);
+			dir = -btVector3(m_plane.x(), m_plane.y(), m_plane.z());  // Last ditch effort to determine some direction, if the diff based on the last safe positions also fails
 		else
 			dir = diff / dist;
 		contacts.m_point_count = 1;
