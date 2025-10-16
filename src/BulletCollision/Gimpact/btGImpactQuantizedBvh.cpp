@@ -25,6 +25,8 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
+#define NOMINMAX
+
 #include "btGImpactQuantizedBvh.h"
 #include "LinearMath/btQuickprof.h"
 
@@ -871,7 +873,7 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	auto boxset1Depth = std::log2(boxset1->getNodeCount() + 1);
 	// It has been empirically observed that the best performance is obtained when the stop level is three quarters of total tree depth.
 	// It needs to be verified yet if this holds also for different CPU core count. This was tested only on a cpu with 32 logical cores.
-	auto threadLaunchStopLevel = static_cast<int>(max(boxset0Depth, boxset1Depth) / 1.5);
+	auto threadLaunchStopLevel = static_cast<int>(std::max(boxset0Depth, boxset1Depth) / 1.5);
 	// The tbb parallel calls increase the _find_quantized_collision_pairs_recursive_par duration from about 1us to anything between 20-80us,
 	// so the tbb parallel calls pay off only when there was at least some significant time spent in _find_quantized_collision_pairs_recursive_par
 	// previously

@@ -17,6 +17,8 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
+#define NOMINMAX
+
 #include "btCollisionWorld.h"
 #include "btCollisionDispatcher.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObject.h"
@@ -1370,7 +1372,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 								auto existingIter = body0Iter->second.stuckTetraIndices.find(index);
 								if (existingIter != body0Iter->second.stuckTetraIndices.end())
 								{
-									existingIter->second.depth = max(existingIter->second.depth, cp.getUnmodifiedDistance());
+									existingIter->second.depth = std::max(existingIter->second.depth, cp.getUnmodifiedDistance());
 									existingIter->second.penetrating |= penetration;
 									existingIter->second.opposingNormals.emplace_back(cp.m_normalWorldOnB);
 								}
@@ -1412,7 +1414,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 								auto existingIter = body1Iter->second.stuckTetraIndices.find(index);
 								if (existingIter != body1Iter->second.stuckTetraIndices.end())
 								{
-									existingIter->second.depth = max(existingIter->second.depth, cp.getUnmodifiedDistance());
+									existingIter->second.depth = std::max(existingIter->second.depth, cp.getUnmodifiedDistance());
 									existingIter->second.penetrating |= penetration;
 									existingIter->second.opposingNormals.emplace_back(-cp.m_normalWorldOnB);
 								}
