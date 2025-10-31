@@ -310,12 +310,41 @@ public:
 		m_max[1] = GIM_MAX3(V1[1], V2[1], V3[1]);
 		m_max[2] = GIM_MAX3(V1[2], V2[2], V3[2]);
 
-		m_min[0] -= margin;
-		m_min[1] -= margin;
-		m_min[2] -= margin;
-		m_max[0] += margin;
-		m_max[1] += margin;
-		m_max[2] += margin;
+		if (margin == btScalar(0))
+			return;
+
+		// 2) Compute geometric normal and shift the whole box by m * n_hat
+		const btVector3 p1(V1[0], V1[1], V1[2]);
+		const btVector3 p2(V2[0], V2[1], V2[2]);
+		const btVector3 p3(V3[0], V3[1], V3[2]);
+
+		btVector3 n = (p2 - p1).cross(p3 - p1);  // unnormalized normal
+		const btScalar len2 = n.length2();
+
+		if (len2 > btScalar(1e-24))
+		{
+			// normalize (fast + stable)
+			n *= btScalar(1) / btSqrt(len2);
+
+			const btVector3 d = margin * n;  // translation vector
+
+			m_min[0] += d.x();
+			m_max[0] += d.x();
+			m_min[1] += d.y();
+			m_max[1] += d.y();
+			m_min[2] += d.z();
+			m_max[2] += d.z();
+		}
+		else
+		{
+			// Degenerate triangle: be conservative
+			m_min[0] -= margin;
+			m_min[1] -= margin;
+			m_min[2] -= margin;
+			m_max[0] += margin;
+			m_max[1] += margin;
+			m_max[2] += margin;
+		}
 	}
 
 	//! Apply a transform to an AABB
