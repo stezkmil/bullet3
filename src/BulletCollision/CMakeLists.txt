@@ -207,6 +207,7 @@ SET(Gimpact_HDRS
 	Gimpact/btGImpactQuantizedBvhStructs.h
 	Gimpact/btGImpactQuantizedBvh.h
 	Gimpact/btGImpactShape.h
+	Gimpact/btMarginApply.h
 	Gimpact/btQuantization.h
 	Gimpact/btTriangleShapeEx.h
 	Gimpact/gim_array.h

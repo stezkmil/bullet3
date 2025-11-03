@@ -1130,7 +1130,7 @@ void btGImpactCollisionAlgorithm::gimpacttrimeshpart_vs_plane_collision(
 
 	btAABB tribox;
 	shape0->getAabb(orgtrans0, tribox.m_min, tribox.m_max);
-	tribox.increment_margin(planeshape->getMargin());
+	tribox.apply_margin_old(planeshape->getMargin());
 
 	if (tribox.plane_classify(plane) != BT_CONST_COLLIDE_PLANE) return;
 

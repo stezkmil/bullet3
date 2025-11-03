@@ -29,6 +29,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 */
 
 #include "LinearMath/btTransform.h"
+#include "btMarginApply.h"
 
 ///Swap numbers
 #define BT_SWAP_NUMBERS(a, b) \
@@ -214,6 +215,8 @@ public:
 
 #define BOX_PLANE_EPSILON 0.000001f
 
+typedef btMarginApply<btVector3> btMarginApplyVec3;
+
 //! Axis aligned box
 ATTRIBUTE_ALIGNED16(class)
 btAABB
@@ -256,26 +259,11 @@ public:
 		m_max[2] = BT_MAX3(V1[2], V2[2], V3[2]);
 		m_max[3] = 0.f;
 
-		m_min[0] -= margin;
-		m_min[1] -= margin;
-		m_min[2] -= margin;
-		m_max[0] += margin;
-		m_max[1] += margin;
-		m_max[2] += margin;
+		btMarginApplyVec3::apply_margin(V1, V2, V3, margin, m_min, m_max);
 	}
 
 	btAABB(const btAABB &other) : m_min(other.m_min), m_max(other.m_max)
 	{
-	}
-
-	btAABB(const btAABB &other, btScalar margin) : m_min(other.m_min), m_max(other.m_max)
-	{
-		m_min[0] -= margin;
-		m_min[1] -= margin;
-		m_min[2] -= margin;
-		m_max[0] += margin;
-		m_max[1] += margin;
-		m_max[2] += margin;
 	}
 
 	SIMD_FORCE_INLINE void invalidate()
@@ -290,27 +278,9 @@ public:
 		m_max[3] = 0.f;
 	}
 
-	SIMD_FORCE_INLINE void increment_margin(btScalar margin)
+	void apply_margin_old(btScalar margin)
 	{
-		m_min[0] -= margin;
-		m_min[1] -= margin;
-		m_min[2] -= margin;
-		m_max[0] += margin;
-		m_max[1] += margin;
-		m_max[2] += margin;
-	}
-
-	SIMD_FORCE_INLINE void copy_with_margin(const btAABB &other, btScalar margin)
-	{
-		m_min[0] = other.m_min[0] - margin;
-		m_min[1] = other.m_min[1] - margin;
-		m_min[2] = other.m_min[2] - margin;
-		m_min[3] = 0.f;
-
-		m_max[0] = other.m_max[0] + margin;
-		m_max[1] = other.m_max[1] + margin;
-		m_max[2] = other.m_max[2] + margin;
-		m_max[3] = 0.f;
+		btMarginApplyVec3::apply_margin_old(margin, m_min, m_max);
 	}
 
 	template <typename CLASS_POINT>
@@ -346,41 +316,7 @@ public:
 		m_max[2] = BT_MAX3(V1[2], V2[2], V3[2]);
 		m_max[3] = 0.f;
 
-		if (margin == btScalar(0))
-			return;
-
-		// 2) Compute geometric normal and shift the whole box by m * n_hat
-		const btVector3 p1(V1[0], V1[1], V1[2]);
-		const btVector3 p2(V2[0], V2[1], V2[2]);
-		const btVector3 p3(V3[0], V3[1], V3[2]);
-
-		btVector3 n = (p2 - p1).cross(p3 - p1);  // unnormalized normal
-		const btScalar len2 = n.length2();
-
-		if (len2 > btScalar(1e-24))
-		{
-			// normalize (fast + stable)
-			n *= btScalar(1) / btSqrt(len2);
-
-			const btVector3 d = margin * n;  // translation vector
-
-			m_min[0] += d.x();
-			m_max[0] += d.x();
-			m_min[1] += d.y();
-			m_max[1] += d.y();
-			m_min[2] += d.z();
-			m_max[2] += d.z();
-		}
-		else
-		{
-			// Degenerate triangle: be conservative
-			m_min[0] -= margin;
-			m_min[1] -= margin;
-			m_min[2] -= margin;
-			m_max[0] += margin;
-			m_max[1] += margin;
-			m_max[2] += margin;
-		}
+		btMarginApplyVec3::apply_margin(V1, V2, V3, margin, m_min, m_max);
 	}
 
 	//! Apply a transform to an AABB
