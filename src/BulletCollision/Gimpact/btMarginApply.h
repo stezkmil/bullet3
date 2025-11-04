@@ -24,6 +24,10 @@ struct btMarginApply
 	// because the AABBs are biased in the normal direcion. It is also slower in the boxset preparation time, but much faster in the collision detection runtime
 	// for high tri count meshes. Further experimentation - if there are some unforeseen problems, we might try to apply this new method only for higher
 	// margin values. For example fall back to the old method for margin <= 0.1 units.
+
+	// Alternatively a third, compromise method could be created. The AABB translation would not be done, but the AABB would be inflated in the direction
+	// of the traingle normal. It would have to be measured how much we approach the aforementioned problematic state of combinatorial explosions,
+	// so in other words we have to find out whether this compromise approach is even worth it.
 	static void apply_margin(const CLASS_POINT &V1,
 							 const CLASS_POINT &V2,
 							 const CLASS_POINT &V3, btScalar margin, CLASS_POINT &minPt, CLASS_POINT &maxPt)
