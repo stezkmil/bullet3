@@ -55,7 +55,7 @@ class btSerializer;
 // 4 gives the potential for 16 parts, each with 2^27 triangles (134217728)
 // actually) triangles each (since the sign bit is reserved
 //#define MAX_NUM_PARTS_IN_BITS 10
-#define MAX_NUM_PARTS_IN_BITS 8 // 4 crashes for me - don't know why yet
+#define MAX_NUM_PARTS_IN_BITS 5 // 4 crashes for me - don't know why yet
 
 ///btQuantizedBvhNode is a compressed aabb node, 16 bytes.
 ///Node can be used for leafnode or internal node. Leafnodes can point to 32-bit triangle index (non-negative range).

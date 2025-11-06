@@ -5,7 +5,7 @@
 
 #include "Bullet3Common/shared/b3Float4.h"
 
-#define B3_MAX_NUM_PARTS_IN_BITS 10
+#define B3_MAX_NUM_PARTS_IN_BITS 5
 
 ///b3QuantizedBvhNodeData is a compressed aabb node, 16 bytes.
 ///Node can be used for leafnode or internal node. Leafnodes can point to 32-bit triangle index (non-negative range).
