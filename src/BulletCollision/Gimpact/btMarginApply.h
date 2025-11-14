@@ -35,8 +35,12 @@ struct btMarginApply
 		if (margin == btScalar(0))
 			return;
 
-		if (margin <= 0.2)  // So that the default value of 0.1 safely falls into the old method. It is only around 1.0 where things already start to go really slow,
-							// so for those values we use the new method.
+		// Had to disable the new method because it turned out that the problematic situation of "triangles meeting with their backfaces" is much more common
+		// than previously thought. It is common for softs, where some interpenetrations are allowed. So when this happens for a tri tri pair, then such
+		// tris are not detected because their AABBs are not covering the volume around the tri at the backface side. This leads to bad safe positions for the soft.
+
+		//if (margin <= 0.2)  // So that the default value of 0.1 safely falls into the old method. It is only around 1.0 where things already start to go really slow,
+		// so for those values we use the new method.
 		{
 			apply_margin_old(margin, minPt, maxPt);
 			return;
