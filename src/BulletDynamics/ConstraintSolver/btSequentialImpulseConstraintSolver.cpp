@@ -1257,28 +1257,38 @@ void btSequentialImpulseConstraintSolver::convertJoint(btSolverConstraint* curre
 		solverConstraint.m_originalContactPoint = constraint;
 
 		{
-			const btVector3& ftorqueAxis1 = solverConstraint.m_relpos1CrossNormal;
-			solverConstraint.m_angularComponentA = constraint->getRigidBodyA().getInvInertiaTensorWorld() * ftorqueAxis1 * constraint->getRigidBodyA().getAngularFactor();
-		}
-		{
-			const btVector3& ftorqueAxis2 = solverConstraint.m_relpos2CrossNormal;
-			solverConstraint.m_angularComponentB = constraint->getRigidBodyB().getInvInertiaTensorWorld() * ftorqueAxis2 * constraint->getRigidBodyB().getAngularFactor();
-		}
+			btScalar mA = (rbA.getInvMass() > 0) ? btScalar(1) / rbA.getInvMass() : btScalar(0);
+			btScalar mB = (rbB.getInvMass() > 0) ? btScalar(1) / rbB.getInvMass() : btScalar(0);
 
-		{
-			btVector3 iMJlA = solverConstraint.m_contactNormal1 * rbA.getInvMass();
-			btVector3 iMJaA = rbA.getInvInertiaTensorWorld() * solverConstraint.m_relpos1CrossNormal;
-			btVector3 iMJlB = solverConstraint.m_contactNormal2 * rbB.getInvMass();  //sign of normal?
-			btVector3 iMJaB = rbB.getInvInertiaTensorWorld() * solverConstraint.m_relpos2CrossNormal;
+			// This is a workaround for weak constrinats when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+			// strong as they should be in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = rbA.getInvInertiaTensorWorld() * mA;
+			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_B = rbB.getInvInertiaTensorWorld() * mB;
 
-			btScalar sum = iMJlA.dot(solverConstraint.m_contactNormal1);
-			sum += iMJaA.dot(solverConstraint.m_relpos1CrossNormal);
-			sum += iMJlB.dot(solverConstraint.m_contactNormal2);
-			sum += iMJaB.dot(solverConstraint.m_relpos2CrossNormal);
-			btScalar fsum = btFabs(sum);
-			btAssert(fsum > SIMD_EPSILON);
-			btScalar sorRelaxation = 1.f;  //todo: get from globalInfo?
-			solverConstraint.m_jacDiagABInv = fsum > SIMD_EPSILON ? sorRelaxation / sum : 0.f;
+			{
+				const btVector3& ftorqueAxis1 = solverConstraint.m_relpos1CrossNormal;
+				solverConstraint.m_angularComponentA = invInertiaTensorWorldAsIfUnitMass_A /*constraint->getRigidBodyA().getInvInertiaTensorWorld()*/ * ftorqueAxis1 * constraint->getRigidBodyA().getAngularFactor();
+			}
+			{
+				const btVector3& ftorqueAxis2 = solverConstraint.m_relpos2CrossNormal;
+				solverConstraint.m_angularComponentB = invInertiaTensorWorldAsIfUnitMass_B /*constraint->getRigidBodyB().getInvInertiaTensorWorld()*/ * ftorqueAxis2 * constraint->getRigidBodyB().getAngularFactor();
+			}
+
+			{
+				btVector3 iMJlA = solverConstraint.m_contactNormal1 * rbA.getInvMass();
+				btVector3 iMJaA = /*rbA.getInvInertiaTensorWorld()*/ invInertiaTensorWorldAsIfUnitMass_A * solverConstraint.m_relpos1CrossNormal;
+				btVector3 iMJlB = solverConstraint.m_contactNormal2 * rbB.getInvMass();  //sign of normal?
+				btVector3 iMJaB = /*rbB.getInvInertiaTensorWorld()*/ invInertiaTensorWorldAsIfUnitMass_B * solverConstraint.m_relpos2CrossNormal;
+
+				btScalar sum = iMJlA.dot(solverConstraint.m_contactNormal1);
+				sum += iMJaA.dot(solverConstraint.m_relpos1CrossNormal);
+				sum += iMJlB.dot(solverConstraint.m_contactNormal2);
+				sum += iMJaB.dot(solverConstraint.m_relpos2CrossNormal);
+				btScalar fsum = btFabs(sum);
+				btAssert(fsum > SIMD_EPSILON);
+				btScalar sorRelaxation = 1.f;  //todo: get from globalInfo?
+				solverConstraint.m_jacDiagABInv = fsum > SIMD_EPSILON ? sorRelaxation / sum : 0.f;
+			}
 		}
 
 		{

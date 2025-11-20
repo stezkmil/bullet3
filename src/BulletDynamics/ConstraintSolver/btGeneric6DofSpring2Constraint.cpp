@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 /*
 2014 May: btGeneric6DofSpring2Constraint is created from the original (2.82.2712) btGeneric6DofConstraint by Gabor Puhr and Tamas Umenhoffer
 Pros:
@@ -848,9 +847,12 @@ int btGeneric6DofSpring2Constraint::get_limit_motor_info2(
 			if (m_rbB.getInvMass()) mB = mB * rrB + 1 / (m_rbB.getInvInertiaTensorWorld() * ax1).length();
 		}
 		btScalar m;
-		if (m_rbA.getInvMass() == 0) m = mB; else
-		if (m_rbB.getInvMass() == 0) m = mA; else
-			m = mA*mB / (mA + mB);
+		if (m_rbA.getInvMass() == 0)
+			m = mB;
+		else if (m_rbB.getInvMass() == 0)
+			m = mA;
+		else
+			m = mA * mB / (mA + mB);
 		btScalar angularfreq = btSqrt(ks / m);
 
 		//limit stiffness (the spring should not be sampled faster that the quarter of its angular frequency)
