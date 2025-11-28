@@ -1517,6 +1517,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		}
 	}
 
+	bool anyApply = false;
 	for (const auto& unstuckVectorElem : unstuckVector)
 	{
 		auto body = unstuckVectorElem.body;
@@ -1536,6 +1537,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 
 			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
 
+			anyApply = true;
 			body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
 			if (!isSoft && !m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
@@ -1565,14 +1567,15 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		}
 		// When there are penetrations, the softs are done in this loop separately because their partial update would never be done because the soft's penetration
 		// caused its island to be pruned away from islandsWithLastSafeUpdated.
-		for (const auto& unstuckVectorElem : unstuckVector)
+		//TODO do this per island somehow. Like this it would mean that absolutely no soft safes are updated when even some far away pen is found
+		/*for (const auto& unstuckVectorElem : unstuckVector)
 		{
 			if (unstuckVectorElem.isSoft)
 			{
 				auto body = unstuckVectorElem.body;
 				body->updateLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
 			}
-		}
+		}*/
 	}
 	else
 	{
@@ -1588,6 +1591,13 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			auto* body = softBodies[i];
 			body->updateLastSafeWorldTransform(nullptr);
 		}
+	}
+
+	if (anyApply)
+	{
+		btCollisionObject::gDebug = true;
+		performDiscreteCollisionDetection();
+		btCollisionObject::gDebug = false;
 	}
 }
 

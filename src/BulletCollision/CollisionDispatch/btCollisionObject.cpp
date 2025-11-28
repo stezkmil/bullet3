@@ -22,9 +22,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"
 
 btScalar btCollisionObject::gFrictionOverride = -1.0;
-#ifdef BT_SAFE_UPDATE_DEBUG
+//#ifdef BT_SAFE_UPDATE_DEBUG
 bool btCollisionObject::gDebug = false;
-#endif
+//#endif
 
 btCollisionObject::btCollisionObject()
 	: m_interpolationLinearVelocity(0.f, 0.f, 0.f),

@@ -133,6 +133,7 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 #ifdef BT_SAFE_UPDATE_DEBUG
 	fprintf(stderr, "framestart()\n");
 #endif
+	fprintf(stderr, "framestart()\n");
 	///perform collision detection that involves rigid/multi bodies
 	performDiscreteCollisionDetection();
 
@@ -145,6 +146,7 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	updateLastSafeTransforms();
 
+	fprintf(stderr, "frameend()\n");
 #ifdef BT_SAFE_UPDATE_DEBUG
 	fprintf(stderr, "frameend()\n");
 	fprintf(stderr, "framestart()\n");

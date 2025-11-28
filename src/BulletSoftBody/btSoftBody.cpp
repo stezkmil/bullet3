@@ -5494,6 +5494,7 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 	}
 	else
 	{
+		fprintf(stderr, "btSoftBody::updateLastSafeWorldTransform whole\n");
 		for (auto i = 0; i < m_nodes.size(); ++i)
 		{
 			const auto& node = m_nodes[i];
@@ -5528,34 +5529,38 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
-		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
-		if (partial)
+		std::map<btSoftBody::Node*, StuckTetraIndicesMapped> nodesInCollision;
+		/*if (partial)
 		{
+			fprintf(stderr, "btSoftBody::applyLastSafeWorldTransform\n");
 			for (auto& [partTetraIndex, partMapped] : *partial)
 			{
 				for (auto i = 0; i < 4; ++i)
 				{
 					auto iter = nodesInCollision.find(m_tetras[partTetraIndex].m_n[i]);
 					if (iter == nodesInCollision.end())
-						nodesInCollision.insert({m_tetras[partTetraIndex].m_n[i], partMapped.depth});
-					else if (partMapped.depth > iter->second)
-						iter->second = partMapped.depth;
+						nodesInCollision.insert({m_tetras[partTetraIndex].m_n[i], partMapped});
+					else if (partMapped.depth > iter->second.depth)
+						iter->second.depth = partMapped.depth;
 				}
 			}
-			//lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
-		}
-		else
+			lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
+		}*/
+		//else
 		{
-			btAssert(false);  // Softs should always be partial now
+			fprintf(stderr, "btSoftBody::applyLastSafeWorldTransform\n");
+			//btAssert(false);  // Softs should always be partial now
 			for (int i = 0; i < m_nodes.size(); ++i)
 			{
-				nodesInCollision.insert({&m_nodes[i], m_lastSafeApplyDepthThreshold});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
+				StuckTetraIndicesMapped mapped;
+				mapped.depth = m_lastSafeApplyDepthThreshold;
+				nodesInCollision.insert({&m_nodes[i], mapped});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
 			}
 		}
 
-		for (auto& [nodeInCollision, depth] : nodesInCollision)
+		for (auto& [nodeInCollision, mapped] : nodesInCollision)
 		{
-			if (depth >= m_lastSafeApplyDepthThreshold)
+			if (mapped.depth >= m_lastSafeApplyDepthThreshold)
 			{
 				const auto& src = nodeInCollision->m_safe;
 				auto& dst = nodeInCollision;
@@ -5564,11 +5569,18 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				dst->m_q *= m_lastSafeApplyVelocityDamping;
 
 #ifdef BT_SAFE_UPDATE_DEBUG
-				fprintf(stderr, "drawpoint \"apply pt %f\" [%f,%f,%f][0,0,1,1] \n", depth, src.m_x.x(), src.m_x.y(), src.m_x.z());
-				fprintf(stderr, "drawline \"apply ln %f\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", depth, dst->m_x.x(), dst->m_x.y(), dst->m_x.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
+				fprintf(stderr, "drawpoint \"apply pt %f\" [%f,%f,%f][0,0,1,1] \n", mapped.depth, src.m_x.x(), src.m_x.y(), src.m_x.z());
+				fprintf(stderr, "drawline \"apply ln %f\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", mapped.depth, dst->m_x.x(), dst->m_x.y(), dst->m_x.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
 #endif
 
 				dst->m_x = src.m_x;
+
+				dst->m_v = src.m_v;
+				dst->m_vn = src.m_vn;
+				dst->m_f = src.m_f;
+				dst->m_n = src.m_n;
+				dst->m_area = src.m_area;
+				dst->m_splitv = src.m_splitv;
 			}
 		}
 	}

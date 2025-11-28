@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btRigidBody.h"
 #include "BulletCollision/CollisionShapes/btConvexShape.h"
 #include "LinearMath/btMinMax.h"
@@ -150,10 +149,10 @@ void btRigidBody::setDamping(btScalar lin_damping, btScalar ang_damping)
 #endif
 }
 void btRigidBody::setAdditionalDamping(bool additionalDamping,
-	btScalar additionalDampingFactor,
-	btScalar additionalLinearDampingThresholdSqr,
-	btScalar additionalAngularDampingThresholdSqr,
-	btScalar additionalAngularDampingFactor)
+									   btScalar additionalDampingFactor,
+									   btScalar additionalLinearDampingThresholdSqr,
+									   btScalar additionalAngularDampingThresholdSqr,
+									   btScalar additionalAngularDampingFactor)
 {
 	m_additionalDamping = additionalDamping;
 	m_additionalDampingFactor = additionalDampingFactor;
@@ -161,7 +160,6 @@ void btRigidBody::setAdditionalDamping(bool additionalDamping,
 	m_additionalAngularDampingThresholdSqr = additionalAngularDampingThresholdSqr;
 	m_additionalAngularDampingFactor = additionalAngularDampingFactor;
 }
-
 
 ///applyDamping damps the velocity, using the given m_linearDamping and m_angularDamping
 void btRigidBody::applyDamping(btScalar timeStep)
@@ -230,10 +228,10 @@ void btRigidBody::applyGravity()
 
 void btRigidBody::clearGravity()
 {
-    if (isStaticOrKinematicObject())
-        return;
-    
-    applyCentralForce(-m_gravity);
+	if (isStaticOrKinematicObject())
+		return;
+
+	applyCentralForce(-m_gravity);
 }
 
 void btRigidBody::proceedToTransform(const btTransform& newTrans)
@@ -402,9 +400,9 @@ void btRigidBody::integrateVelocities(btScalar step)
 	{
 		m_angularVelocity *= (MAX_ANGVEL / step) / angvel;
 	}
-	#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
+#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
 	clampVelocity(m_angularVelocity);
-	#endif
+#endif
 }
 
 btQuaternion btRigidBody::getOrientation() const
@@ -520,4 +518,31 @@ void btRigidBody::serializeSingleObject(class btSerializer* serializer) const
 	btChunk* chunk = serializer->allocate(calculateSerializeBufferSize(), 1);
 	const char* structType = serialize(chunk->m_oldPtr, serializer);
 	serializer->finalizeChunk(chunk, structType, BT_RIGIDBODY_CODE, (void*)this);
+}
+
+void btRigidBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+{
+	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
+	{
+		fprintf(stderr, "btRigidBody::applyLastSafeWorldTransform\n");
+		constexpr btScalar maxApplySteps = 10;
+		// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
+		// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
+		btScalar fraction = getLastSafeApplyCounter() / maxApplySteps;
+		fraction = /*std::min(fraction, 1.0)*/ 1.0;
+
+		btTransform dst = getLastSafeWorldTransform();
+		btTransform src = getWorldTransform();
+
+		btVector3 interpOrigin = src.getOrigin().lerp(dst.getOrigin(), fraction);
+		btQuaternion interpRot = src.getRotation().slerp(dst.getRotation(), fraction);
+		btTransform interp(interpRot, interpOrigin);
+		setWorldTransform(interp);
+		this->setAngularVelocity(btVector3(0, 0, 0));
+		this->setLinearVelocity(btVector3(0, 0, 0));
+		if (fraction < 1.0)
+			++m_lastSafeApplyCounter;
+		// Would it be possible to develop a velocity based unstuck for btRigidBody, where position would be overwritten, but also a linear and angular velocity would be added
+		// for one simulation step, which would make it easier for the solvers (the deformable soft body constraint solver in particular) to cope without explosions?
+	}
 }
