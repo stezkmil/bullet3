@@ -5367,6 +5367,21 @@ void btSoftBody::lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, Stuc
 
 int kLastSafeGrowth = 1;
 
+// Notes about the OGC paper (Offset Geometric Contact - https://dl.acm.org/doi/10.1145/3731205). I was trying to find if the ideas in the paper were applicable to the
+// current soft body simulation implemented here. There are some key differences which make it hard. The most useful idea for me is the penetration free simulation.
+// They calculate a safe circular bound for every simulation vertex (they do not have a separate collision mesh - they are mostly dealing with cloths and strings, so it is ok for them)
+// where the vertex can move in a simulation iteration. To find this bound for one vertex, they do not use an overlap query, but they use a closest distance query, so
+// this enables them to "see" obstacles no matter how far away from them they are, so there can not be any tunnelling problems. I would have to do (because I have a separate collision mesh)
+// a closest distance query for every triangle of the collision mesh. Then, for one simulation vertex, I would go through all tetras which share that vertex and through all triangles which
+// pass through those tetras. I would gather all the min distances of those triangles and assign the bound for the sim vertex to be the minimum of those min distances.
+// This would have to be done in multiple simulation iterations (!) as in the paper, they also do the collision detection per iteration (not always - see the collisionDetectionRequired
+// variable in their pseudocode). I have a strong feeling that it would be a very hard performance hit given the kind of hi poly meshes I use. On GPU, I hazard a guess
+// that it could be doable because in the paper, they have this 50 cloth layers case with 1M vertices (1.96M triangles) and the timestep takes 6-11 ms on GPU. My
+// recently used hi poly mesh has 300K triangles, so it should not be so bad, but we have to account for the fact that triangle-triangle nearest query would be more expensive
+// than theirs vertex-triangle nearest query. Problem is that running on GPU would be very time consuming to implement now.
+// Another interesting idea are the offset meshes constructed by replacing every triangle by a prism, every edge by a capsule and every vertex by a sphere. I currently only do
+// "replacement" of every triangle by a capsule-like triangle (simply a tri-tri distance query with some margin tolerance). This does not give a perfect contact normal in all cases.
+
 void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
 	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
