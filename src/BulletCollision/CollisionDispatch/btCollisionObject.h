@@ -364,12 +364,11 @@ public:
 	{
 		if (ignoreCollisionCheck)
 		{
-			//We don't check for duplicates. Is it ok to leave that up to the user of this API?
-			//int index = m_objectsWithoutCollisionCheck.findLinearSearch(co);
-			//if (index == m_objectsWithoutCollisionCheck.size())
-			//{
-			m_objectsWithoutCollisionCheck.push_back(co);
-			//}
+			int index = m_objectsWithoutCollisionCheck.findLinearSearch(co);
+			if (index == m_objectsWithoutCollisionCheck.size())
+			{
+				m_objectsWithoutCollisionCheck.push_back(co);
+			}
 		}
 		else
 		{
