@@ -646,11 +646,8 @@ void btDiscreteDynamicsWorld::addConstraint(btTypedConstraint* constraint, bool 
 	//Make sure the two bodies of a type constraint are different (possibly add this to the btTypedConstraint constructor?)
 	btAssert(&constraint->getRigidBodyA() != &constraint->getRigidBodyB());
 
-	if (disableCollisionsBetweenLinkedBodies)
-	{
-		constraint->getRigidBodyA().addConstraintRef(constraint);
-		constraint->getRigidBodyB().addConstraintRef(constraint);
-	}
+	constraint->getRigidBodyA().addConstraintRef(constraint, disableCollisionsBetweenLinkedBodies);
+	constraint->getRigidBodyB().addConstraintRef(constraint, disableCollisionsBetweenLinkedBodies);
 }
 
 void btDiscreteDynamicsWorld::removeConstraint(btTypedConstraint* constraint)

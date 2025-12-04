@@ -595,7 +595,7 @@ public:
 		return (getBroadphaseProxy() != 0);
 	}
 
-	void addConstraintRef(btTypedConstraint* c);
+	void addConstraintRef(btTypedConstraint* c, bool disableCollisionsBetweenLinkedBodies);
 	void removeConstraintRef(btTypedConstraint* c);
 
 	btTypedConstraint* getConstraintRef(int index)

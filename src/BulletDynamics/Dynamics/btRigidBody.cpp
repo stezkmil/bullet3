@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btRigidBody.h"
 #include "BulletCollision/CollisionShapes/btConvexShape.h"
 #include "LinearMath/btMinMax.h"
@@ -150,10 +149,10 @@ void btRigidBody::setDamping(btScalar lin_damping, btScalar ang_damping)
 #endif
 }
 void btRigidBody::setAdditionalDamping(bool additionalDamping,
-	btScalar additionalDampingFactor,
-	btScalar additionalLinearDampingThresholdSqr,
-	btScalar additionalAngularDampingThresholdSqr,
-	btScalar additionalAngularDampingFactor)
+									   btScalar additionalDampingFactor,
+									   btScalar additionalLinearDampingThresholdSqr,
+									   btScalar additionalAngularDampingThresholdSqr,
+									   btScalar additionalAngularDampingFactor)
 {
 	m_additionalDamping = additionalDamping;
 	m_additionalDampingFactor = additionalDampingFactor;
@@ -161,7 +160,6 @@ void btRigidBody::setAdditionalDamping(bool additionalDamping,
 	m_additionalAngularDampingThresholdSqr = additionalAngularDampingThresholdSqr;
 	m_additionalAngularDampingFactor = additionalAngularDampingFactor;
 }
-
 
 ///applyDamping damps the velocity, using the given m_linearDamping and m_angularDamping
 void btRigidBody::applyDamping(btScalar timeStep)
@@ -230,10 +228,10 @@ void btRigidBody::applyGravity()
 
 void btRigidBody::clearGravity()
 {
-    if (isStaticOrKinematicObject())
-        return;
-    
-    applyCentralForce(-m_gravity);
+	if (isStaticOrKinematicObject())
+		return;
+
+	applyCentralForce(-m_gravity);
 }
 
 void btRigidBody::proceedToTransform(const btTransform& newTrans)
@@ -402,9 +400,9 @@ void btRigidBody::integrateVelocities(btScalar step)
 	{
 		m_angularVelocity *= (MAX_ANGVEL / step) / angvel;
 	}
-	#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
+#if defined(BT_CLAMP_VELOCITY_TO) && BT_CLAMP_VELOCITY_TO > 0
 	clampVelocity(m_angularVelocity);
-	#endif
+#endif
 }
 
 btQuaternion btRigidBody::getOrientation() const
@@ -430,7 +428,7 @@ void btRigidBody::setCenterOfMassTransform(const btTransform& xform)
 	updateInertiaTensor();
 }
 
-void btRigidBody::addConstraintRef(btTypedConstraint* c)
+void btRigidBody::addConstraintRef(btTypedConstraint* c, bool disableCollisionsBetweenLinkedBodies)
 {
 	///disable collision with the 'other' body
 
@@ -442,13 +440,16 @@ void btRigidBody::addConstraintRef(btTypedConstraint* c)
 		m_constraintRefs.push_back(c);
 		btCollisionObject* colObjA = &c->getRigidBodyA();
 		btCollisionObject* colObjB = &c->getRigidBodyB();
-		if (colObjA == this)
+		if (disableCollisionsBetweenLinkedBodies)
 		{
-			colObjA->setIgnoreCollisionCheck(colObjB, true);
-		}
-		else
-		{
-			colObjB->setIgnoreCollisionCheck(colObjA, true);
+			if (colObjA == this)
+			{
+				colObjA->setIgnoreCollisionCheck(colObjB, true);
+			}
+			else
+			{
+				colObjB->setIgnoreCollisionCheck(colObjA, true);
+			}
 		}
 	}
 }
