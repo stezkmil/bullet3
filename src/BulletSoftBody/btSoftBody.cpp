@@ -5298,6 +5298,17 @@ void btSoftBody::updateDeactivation(btScalar timeStep)
 	if ((getActivationState() == ISLAND_SLEEPING) || (getActivationState() == DISABLE_DEACTIVATION))
 		return;
 
+	// If the soft body is attached to a rigid body which is active, we keep this soft also active, otherwise the anchors would
+	// not be considered
+	for (auto i = 0; i < m_deformableAnchors.size(); ++i)
+	{
+		const auto& rigid_body = m_deformableAnchors[i].m_body;
+		if (rigid_body && rigid_body->isActive())
+		{
+			return;
+		}
+	}
+
 	if (m_maxSpeedSquared < m_sleepingThreshold * m_sleepingThreshold)
 	{
 		m_deactivationTime += timeStep;
