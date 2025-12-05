@@ -616,9 +616,9 @@ void btSoftBody::removeAnchor(int node)
 		const Anchor& c = m_anchors[i];
 		if (c.m_node == &n)
 		{
-			m_anchors.removeAtIndex(i);
 			if (c.m_body)
 				c.m_body->removeAnchorRef(this);
+			m_anchors.removeAtIndex(i);
 		}
 		else
 		{
@@ -635,9 +635,9 @@ void btSoftBody::removeDeformableAnchor(int node)
 		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
 		if (c.m_node == &n)
 		{
-			m_deformableAnchors.removeAtIndex(i);
 			if (c.m_body)
 				c.m_body->removeAnchorRef(this);
+			m_deformableAnchors.removeAtIndex(i);
 		}
 		else
 		{
@@ -654,9 +654,9 @@ int btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
 		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
 		if (c.m_userIndex == userIndex)
 		{
-			m_deformableAnchors.removeAtIndex(i);
 			if (c.m_body)
 				c.m_body->removeAnchorRef(this);
+			m_deformableAnchors.removeAtIndex(i);
 			++removedCount;
 		}
 		else
