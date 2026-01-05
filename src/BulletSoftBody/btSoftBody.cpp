@@ -162,6 +162,7 @@ btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btV
 		n.m_im = n.m_im > 0 ? 1 / n.m_im : 0;
 		n.m_leaf = m_ndbvt.insert(btDbvtVolume::FromCR(n.m_x, margin), &n);
 		n.m_material = pm;
+		n.m_safe_dist = std::numeric_limits<btScalar>::max();
 		m_X[i] = n.m_x;
 	}
 	updateBounds();
@@ -417,6 +418,7 @@ void btSoftBody::appendNode(const btVector3& x, btScalar m)
 	n.m_q = n.m_x;
 	n.m_im = m > 0 ? 1 / m : 0;
 	n.m_material = m_materials[0];
+	n.m_safe_dist = std::numeric_limits<btScalar>::max();
 	n.m_leaf = m_ndbvt.insert(btDbvtVolume::FromCR(n.m_x, margin), &n);
 }
 
@@ -5532,6 +5534,8 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 
 void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
+	// TODO m_lastSafeApplyDepthThreshold should not be used now - any penetration should fallback to last safe - but only if the m_safe_dist
+	// implementation is successful - it should result in a significant reduction of penetrations.
 	// Fallback to the last safe position for softs is done when the penetration reaches extreme levels. For example when
 	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
 	// but when the cube is squeezed into a very tight crevice, the impulses from the opposing crevice faces can cause an impulse ping-pong

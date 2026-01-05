@@ -297,14 +297,15 @@ public:
 
 	struct Node : Feature
 	{
-		btVector3 m_x;       // Position
-		btVector3 m_q;       // Previous step position/Test position
-		btVector3 m_v;       // Velocity
-		btVector3 m_vn;      // Previous step velocity
-		btVector3 m_f;       // Force accumulator
-		btVector3 m_n;       // Normal
-		btScalar m_im;       // 1/mass
-		btScalar m_area;     // Area
+		btVector3 m_x;    // Position
+		btVector3 m_q;    // Previous step position/Test position
+		btVector3 m_v;    // Velocity
+		btVector3 m_vn;   // Previous step velocity
+		btVector3 m_f;    // Force accumulator
+		btVector3 m_n;    // Normal
+		btScalar m_im;    // 1/mass
+		btScalar m_area;  // Area
+		btScalar m_safe_dist;
 		btDbvtNode* m_leaf;  // Leaf data
 		int m_constrained;   // depth of penetration
 		int m_battach : 1;   // Attached
