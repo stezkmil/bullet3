@@ -1565,14 +1565,18 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		}
 		// When there are penetrations, the softs are done in this loop separately because their partial update would never be done because the soft's penetration
 		// caused its island to be pruned away from islandsWithLastSafeUpdated.
-		for (const auto& unstuckVectorElem : unstuckVector)
+
+		// I am now disabling the partial safe update for softs. I was not able to achieve 100% safety with it (which is very bad),
+		// but it reduced the magnitude of jitter when going back to safe. If the pen free simulation turns out to be worthwhile,
+		// then the bigger jitter should not be such a problem anymore (should be much more rare).
+		/*for (const auto& unstuckVectorElem : unstuckVector)
 		{
 			if (unstuckVectorElem.isSoft)
 			{
 				auto body = unstuckVectorElem.body;
 				body->updateLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
 			}
-		}
+		}*/
 	}
 	else
 	{
