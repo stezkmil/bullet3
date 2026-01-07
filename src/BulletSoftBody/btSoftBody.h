@@ -1166,15 +1166,17 @@ public:
 	/* defaultCollisionHandlers												*/
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
-	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
+	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar penetrationDepth, btScalar unmodifiedDistance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
 	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	int findClosestNodeByMapping(int part, int triIndex, const btVector3& p) const;
+	std::set<int> findClosestNodesByMapping(int part, int triIndex, const btVector3& p) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
 	void setZeroVelocity();
 	bool wantsSleeping();
+	void resetNodesSafeDist();
 
 	virtual btMatrix3x3 getImpulseFactor(int n_node)
 	{

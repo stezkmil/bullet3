@@ -535,7 +535,16 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 					node.m_v[c] = -clampDeltaV;
 				}
 			}
-			node.m_x = node.m_x + timeStep * (node.m_v + node.m_splitv);
+			btVector3 proposed = node.m_x + timeStep * (node.m_v + node.m_splitv);
+			btVector3 delta = proposed - node.m_x;
+			btScalar bound = 0.3 * node.m_safe_dist;
+			if (delta.length2() > bound * bound)
+			{
+				delta = delta.normalized() * bound;
+				proposed = node.m_x + delta;
+				// optionally update m_v to (proposed - m_prevX[j])/timeStep
+			}
+			node.m_x = proposed;
 			node.m_q = node.m_x;
 			node.m_vn = node.m_v;
 		}
@@ -606,12 +615,17 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 		softBody->defaultCollisionHandler(collisionObjectWrap);
 	else
 	{
+		if (resultOut->contactIndex == 0)
+			softBody->resetNodesSafeDist();
 		resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 		auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 		softBody->skinSoftRigidCollisionHandler(collisionObjectWrap, resultOut->getPartId0(), resultOut->getIndex0(),
-												resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB(),  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
+												resultOut->swapped ? (/*not using cp.getPositionWorldOnA on purpose because it is calculated using wrong depth at the moment.
+                                                    See the comment in btManifoldResult::addContactPoint (the one which starts "Ideally there should be this commented out...") */
+																	  cp.getPositionWorldOnB() - cp.m_normalWorldOnB * cp.getUnmodifiedDistance())
+																   : cp.getPositionWorldOnB(),  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 												resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
-												cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING, &cp.m_appliedImpulse);
+												cp.getDistance(), cp.getUnmodifiedDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING, &cp.m_appliedImpulse);
 	}
 }
 
@@ -622,6 +636,7 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 
 void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, btManifoldResultForSkin* resultOut)
 {
+	// TODO
 	resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 	auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 	auto contactPoint = resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB();  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.

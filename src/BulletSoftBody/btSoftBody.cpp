@@ -4398,6 +4398,22 @@ int btSoftBody::findClosestNodeByMapping(int part, int triIndex, const btVector3
 		return -1;
 }
 
+std::set<int> btSoftBody::findClosestNodesByMapping(int part, int triIndex, const btVector3& p) const
+{
+	auto tetraIndices = getCollisionShape()->getMappingForTri(part, triIndex);
+	std::set<int> nodes;
+	for (auto tetraIndex : tetraIndices)
+	{
+		const auto& tetra = m_tetras[tetraIndex];
+		for (auto n = 0; n < 4; ++n)
+		{
+			auto& node = tetra.m_n[n];
+			nodes.insert(node->local_index);
+		}
+	}
+	return nodes;
+}
+
 std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& p, int N) const
 {
 	std::vector<std::tuple<int, btScalar>> nodeDistances;
@@ -4433,7 +4449,7 @@ static const btScalar kMergeCos = btCos(btRadians(60.f));
 static const int kMaxBucketsPerNode = 6;
 
 template <typename T, typename U>
-bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const btVector3& contactNormalOnSoftCollisionMesh, const btScalar& distance, btSoftBody::Node& n, btSoftBody::Node& nOther)
+bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const btVector3& contactNormalOnSoftCollisionMesh, const btScalar& penetrationDepth, btSoftBody::Node& n, btSoftBody::Node& nOther)
 {
 	auto sameDirection = [](const btVector3& a, const btVector3& b)
 	{
@@ -4472,7 +4488,7 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 								   newCount;
 
 			cCti->m_normal = avgN.normalized();
-			cCti->m_offset = btMin(cCti->m_offset, distance);
+			cCti->m_offset = btMin(cCti->m_offset, penetrationDepth);
 			cCti->m_count = newCount;
 
 			merged = true;
@@ -4491,8 +4507,16 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 	return merged;
 }
 
+void btSoftBody::resetNodesSafeDist()
+{
+	for (int i = 0; i < m_nodes.size(); ++i)
+	{
+		m_nodes[i].m_safe_dist = std::numeric_limits<btScalar>::max();
+	}
+}
+
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-											   btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
+											   btScalar penetrationDepth, btScalar unmodifiedDistance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
@@ -4513,9 +4537,16 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 	if (nodeIndex == -1)
 		return;
 
+	auto closestNodes = findClosestNodesByMapping(part0, index0, contactPointOnSoftCollisionMesh);
+	for (auto closestNode : closestNodes)
+	{
+		btSoftBody::Node& n = m_nodes[closestNode];
+		n.m_safe_dist = std::min(n.m_safe_dist, unmodifiedDistance);
+	}
+
 	btSoftBody::Node& n = m_nodes[nodeIndex];
 
-	bool merged = mergeContactIntoBucket<btAlignedObjectArray<btSoftBody::DeformableNodeRigidContact>, btSoftBody::sCti>(rigidBody, m_nodeRigidContacts, contactNormalOnSoftCollisionMesh, distance, n, n);
+	bool merged = mergeContactIntoBucket<btAlignedObjectArray<btSoftBody::DeformableNodeRigidContact>, btSoftBody::sCti>(rigidBody, m_nodeRigidContacts, contactNormalOnSoftCollisionMesh, penetrationDepth, n, n);
 	if (merged)
 		return;
 
@@ -4523,7 +4554,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 
 	c.m_cti.m_colObj = rigidBody;
 	c.m_cti.m_normal = contactNormalOnSoftCollisionMesh;
-	c.m_cti.m_offset = distance;
+	c.m_cti.m_offset = penetrationDepth;
 	c.m_cti.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
 
 	btScalar ima = n.m_im;
@@ -4595,6 +4626,7 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
+// TODO
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
@@ -5536,6 +5568,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 {
 	// TODO m_lastSafeApplyDepthThreshold should not be used now - any penetration should fallback to last safe - but only if the m_safe_dist
 	// implementation is successful - it should result in a significant reduction of penetrations.
+	//
 	// Fallback to the last safe position for softs is done when the penetration reaches extreme levels. For example when
 	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
 	// but when the cube is squeezed into a very tight crevice, the impulses from the opposing crevice faces can cause an impulse ping-pong
@@ -5543,6 +5576,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
+		// TODO remove partial?
 		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
 		if (partial)
 		{
