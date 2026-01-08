@@ -537,7 +537,7 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 			}
 			btVector3 proposed = node.m_x + timeStep * (node.m_v + node.m_splitv);
 			btVector3 delta = proposed - node.m_x;
-			btScalar bound = 0.3 * node.m_safe_dist;
+			btScalar bound = 0.95 * node.m_safe_dist;
 			if (delta.length2() > bound * bound)
 			{
 				delta = delta.normalized() * bound;
