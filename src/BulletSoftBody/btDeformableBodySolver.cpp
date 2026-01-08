@@ -537,14 +537,14 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 				}
 			}
 			btVector3 proposed = node.m_x + timeStep * (node.m_v + node.m_splitv);
-			btVector3 delta = proposed - node.m_x;
-			btScalar bound = 0.95 * node.m_safe_dist;
-			if (delta.length2() > bound * bound)
-			{
-				delta = delta.normalized() * bound;
-				proposed = node.m_x + delta;
-				// optionally update m_v to (proposed - m_prevX[j])/timeStep
-			}
+			//btVector3 delta = proposed - node.m_x;
+			//btScalar bound = 0.3 * node.m_safe_dist;
+			//if (delta.length2() > bound * bound)
+			//{
+			//	delta = delta.normalized() * bound;
+			//	proposed = node.m_x + delta;
+			//	// optionally update m_v to (proposed - m_prevX[j])/timeStep
+			//}
 			node.m_x = proposed;
 			node.m_q = node.m_x;
 			node.m_vn = node.m_v;

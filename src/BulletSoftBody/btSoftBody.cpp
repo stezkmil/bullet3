@@ -5578,24 +5578,24 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	{
 		// TODO remove partial?
 		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
-		if (partial)
+		//if (partial)
+		//{
+		//	for (auto& [partTetraIndex, partMapped] : *partial)
+		//	{
+		//		for (auto i = 0; i < 4; ++i)
+		//		{
+		//			auto iter = nodesInCollision.find(m_tetras[partTetraIndex].m_n[i]);
+		//			if (iter == nodesInCollision.end())
+		//				nodesInCollision.insert({m_tetras[partTetraIndex].m_n[i], partMapped.depth});
+		//			else if (partMapped.depth > iter->second)
+		//				iter->second = partMapped.depth;
+		//		}
+		//	}
+		//	//lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
+		//}
+		//else
 		{
-			for (auto& [partTetraIndex, partMapped] : *partial)
-			{
-				for (auto i = 0; i < 4; ++i)
-				{
-					auto iter = nodesInCollision.find(m_tetras[partTetraIndex].m_n[i]);
-					if (iter == nodesInCollision.end())
-						nodesInCollision.insert({m_tetras[partTetraIndex].m_n[i], partMapped.depth});
-					else if (partMapped.depth > iter->second)
-						iter->second = partMapped.depth;
-				}
-			}
-			//lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
-		}
-		else
-		{
-			btAssert(false);  // Softs should always be partial now
+			//btAssert(false);  // Softs should always be partial now
 			for (int i = 0; i < m_nodes.size(); ++i)
 			{
 				nodesInCollision.insert({&m_nodes[i], m_lastSafeApplyDepthThreshold});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
@@ -5609,8 +5609,8 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				const auto& src = nodeInCollision->m_safe;
 				auto& dst = nodeInCollision;
 
-				dst->m_v *= m_lastSafeApplyVelocityDamping;
-				dst->m_q *= m_lastSafeApplyVelocityDamping;
+				//dst->m_v *= m_lastSafeApplyVelocityDamping;
+				//dst->m_q *= m_lastSafeApplyVelocityDamping;
 
 #ifdef BT_SAFE_UPDATE_DEBUG
 				fprintf(stderr, "drawpoint \"apply pt %f\" [%f,%f,%f][0,0,1,1] \n", depth, src.m_x.x(), src.m_x.y(), src.m_x.z());
