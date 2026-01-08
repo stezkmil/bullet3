@@ -491,6 +491,7 @@ void btDeformableBodySolver::updateSoftBodies()
 		btSoftBody* psb = (btSoftBody*)m_softBodies[i];
 		if (psb->isActive() && !psb->isStaticObject())
 		{
+			psb->resetNodesSafeDist();
 			psb->updateNormals();
 		}
 	}
@@ -615,8 +616,6 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 		softBody->defaultCollisionHandler(collisionObjectWrap);
 	else
 	{
-		if (resultOut->contactIndex == 0)
-			softBody->resetNodesSafeDist();
 		resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 		auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
 		softBody->skinSoftRigidCollisionHandler(collisionObjectWrap, resultOut->getPartId0(), resultOut->getIndex0(),
