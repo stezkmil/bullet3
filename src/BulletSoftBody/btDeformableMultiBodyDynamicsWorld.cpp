@@ -130,9 +130,9 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 	///apply gravity and explicit force to velocity, predict motion
 	predictUnconstraintMotion(timeStep);
 
-#ifdef BT_SAFE_UPDATE_DEBUG
+	//#ifdef BT_SAFE_UPDATE_DEBUG
 	fprintf(stderr, "framestart()\n");
-#endif
+	//#endif
 	///perform collision detection that involves rigid/multi bodies
 	performDiscreteCollisionDetection();
 
@@ -145,15 +145,16 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	updateLastSafeTransforms();
 
+	fprintf(stderr, "frameend()\n");
 #ifdef BT_SAFE_UPDATE_DEBUG
 	fprintf(stderr, "frameend()\n");
-	fprintf(stderr, "framestart()\n");
-	btCollisionObject::gDebug = true;
-	performDiscreteCollisionDetection();
-	fprintf(stderr, "drawpoint \"VERIFY\" [0,0,0][1,1,1,1]\n");
+	//fprintf(stderr, "framestart()\n");
+	//btCollisionObject::gDebug = true;
+	//performDiscreteCollisionDetection();
+	//fprintf(stderr, "drawpoint \"VERIFY\" [0,0,0][1,1,1,1]\n");
 	btCollisionObject::gDebug = false;
 
-	fprintf(stderr, "frameend()\n");
+	//fprintf(stderr, "frameend()\n");
 #endif
 
 	beforeSolverCallbacks(timeStep);

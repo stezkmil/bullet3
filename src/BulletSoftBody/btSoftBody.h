@@ -280,6 +280,8 @@ public:
 		btVector3 m_normal;
 	};
 
+	struct Node;
+
 	struct NodeSafe
 	{
 		btVector3 m_x;                    // Safe position when there was no penetration. Used in TrimeshDeformedPrimitiveManager.
@@ -293,19 +295,33 @@ public:
 		btVector3 m_splitv;               // velocity associated with split impulse
 		btMatrix3x3 m_effectiveMass;      // effective mass in contact
 		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
+
+		void copy_from_node(Node& node)
+		{
+			m_x = node.m_x;
+			m_q = node.m_q;
+			m_v = node.m_v;
+			m_vn = node.m_vn;
+			m_f = node.m_f;
+			m_n = node.m_n;
+			m_im = node.m_im;
+			m_area = node.m_area;
+			m_splitv = node.m_splitv;
+			m_effectiveMass = node.m_effectiveMass;
+			m_effectiveMass_inv = node.m_effectiveMass_inv;
+		}
 	};
 
 	struct Node : Feature
 	{
-		btVector3 m_x;    // Position
-		btVector3 m_q;    // Previous step position/Test position
-		btVector3 m_v;    // Velocity
-		btVector3 m_vn;   // Previous step velocity
-		btVector3 m_f;    // Force accumulator
-		btVector3 m_n;    // Normal
-		btScalar m_im;    // 1/mass
-		btScalar m_area;  // Area
-		btScalar m_safe_dist;
+		btVector3 m_x;       // Position
+		btVector3 m_q;       // Previous step position/Test position
+		btVector3 m_v;       // Velocity
+		btVector3 m_vn;      // Previous step velocity
+		btVector3 m_f;       // Force accumulator
+		btVector3 m_n;       // Normal
+		btScalar m_im;       // 1/mass
+		btScalar m_area;     // Area
 		btDbvtNode* m_leaf;  // Leaf data
 		int m_constrained;   // depth of penetration
 		int m_battach : 1;   // Attached
@@ -1170,13 +1186,11 @@ public:
 	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	int findClosestNodeByMapping(int part, int triIndex, const btVector3& p) const;
-	std::set<int> findClosestNodesByMapping(int part, int triIndex, const btVector3& p) const;
 	void setSelfCollision(bool useSelfCollision);
 	bool useSelfCollision();
 	void updateDeactivation(btScalar timeStep);
 	void setZeroVelocity();
 	bool wantsSleeping();
-	void resetNodesSafeDist();
 
 	virtual btMatrix3x3 getImpulseFactor(int n_node)
 	{

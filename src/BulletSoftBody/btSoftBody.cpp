@@ -162,7 +162,7 @@ btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btV
 		n.m_im = n.m_im > 0 ? 1 / n.m_im : 0;
 		n.m_leaf = m_ndbvt.insert(btDbvtVolume::FromCR(n.m_x, margin), &n);
 		n.m_material = pm;
-		n.m_safe_dist = std::numeric_limits<btScalar>::max();
+		n.m_safe.copy_from_node(n);
 		m_X[i] = n.m_x;
 	}
 	updateBounds();
@@ -418,7 +418,7 @@ void btSoftBody::appendNode(const btVector3& x, btScalar m)
 	n.m_q = n.m_x;
 	n.m_im = m > 0 ? 1 / m : 0;
 	n.m_material = m_materials[0];
-	n.m_safe_dist = std::numeric_limits<btScalar>::max();
+	n.m_safe.copy_from_node(n);
 	n.m_leaf = m_ndbvt.insert(btDbvtVolume::FromCR(n.m_x, margin), &n);
 }
 
@@ -4398,22 +4398,6 @@ int btSoftBody::findClosestNodeByMapping(int part, int triIndex, const btVector3
 		return -1;
 }
 
-std::set<int> btSoftBody::findClosestNodesByMapping(int part, int triIndex, const btVector3& p) const
-{
-	auto tetraIndices = getCollisionShape()->getMappingForTri(part, triIndex);
-	std::set<int> nodes;
-	for (auto tetraIndex : tetraIndices)
-	{
-		const auto& tetra = m_tetras[tetraIndex];
-		for (auto n = 0; n < 4; ++n)
-		{
-			auto& node = tetra.m_n[n];
-			nodes.insert(node->local_index);
-		}
-	}
-	return nodes;
-}
-
 std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& p, int N) const
 {
 	std::vector<std::tuple<int, btScalar>> nodeDistances;
@@ -4507,14 +4491,6 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 	return merged;
 }
 
-void btSoftBody::resetNodesSafeDist()
-{
-	for (int i = 0; i < m_nodes.size(); ++i)
-	{
-		m_nodes[i].m_safe_dist = std::numeric_limits<btScalar>::max();
-	}
-}
-
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
 											   btScalar penetrationDepth, btScalar unmodifiedDistance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
@@ -4536,13 +4512,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 
 	if (nodeIndex == -1)
 		return;
-
-	auto closestNodes = findClosestNodesByMapping(part0, index0, contactPointOnSoftCollisionMesh);
-	for (auto closestNode : closestNodes)
-	{
-		btSoftBody::Node& n = m_nodes[closestNode];
-		n.m_safe_dist = std::min(n.m_safe_dist, unmodifiedDistance);
-	}
 
 	btSoftBody::Node& n = m_nodes[nodeIndex];
 
@@ -5433,80 +5402,28 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 	// because the penetration contact generation in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
 	// also depends on this last safe data.
 
-	if (partial)
+	// TODO no need to update if it is sleeping
+
+	fprintf(stderr, "btSoftBody::updateLastSafeWorldTransform\n");
+	btScalar lowestZ = 100000.0;
+
+	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
-		std::map<btSoftBody::Node*, StuckTetraIndicesMapped> nodesInCollision;
+		const auto& node = m_nodes[i];
+		auto& safe = m_nodes[i].m_safe;
 #ifdef BT_SAFE_UPDATE_DEBUG
-		std::vector<std::array<btSoftBody::Node*, 4>> tets_dbg;
+		fprintf(stderr, "drawpoint \"whole pt old safe\" [%f,%f,%f][1,1,1,1] \n", safe.m_x.x(), safe.m_x.y(), safe.m_x.z());
 #endif
-		for (auto& [partTetraIndex, partMapped] : *partial)
-		{
-			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[0], partMapped});
-			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[1], partMapped});
-			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[2], partMapped});
-			nodesInCollision.insert({m_tetras[partTetraIndex].m_n[3], partMapped});
+		safe.m_x = node.m_x;
+		safe.m_q = node.m_q;
 
-#ifdef BT_SAFE_UPDATE_DEBUG
-			tets_dbg.push_back({m_tetras[partTetraIndex].m_n[0], m_tetras[partTetraIndex].m_n[1], m_tetras[partTetraIndex].m_n[2], m_tetras[partTetraIndex].m_n[3]});
-#endif
-		}
-		lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
-
-		for (auto i = 0; i < m_nodes.size(); ++i)
-		{
-			auto& node = m_nodes[i];
-			auto iter = nodesInCollision.find(&node);
-
-			bool pen = iter != nodesInCollision.end() && iter->second.penetrating;
+		if (safe.m_x.z() < lowestZ)
+			lowestZ = safe.m_x.z();
 
 #ifdef BT_SAFE_UPDATE_DEBUG
-			fprintf(stderr, "drawpoint \"partial pt %f\" [%f,%f,%f][%f,%f,0,1] \n", iter != nodesInCollision.end() ? iter->second.depth : -1.0f, node.m_x.x(), node.m_x.y(), node.m_x.z(), pen ? 1.0 : 0.0, pen ? 0.0 : 1.0);
-
-			if (iter != nodesInCollision.end())
-				for (auto& normal : iter->second.opposingNormals)
-				{
-					auto lineEnd = node.m_x + (normal * 10.0);
-					fprintf(stderr, "drawline \"partial opposing normal\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", node.m_x.x(), node.m_x.y(), node.m_x.z(), lineEnd.x(), lineEnd.y(), lineEnd.z());
-				}
+		fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", node.m_x.x(), node.m_x.y(), node.m_x.z());
 #endif
-			if (pen)
-			{
-				continue;
-			}
-			auto& safe = m_nodes[i].m_safe;
-			btVector3 projected;
-
-#ifdef BT_SAFE_UPDATE_DEBUG
-			fprintf(stderr, "drawpoint \"partial pt old safe\" [%f,%f,%f][1,1,1,1] \n", safe.m_x.x(), safe.m_x.y(), safe.m_x.z());
-#endif
-
-			if (iter != nodesInCollision.end())
-			{
-				// The node is not penetrating, but it is touching, so we project the change vector onto the touch tri normal plane, so that we prevent any tunelling
-
-				// TODO could these projections be applied also on the nodes marked as penetrating? It would improve the fluency of simulation, but determining
-				// correct orientation of the plane normal might not be straightforward because the collision mesh vertices are very likely already tunnelled through
-				// to some degree
-				const auto& oldSafe = safe;
-				auto change = node.m_x - oldSafe.m_x;
-
-				for (const auto& normal : iter->second.opposingNormals)
-				{
-					if (change.dot(normal) < 0.0)
-						change = change.rejectFrom(normal);
-				}
-
-				projected = oldSafe.m_x + change;
-				safe.m_x = projected;
-
-#ifdef BT_SAFE_UPDATE_DEBUG
-				fprintf(stderr, "drawpoint \"partial pt projected\" [%f,%f,%f][1,1,0,1] \n", projected.x(), projected.y(), projected.z());
-#endif
-			}
-			else
-				safe.m_x = node.m_x;
-
-			/*dst.m_q = src.m_q;
+		/*dst.m_q = src.m_q;
 		dst.m_v = src.m_v;
 		dst.m_vn = src.m_vn;
 		dst.m_f = src.m_f;
@@ -5516,56 +5433,13 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 		dst.m_splitv = src.m_splitv;
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
-		}
-
-#ifdef BT_SAFE_UPDATE_DEBUG
-		for (auto& tet : tets_dbg)
-		{
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[0]->m_x.x(), tet[0]->m_x.y(), tet[0]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z(), tet[2]->m_x.x(), tet[2]->m_x.y(), tet[2]->m_x.z());
-			fprintf(stderr, "drawline \"tet ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", tet[1]->m_x.x(), tet[1]->m_x.y(), tet[1]->m_x.z(), tet[3]->m_x.x(), tet[3]->m_x.y(), tet[3]->m_x.z());
-
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[0]->m_safe.m_x.x(), tet[0]->m_safe.m_x.y(), tet[0]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z(), tet[2]->m_safe.m_x.x(), tet[2]->m_safe.m_x.y(), tet[2]->m_safe.m_x.z());
-			fprintf(stderr, "drawline \"tet safe ln\" [%f,%f,%f][%f,%f,%f][1,1,0,1] \n", tet[1]->m_safe.m_x.x(), tet[1]->m_safe.m_x.y(), tet[1]->m_safe.m_x.z(), tet[3]->m_safe.m_x.x(), tet[3]->m_safe.m_x.y(), tet[3]->m_safe.m_x.z());
-		}
-#endif
 	}
-	else
-	{
-		for (auto i = 0; i < m_nodes.size(); ++i)
-		{
-			const auto& node = m_nodes[i];
-			auto& safe = m_nodes[i].m_safe;
-#ifdef BT_SAFE_UPDATE_DEBUG
-			fprintf(stderr, "drawpoint \"whole pt old safe\" [%f,%f,%f][1,1,1,1] \n", safe.m_x.x(), safe.m_x.y(), safe.m_x.z());
-#endif
-			safe.m_x = node.m_x;
-#ifdef BT_SAFE_UPDATE_DEBUG
-			fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", node.m_x.x(), node.m_x.y(), node.m_x.z());
-#endif
-			/*dst.m_q = src.m_q;
-		dst.m_v = src.m_v;
-		dst.m_vn = src.m_vn;
-		dst.m_f = src.m_f;
-		dst.m_n = src.m_n;
-		dst.m_im = src.m_im;
-		dst.m_area = src.m_area;
-		dst.m_splitv = src.m_splitv;
-		dst.m_effectiveMass = src.m_effectiveMass;
-		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
-		}
-	}
+	fprintf(stderr, "btSoftBody::updateLastSafeWorldTransform lowestZ %f\n", lowestZ);
 }
 
 void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
+	fprintf(stderr, "btSoftBody::applyLastSafeWorldTransform\n");
 	// TODO m_lastSafeApplyDepthThreshold should not be used now - any penetration should fallback to last safe - but only if the m_safe_dist
 	// implementation is successful - it should result in a significant reduction of penetrations.
 	//
@@ -5576,49 +5450,74 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
-		// TODO remove partial?
-		std::map<btSoftBody::Node*, btScalar> nodesInCollision;
-		//if (partial)
-		//{
-		//	for (auto& [partTetraIndex, partMapped] : *partial)
-		//	{
-		//		for (auto i = 0; i < 4; ++i)
-		//		{
-		//			auto iter = nodesInCollision.find(m_tetras[partTetraIndex].m_n[i]);
-		//			if (iter == nodesInCollision.end())
-		//				nodesInCollision.insert({m_tetras[partTetraIndex].m_n[i], partMapped.depth});
-		//			else if (partMapped.depth > iter->second)
-		//				iter->second = partMapped.depth;
-		//		}
-		//	}
-		//	//lastSafeBorderGrow(kLastSafeGrowth, nodesInCollision);
-		//}
+		std::map<btSoftBody::Node*, std::vector<btVector3>> nodesInCollision;
+		/*if (partial)
+		{
+			for (auto& [partTetraIndex, partMapped] : *partial)
+			{
+				if (partMapped.penetrating)
+					for (auto i = 0; i < 4; ++i)
+					{
+						auto iter = nodesInCollision.find(m_tetras[partTetraIndex].m_n[i]);
+						if (iter == nodesInCollision.end())
+							nodesInCollision.insert({m_tetras[partTetraIndex].m_n[i], partMapped.opposingNormals});
+						else
+							iter->second.insert(iter->second.end(), partMapped.opposingNormals.begin(), partMapped.opposingNormals.end());
+					}
+			}
+		}*/
 		//else
 		{
 			//btAssert(false);  // Softs should always be partial now
 			for (int i = 0; i < m_nodes.size(); ++i)
 			{
-				nodesInCollision.insert({&m_nodes[i], m_lastSafeApplyDepthThreshold});  // m_lastSafeApplyDepthThreshold used as a sort of "don't know" value
+				nodesInCollision.insert({&m_nodes[i], {}});
 			}
 		}
 
-		for (auto& [nodeInCollision, depth] : nodesInCollision)
+		for (auto& [nodeInCollision, normals] : nodesInCollision)
 		{
-			if (depth >= m_lastSafeApplyDepthThreshold)
-			{
-				const auto& src = nodeInCollision->m_safe;
-				auto& dst = nodeInCollision;
-
-				//dst->m_v *= m_lastSafeApplyVelocityDamping;
-				//dst->m_q *= m_lastSafeApplyVelocityDamping;
+			const auto& src = nodeInCollision->m_safe;
+			auto& dst = nodeInCollision;
 
 #ifdef BT_SAFE_UPDATE_DEBUG
-				fprintf(stderr, "drawpoint \"apply pt %f\" [%f,%f,%f][0,0,1,1] \n", depth, src.m_x.x(), src.m_x.y(), src.m_x.z());
-				fprintf(stderr, "drawline \"apply ln %f\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", depth, dst->m_x.x(), dst->m_x.y(), dst->m_x.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
+			fprintf(stderr, "drawpoint \"apply pt\" [%f,%f,%f][0,0,1,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z());
+			fprintf(stderr, "drawline \"apply ln\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", dst->m_x.x(), dst->m_x.y(), dst->m_x.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
 #endif
 
-				dst->m_x = src.m_x;
+			dst->m_x = src.m_x;
+			dst->m_q = src.m_q;
+
+#ifdef BT_SAFE_UPDATE_DEBUG
+			auto velLineBeforeEnd = src.m_x + dst->m_v;
+			fprintf(stderr, "drawline \"apply vel before reject ln\" [%f,%f,%f][%f,%f,%f][0,0.5,1,1] \n", velLineBeforeEnd.x(), velLineBeforeEnd.y(), velLineBeforeEnd.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
+#endif
+
+			for (const auto& normal : normals)
+			{
+#ifdef BT_SAFE_UPDATE_DEBUG
+				auto normLineEnd = src.m_x + normal * 10.0;
+				fprintf(stderr, "drawline \"apply normal ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", normLineEnd.x(), normLineEnd.y(), normLineEnd.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
+#endif
+				if (dst->m_v.dot(normal) < 0.0)
+					dst->m_v = dst->m_v.rejectFrom(normal);
+
+				if (dst->m_vn.dot(normal) < 0.0)
+					dst->m_vn = dst->m_vn.rejectFrom(normal);
 			}
+
+#ifdef BT_SAFE_UPDATE_DEBUG
+			auto velLineEnd = src.m_x + dst->m_v;
+			fprintf(stderr, "drawline \"apply vel rejected ln\" [%f,%f,%f][%f,%f,%f][0,1,1,1] \n", velLineEnd.x(), velLineEnd.y(), velLineEnd.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
+#endif
 		}
+
+#ifdef BT_SAFE_UPDATE_DEBUG
+		for (auto i = 0; i < m_nodes.size(); ++i)
+		{
+			auto& node = m_nodes[i];
+			fprintf(stderr, "drawpoint \"whole pt safe\" [%f,%f,%f][1,1,1,1] \n", node.m_safe.m_x.x(), node.m_safe.m_x.y(), node.m_safe.m_x.z());
+		}
+#endif
 	}
 }
