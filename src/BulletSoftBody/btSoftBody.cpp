@@ -5437,6 +5437,11 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 
+    // TODO if it turns out that there are some situations where penetrations have to be resolved in a single step (because of explosions etc.), then
+    // it can be achieved by doing a collision detection step at the end of this method (use the btCollisionWorld::contactPairTest to do a CD test for only this btSoftBody).
+    // If there are still penetrations, then repeat the applyLastSafeWorldTransform. It might sound expensive, but compared to how they do penetration free simulation in the OGC paper,
+    // it is still quite cheap.
+
     // TODO always use this
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
@@ -5478,7 +5483,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 			dst->m_x = src.m_x;
 			dst->m_q = src.m_q;
 
-
+            // Velocities are modified (projected), so that they do not cause the penetration again
 			for (const auto& normal : normals)
 			{
 				if (dst->m_v.dot(normal) < 0.0)
