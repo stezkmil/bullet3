@@ -5401,6 +5401,9 @@ void btSoftBody::updateLastSafeWorldTransform()
 	// because the penetration contact generation in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
 	// also depends on this last safe data.
 
+    // updateLastSafeWorldTransform also used to be partially updated, but it turned out to be a nightmare to keep the safe positions truly safe like that.
+    // Miniscule (and hard to diagnose the reason - this is why the BT_SAFE_UPDATE_DEBUG exists) errors creeped in causing the safe positions to be unsafe rendering them unusable and causing
+	// explosions. So now we always do a full update of all nodes.
 
 	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
