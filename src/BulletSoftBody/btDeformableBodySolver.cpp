@@ -535,8 +535,7 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 					node.m_v[c] = -clampDeltaV;
 				}
 			}
-			btVector3 proposed = node.m_x + timeStep * (node.m_v + node.m_splitv);
-			node.m_x = proposed;
+			node.m_x = node.m_x + timeStep * (node.m_v + node.m_splitv);
 			node.m_q = node.m_x;
 			node.m_vn = node.m_v;
 		}
@@ -615,7 +614,7 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 																	  cp.getPositionWorldOnB() - cp.m_normalWorldOnB * cp.getUnmodifiedDistance())
 																   : cp.getPositionWorldOnB(),  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 												resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB,
-												cp.getDistance(), cp.getUnmodifiedDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING, &cp.m_appliedImpulse);
+												cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING, &cp.m_appliedImpulse);
 	}
 }
 
@@ -626,10 +625,12 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 
 void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* otherSoftBody, btManifoldResultForSkin* resultOut)
 {
-	// TODO
 	resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 	auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
-	auto contactPoint = resultOut->swapped ? cp.getPositionWorldOnA() : cp.getPositionWorldOnB();  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
+	auto contactPoint = resultOut->swapped ? (/*not using cp.getPositionWorldOnA on purpose because it is calculated using wrong depth at the moment.
+                                                    See the comment in btManifoldResult::addContactPoint (the one which starts "Ideally there should be this commented out...") */
+											  cp.getPositionWorldOnB() - cp.m_normalWorldOnB * cp.getUnmodifiedDistance())
+										   : cp.getPositionWorldOnB();  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 	auto normal = resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB;
 	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->getPartId0(), resultOut->getIndex0(), resultOut->getPartId1(), resultOut->getIndex1(), contactPoint, normal, cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING,
 										   &cp.m_appliedImpulse);

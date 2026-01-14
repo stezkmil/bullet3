@@ -4492,7 +4492,7 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 }
 
 void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh,
-											   btScalar penetrationDepth, btScalar unmodifiedDistance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
+											   btScalar penetrationDepth, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
 	const auto rigidBody = static_cast<const btRigidBody*>(rigidWrap->getCollisionObject());
@@ -4595,7 +4595,6 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
-// TODO
 void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
@@ -5396,13 +5395,11 @@ int kLastSafeGrowth = 1;
 // Another interesting idea are the offset meshes constructed by replacing every triangle by a prism, every edge by a capsule and every vertex by a sphere. I currently only do
 // "replacement" of every triangle by a capsule-like triangle (simply a tri-tri distance query with some margin tolerance). This does not give a perfect contact normal in all cases.
 
-void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+void btSoftBody::updateLastSafeWorldTransform()
 {
 	// Note that unlike btSoftBody::applyLastSafeWorldTransform, this can not be disabled,
 	// because the penetration contact generation in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
 	// also depends on this last safe data.
-
-	// TODO no need to update if it is sleeping
 
 
 	for (auto i = 0; i < m_nodes.size(); ++i)
@@ -5434,18 +5431,17 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 
 void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
-	// TODO m_lastSafeApplyDepthThreshold should not be used now - any penetration should fallback to last safe - but only if the m_safe_dist
-	// implementation is successful - it should result in a significant reduction of penetrations.
-	//
 	// Fallback to the last safe position for softs is done when the penetration reaches extreme levels. For example when
 	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
 	// but when the cube is squeezed into a very tight crevice, the impulses from the opposing crevice faces can cause an impulse ping-pong
 	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
+
+    // TODO always use this
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		std::map<btSoftBody::Node*, std::vector<btVector3>> nodesInCollision;
-		/*if (partial)
+		if (partial)
 		{
 			for (auto& [partTetraIndex, partMapped] : *partial)
 			{
@@ -5459,10 +5455,10 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 							iter->second.insert(iter->second.end(), partMapped.opposingNormals.begin(), partMapped.opposingNormals.end());
 					}
 			}
-		}*/
-		//else
+		}
+		else
 		{
-			//btAssert(false);  // Softs should always be partial now
+			btAssert(false);  // Softs should always be partial now
 			for (int i = 0; i < m_nodes.size(); ++i)
 			{
 				nodesInCollision.insert({&m_nodes[i], {}});

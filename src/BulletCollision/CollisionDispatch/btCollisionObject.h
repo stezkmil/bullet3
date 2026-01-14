@@ -572,7 +572,7 @@ public:
 		return m_lastSafeWorldTransform;
 	}
 
-	virtual void updateLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+	virtual void updateLastSafeWorldTransform()
 	{
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
