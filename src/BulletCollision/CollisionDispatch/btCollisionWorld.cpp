@@ -1559,7 +1559,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		for (auto& updatedPair : islandsWithLastSafeUpdated)
 		{
 			auto* body = updatedPair.second;
-			if (body->isStaticObject())
+			if (body->isStaticObject() || !body->isActive())
 				continue;
 			body->updateLastSafeWorldTransform(nullptr);
 		}
@@ -1583,13 +1583,15 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		for (int i = 0; i < numBodies; i++)
 		{
 			auto* body = bodies[i];
-			if (body->isStaticObject())
+			if (body->isStaticObject() || !body->isActive())
 				continue;
 			body->updateLastSafeWorldTransform(nullptr);
 		}
 		for (int i = 0; i < numSoftBodies; i++)
 		{
 			auto* body = softBodies[i];
+			if (!body->isActive())
+				continue;
 			body->updateLastSafeWorldTransform(nullptr);
 		}
 	}

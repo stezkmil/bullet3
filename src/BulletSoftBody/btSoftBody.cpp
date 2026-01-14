@@ -5404,8 +5404,6 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 
 	// TODO no need to update if it is sleeping
 
-	fprintf(stderr, "btSoftBody::updateLastSafeWorldTransform\n");
-	btScalar lowestZ = 100000.0;
 
 	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
@@ -5417,8 +5415,6 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 		safe.m_x = node.m_x;
 		safe.m_q = node.m_q;
 
-		if (safe.m_x.z() < lowestZ)
-			lowestZ = safe.m_x.z();
 
 #ifdef BT_SAFE_UPDATE_DEBUG
 		fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", node.m_x.x(), node.m_x.y(), node.m_x.z());
@@ -5434,12 +5430,10 @@ void btSoftBody::updateLastSafeWorldTransform(const std::map<int, StuckTetraIndi
 		dst.m_effectiveMass = src.m_effectiveMass;
 		dst.m_effectiveMass_inv = src.m_effectiveMass_inv;*/
 	}
-	fprintf(stderr, "btSoftBody::updateLastSafeWorldTransform lowestZ %f\n", lowestZ);
 }
 
 void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
-	fprintf(stderr, "btSoftBody::applyLastSafeWorldTransform\n");
 	// TODO m_lastSafeApplyDepthThreshold should not be used now - any penetration should fallback to last safe - but only if the m_safe_dist
 	// implementation is successful - it should result in a significant reduction of penetrations.
 	//
@@ -5488,17 +5482,9 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 			dst->m_x = src.m_x;
 			dst->m_q = src.m_q;
 
-#ifdef BT_SAFE_UPDATE_DEBUG
-			auto velLineBeforeEnd = src.m_x + dst->m_v;
-			fprintf(stderr, "drawline \"apply vel before reject ln\" [%f,%f,%f][%f,%f,%f][0,0.5,1,1] \n", velLineBeforeEnd.x(), velLineBeforeEnd.y(), velLineBeforeEnd.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
-#endif
 
 			for (const auto& normal : normals)
 			{
-#ifdef BT_SAFE_UPDATE_DEBUG
-				auto normLineEnd = src.m_x + normal * 10.0;
-				fprintf(stderr, "drawline \"apply normal ln\" [%f,%f,%f][%f,%f,%f][1,0,1,1] \n", normLineEnd.x(), normLineEnd.y(), normLineEnd.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
-#endif
 				if (dst->m_v.dot(normal) < 0.0)
 					dst->m_v = dst->m_v.rejectFrom(normal);
 
@@ -5506,18 +5492,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 					dst->m_vn = dst->m_vn.rejectFrom(normal);
 			}
 
-#ifdef BT_SAFE_UPDATE_DEBUG
-			auto velLineEnd = src.m_x + dst->m_v;
-			fprintf(stderr, "drawline \"apply vel rejected ln\" [%f,%f,%f][%f,%f,%f][0,1,1,1] \n", velLineEnd.x(), velLineEnd.y(), velLineEnd.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
-#endif
 		}
 
-#ifdef BT_SAFE_UPDATE_DEBUG
-		for (auto i = 0; i < m_nodes.size(); ++i)
-		{
-			auto& node = m_nodes[i];
-			fprintf(stderr, "drawpoint \"whole pt safe\" [%f,%f,%f][1,1,1,1] \n", node.m_safe.m_x.x(), node.m_safe.m_x.y(), node.m_safe.m_x.z());
-		}
-#endif
 	}
 }

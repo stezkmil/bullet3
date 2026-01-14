@@ -77,8 +77,6 @@ void btCollisionObject::setActivationState(int newState) const
 	if ((m_activationState1 != DISABLE_DEACTIVATION) && (m_activationState1 != DISABLE_SIMULATION))
 		m_activationState1 = newState;
 
-	if (newState == ISLAND_SLEEPING)
-		fprintf(stderr, "btCollisionObject::setActivationState ISLAND_SLEEPING\n");
 }
 
 void btCollisionObject::forceActivationState(int newState) const
@@ -92,7 +90,6 @@ void btCollisionObject::activate(bool forceActivation) const
 	{
 		setActivationState(ACTIVE_TAG);
 		m_deactivationTime = btScalar(0.);
-		fprintf(stderr, "btCollisionObject::activate\n");
 	}
 }
 
