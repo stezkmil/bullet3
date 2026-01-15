@@ -1314,8 +1314,9 @@ public:
 	}
 };
 
-void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies)
+bool btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies, int reverifyIteration)
 {
+	bool reverify = false;
 	int numManifolds = getDispatcher()->getNumManifolds();
 
 	struct MappedType
@@ -1463,11 +1464,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		{
 			//fprintf(stderr, "no pen\n");
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
-			auto stuckTestCounter = body->getUserIndex2();
-			if (stuckTestCounter > 0)
-			{
-				body->setUserIndex2(stuckTestCounter - 1);
-			}
 		}
 	}
 	for (int i = 0; i < numSoftBodies; i++)
@@ -1482,11 +1478,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		{
 			//fprintf(stderr, "no pen\n");
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
-			auto stuckTestCounter = body->getUserIndex2();
-			if (stuckTestCounter > 0)
-			{
-				body->setUserIndex2(stuckTestCounter - 1);
-			}
 		}
 	}
 
@@ -1536,18 +1527,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 
 			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
 
-			body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
+			reverify |= body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices, reverifyIteration);
 			if (!isSoft && !m_forceUpdateAllAabbs)
 				updateSingleAabb(body);
-
-			if (body->getUserIndex2() > 0)
-			{
-				// Body is having difficulties staying unstuck with that opposing body, tolerate the opposing body
-				body->setUserIndex2(0);
-				body->setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL, opposingBody);
-				// This is needed because of the order of calls in internalSingleStepSimulation. The cd does is not called to fill InitialCollisionParticipant between this call to processLastSafeTransforms and the m_internalTickCallback
-				getDispatcher()->addInitialCollisionParticipant({body, opposingBody});
-			}
 		}
 		//fprintf(stderr, "pen\n");
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_IS_PENETRATING);
@@ -1594,6 +1576,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			body->updateLastSafeWorldTransform();
 		}
 	}
+	return reverify;
 }
 
 void btCollisionWorld::debugDrawObject(const btTransform& worldTransform, const btCollisionShape* shape, const btVector3& color)

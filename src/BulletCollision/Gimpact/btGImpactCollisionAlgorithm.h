@@ -111,11 +111,11 @@ protected:
 	SIMD_FORCE_INLINE void destroyContactManifolds()
 	{
 		if (m_manifoldPtr == NULL) return;
-#ifdef BT_SAFE_UPDATE_DEBUG
+		//#ifdef BT_SAFE_UPDATE_DEBUG
 		if (btCollisionObject::gDebug)
 			m_dispatcher->clearManifold(m_manifoldPtr);
 		else
-#endif
+			//#endif
 			m_dispatcher->releaseManifold(m_manifoldPtr);
 		m_manifoldPtr = NULL;
 	}

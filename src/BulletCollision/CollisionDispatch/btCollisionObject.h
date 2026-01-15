@@ -148,9 +148,9 @@ public:
 	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	static btScalar gFrictionOverride;
-#ifdef BT_SAFE_UPDATE_DEBUG
+	//#ifdef BT_SAFE_UPDATE_DEBUG
 	static bool gDebug;
-#endif
+	//#endif
 
 	enum CollisionFlags
 	{
@@ -574,10 +574,11 @@ public:
 
 	virtual void updateLastSafeWorldTransform()
 	{
+		fprintf(stderr, "drawpoint \"updateLastSafeWorldTransform for rigid %d\" [0,0,0]\n", getUserIndex());
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial);
+	virtual bool applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial, int reverifyIteration);
 
 	void resetLastSafeApplyCounter()
 	{

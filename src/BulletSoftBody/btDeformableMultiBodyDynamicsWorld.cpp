@@ -130,9 +130,9 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 	///apply gravity and explicit force to velocity, predict motion
 	predictUnconstraintMotion(timeStep);
 
-#ifdef BT_SAFE_UPDATE_DEBUG
+	//#ifdef BT_SAFE_UPDATE_DEBUG
 	fprintf(stderr, "framestart()\n");
-#endif
+	//#endif
 	///perform collision detection that involves rigid/multi bodies
 	performDiscreteCollisionDetection();
 
@@ -143,18 +143,18 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	btMultiBodyDynamicsWorld::calculateSimulationIslands();
 
-	updateLastSafeTransforms();
+	updateLastSafeTransforms(0);
 
-#ifdef BT_SAFE_UPDATE_DEBUG
+	//#ifdef BT_SAFE_UPDATE_DEBUG
 	fprintf(stderr, "frameend()\n");
-	fprintf(stderr, "framestart()\n");
+	/*fprintf(stderr, "framestart()\n");
 	btCollisionObject::gDebug = true;
 	performDiscreteCollisionDetection();
 	fprintf(stderr, "drawpoint \"VERIFY\" [0,0,0][1,1,1,1]\n");
 	btCollisionObject::gDebug = false;
 
-	fprintf(stderr, "frameend()\n");
-#endif
+	fprintf(stderr, "frameend()\n");*/
+	//#endif
 
 	beforeSolverCallbacks(timeStep);
 
@@ -839,10 +839,19 @@ int btDeformableMultiBodyDynamicsWorld::stepSimulation(btScalar timeStep, int ma
 	return numSimulationSubSteps;
 }
 
-void btDeformableMultiBodyDynamicsWorld::updateLastSafeTransforms()
+void btDeformableMultiBodyDynamicsWorld::updateLastSafeTransforms(int reverifyIteration)
 {
 	BT_PROFILE("updateLastSafeTransforms");
 
-	processLastSafeTransforms(m_nonStaticRigidBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(),
-							  m_softBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_softBodies[0]), m_softBodies.size());
+	auto reverify = processLastSafeTransforms(m_nonStaticRigidBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(),
+											  m_softBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_softBodies[0]), m_softBodies.size(), reverifyIteration);
+	if (reverify)
+	{
+		fprintf(stderr, "drawpoint \"reverify is true, calling cd again etc.\" [0,0,0]\n");
+
+		btCollisionObject::gDebug = true;
+		performDiscreteCollisionDetection();
+		btCollisionObject::gDebug = false;
+		updateLastSafeTransforms(reverifyIteration + 1);
+	}
 }

@@ -68,7 +68,7 @@ protected:
 
 	void clearGravity();
 
-	void updateLastSafeTransforms();
+	void updateLastSafeTransforms(int reverifyIteration);
 
 	void addSoftsWithSelfCollisionCheckToOverlappingPairs();
 

@@ -77,7 +77,7 @@ protected:
 
 	void integrateTransformsInternal(btRigidBody * *bodies, int numBodies, btScalar timeStep);  // can be called in parallel
 	virtual void integrateTransforms(btScalar timeStep);
-	virtual void updateLastSafeTransforms();
+	virtual void updateLastSafeTransforms(int reverifyIteration);
 
 	virtual void calculateSimulationIslands();
 

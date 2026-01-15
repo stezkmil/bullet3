@@ -486,7 +486,7 @@ void btDiscreteDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 
 	getSolverInfo().m_timeStep = timeStep;
 
-	updateLastSafeTransforms();
+	updateLastSafeTransforms(0);
 
 	///solve contact and other joint constraints
 	solveConstraints(getSolverInfo());
@@ -1054,12 +1054,12 @@ void btDiscreteDynamicsWorld::integrateTransformsInternal(btRigidBody** bodies, 
 	}
 }
 
-void btDiscreteDynamicsWorld::updateLastSafeTransforms()
+void btDiscreteDynamicsWorld::updateLastSafeTransforms(int reverifyIteration)
 {
 	BT_PROFILE("updateLastSafeTransforms");
 	if (m_nonStaticRigidBodies.size() > 0)
 	{
-		processLastSafeTransforms(reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(), nullptr, 0);
+		processLastSafeTransforms(reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(), nullptr, 0, 0);
 	}
 }
 

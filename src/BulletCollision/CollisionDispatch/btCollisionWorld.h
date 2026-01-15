@@ -107,7 +107,7 @@ protected:
 
 	void serializeContactManifolds(btSerializer* serializer);
 
-	void processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies);
+	bool processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies, int reverifyIteration);
 
 public:
 	//this constructor doesn't own the dispatcher and paircache/broadphase

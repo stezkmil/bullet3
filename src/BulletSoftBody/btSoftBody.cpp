@@ -5350,35 +5350,28 @@ bool btSoftBody::wantsSleeping()
 }
 
 // Surrounding nodes also, because my CD phase is not bulletproof (a fully tunnelled through triangle could cause an update here which should not happen).
-// So this is a penetrating node cloud border growth. It is better to be conservative here and update only the nodes I am sure they do not penetrate,
-// otherwise a position could be marked as safe even if it isn't - that is very bad. Border growth of 1 should be enough. That will cover the riskiest
-// zone. Further nodes will be sanitized using the normal plane projection in updateLastSafeWorldTransform.
-void btSoftBody::lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, StuckTetraIndicesMapped>& nodesInCollision)
+// So this is a penetrating node cloud border growth.
+void btSoftBody::lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, std::vector<btVector3>>& nodesInCollision)
 {
 	for (auto pass = 0; pass < growth; ++pass)
 	{
-		std::map<btSoftBody::Node*, StuckTetraIndicesMapped> grownNodesInCollision = nodesInCollision;
+		if (nodesInCollision.size() >= m_nodes.size())
+			break;
+		std::map<btSoftBody::Node*, std::vector<btVector3>> grownNodesInCollision = nodesInCollision;
 		for (auto& [node, mapped] : nodesInCollision)
-			if (mapped.penetrating)
+			for (auto m = 0; m < node->m_tetraMembershipCount; ++m)
 			{
-				for (auto m = 0; m < node->m_tetraMembershipCount; ++m)
+				auto tetraMembershipIndex = node->m_tetraMembership[m];
+				for (auto j = 0; j < 4; ++j)
 				{
-					auto tetraMembershipIndex = node->m_tetraMembership[m];
-					for (auto j = 0; j < 4; ++j)
-					{
-						auto iter = grownNodesInCollision.find(m_tetras[tetraMembershipIndex].m_n[j]);
-						if (iter == grownNodesInCollision.end())
-							grownNodesInCollision.insert({m_tetras[tetraMembershipIndex].m_n[j], mapped});
-						else
-							iter->second.penetrating = true;
-					}
+					auto iter = grownNodesInCollision.find(m_tetras[tetraMembershipIndex].m_n[j]);
+					if (iter == grownNodesInCollision.end())
+						grownNodesInCollision.insert({m_tetras[tetraMembershipIndex].m_n[j], mapped});
 				}
 			}
 		nodesInCollision = grownNodesInCollision;
 	}
 }
-
-int kLastSafeGrowth = 1;
 
 // Notes about the OGC paper (Offset Geometric Contact - https://dl.acm.org/doi/10.1145/3731205). I was trying to find if the ideas in the paper were applicable to the
 // current soft body simulation implemented here. There are some key differences which make it hard. The most useful idea for me is the penetration free simulation.
@@ -5401,9 +5394,11 @@ void btSoftBody::updateLastSafeWorldTransform()
 	// because the penetration contact generation in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
 	// also depends on this last safe data.
 
-    // updateLastSafeWorldTransform also used to be partially updated, but it turned out to be a nightmare to keep the safe positions truly safe like that.
-    // Miniscule (and hard to diagnose the reason - this is why the BT_SAFE_UPDATE_DEBUG exists) errors creeped in causing the safe positions to be unsafe rendering them unusable and causing
+	// updateLastSafeWorldTransform also used to be partially updated, but it turned out to be a nightmare to keep the safe positions truly safe like that.
+	// Miniscule (and hard to diagnose the reason - this is why the BT_SAFE_UPDATE_DEBUG exists) errors creeped in causing the safe positions to be unsafe rendering them unusable and causing
 	// explosions. So now we always do a full update of all nodes.
+
+	fprintf(stderr, "drawpoint \"updateLastSafeWorldTransform for soft %d\" [0,0,0]\n", getUserIndex());
 
 	for (auto i = 0; i < m_nodes.size(); ++i)
 	{
@@ -5414,7 +5409,6 @@ void btSoftBody::updateLastSafeWorldTransform()
 #endif
 		safe.m_x = node.m_x;
 		safe.m_q = node.m_q;
-
 
 #ifdef BT_SAFE_UPDATE_DEBUG
 		fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", node.m_x.x(), node.m_x.y(), node.m_x.z());
@@ -5432,7 +5426,7 @@ void btSoftBody::updateLastSafeWorldTransform()
 	}
 }
 
-void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+bool btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial, int reverifyIteration)
 {
 	// Fallback to the last safe position for softs is done when the penetration reaches extreme levels. For example when
 	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
@@ -5440,12 +5434,14 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 
-    // TODO if it turns out that there are some situations where penetrations have to be resolved in a single step (because of explosions etc.), then
-    // it can be achieved by doing a collision detection step at the end of this method (use the btCollisionWorld::contactPairTest to do a CD test for only this btSoftBody).
-    // If there are still penetrations, then repeat the applyLastSafeWorldTransform. It might sound expensive, but compared to how they do penetration free simulation in the OGC paper,
-    // it is still quite cheap.
+	// TODO if it turns out that there are some situations where penetrations have to be resolved in a single step (because of explosions etc.), then
+	// it can be achieved by doing a collision detection step at the end of this method (use the btCollisionWorld::contactPairTest to do a CD test for only this btSoftBody).
+	// If there are still penetrations, then repeat the applyLastSafeWorldTransform. It might sound expensive, but compared to how they do penetration free simulation in the OGC paper,
+	// it is still quite cheap.
 
-    // TODO always use this
+	bool reverify = false;
+
+	// Now, CF_APPLY_LAST_SAFE is always used for softs
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		std::map<btSoftBody::Node*, std::vector<btVector3>> nodesInCollision;
@@ -5463,6 +5459,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 							iter->second.insert(iter->second.end(), partMapped.opposingNormals.begin(), partMapped.opposingNormals.end());
 					}
 			}
+			lastSafeBorderGrow(reverifyIteration, nodesInCollision);
 		}
 		else
 		{
@@ -5472,6 +5469,8 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				nodesInCollision.insert({&m_nodes[i], {}});
 			}
 		}
+
+		fprintf(stderr, "drawpoint \"total node count %d nodesInCollision size %zd\" [0,0,0]\n", m_nodes.size(), nodesInCollision.size());
 
 		for (auto& [nodeInCollision, normals] : nodesInCollision)
 		{
@@ -5486,7 +5485,10 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 			dst->m_x = src.m_x;
 			dst->m_q = src.m_q;
 
-            // Velocities are modified (projected), so that they do not cause the penetration again
+			reverify = true;
+			fprintf(stderr, "drawpoint \"reverify = true %d iter %d\" [0,0,0]\n", nodeInCollision->local_index, reverifyIteration);
+
+			// Velocities are modified (projected), so that they do not cause the penetration again
 			for (const auto& normal : normals)
 			{
 				if (dst->m_v.dot(normal) < 0.0)
@@ -5495,8 +5497,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				if (dst->m_vn.dot(normal) < 0.0)
 					dst->m_vn = dst->m_vn.rejectFrom(normal);
 			}
-
 		}
-
 	}
+	return reverify;
 }

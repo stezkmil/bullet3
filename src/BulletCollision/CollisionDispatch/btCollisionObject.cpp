@@ -22,9 +22,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletCollision/BroadphaseCollision/btBroadphaseProxy.h"
 
 btScalar btCollisionObject::gFrictionOverride = -1.0;
-#ifdef BT_SAFE_UPDATE_DEBUG
+//#ifdef BT_SAFE_UPDATE_DEBUG
 bool btCollisionObject::gDebug = false;
-#endif
+//#endif
 
 btCollisionObject::btCollisionObject()
 	: m_interpolationLinearVelocity(0.f, 0.f, 0.f),
@@ -151,7 +151,7 @@ void btCollisionObject::serializeSingleObject(class btSerializer* serializer) co
 	serializer->finalizeChunk(chunk, structType, BT_COLLISIONOBJECT_CODE, (void*)this);
 }
 
-void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+bool btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial, int reverifyIteration)
 {
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
@@ -160,6 +160,11 @@ void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTet
 		// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
 		btScalar fraction = getLastSafeApplyCounter() / maxApplySteps;
 		fraction = std::min(fraction, 1.0);
+
+		if (reverifyIteration > 0)
+			fraction = 1.0;
+
+		fprintf(stderr, "drawpoint \"applyLastSafeWorldTransform for rigid %d fraction %f\" [0,0,0]\n", getUserIndex(), fraction);
 
 		btTransform dst = getLastSafeWorldTransform();
 		btTransform src = getWorldTransform();
@@ -170,7 +175,6 @@ void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTet
 		setWorldTransform(interp);
 		if (fraction < 1.0)
 			++m_lastSafeApplyCounter;
-		// Would it be possible to develop a velocity based unstuck for btRigidBody, where position would be overwritten, but also a linear and angular velocity would be added
-		// for one simulation step, which would make it easier for the solvers (the deformable soft body constraint solver in particular) to cope without explosions?
 	}
+	return false;
 }
