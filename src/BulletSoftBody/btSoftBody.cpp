@@ -4482,10 +4482,10 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 
 	// Whole sphere should be covered by these conical buckets, so if we now have number of bins which is equal or larger than kMaxBucketsPerNode
 	// it indicates a bug somewhere
-	btAssert(bucketCount < kMaxBucketsPerNode &&
+	btAssert(bucketCount <= kMaxBucketsPerNode &&
 			 "Directional coverage theory broken – investigate!");
 
-	if (bucketCount >= kMaxBucketsPerNode)
+	if (bucketCount > kMaxBucketsPerNode)
 		return true;  // safety valve – should never fire in practice
 
 	return merged;
@@ -5401,8 +5401,8 @@ void btSoftBody::updateLastSafeWorldTransform()
 	// because the penetration contact generation in btPrimitiveTriangle::find_triangle_collision_alt_method_outer
 	// also depends on this last safe data.
 
-    // updateLastSafeWorldTransform also used to be partially updated, but it turned out to be a nightmare to keep the safe positions truly safe like that.
-    // Miniscule (and hard to diagnose the reason - this is why the BT_SAFE_UPDATE_DEBUG exists) errors creeped in causing the safe positions to be unsafe rendering them unusable and causing
+	// updateLastSafeWorldTransform also used to be partially updated, but it turned out to be a nightmare to keep the safe positions truly safe like that.
+	// Miniscule (and hard to diagnose the reason - this is why the BT_SAFE_UPDATE_DEBUG exists) errors creeped in causing the safe positions to be unsafe rendering them unusable and causing
 	// explosions. So now we always do a full update of all nodes.
 
 	for (auto i = 0; i < m_nodes.size(); ++i)
@@ -5414,7 +5414,6 @@ void btSoftBody::updateLastSafeWorldTransform()
 #endif
 		safe.m_x = node.m_x;
 		safe.m_q = node.m_q;
-
 
 #ifdef BT_SAFE_UPDATE_DEBUG
 		fprintf(stderr, "drawpoint \"whole pt\" [%f,%f,%f][1,1,1,1] \n", node.m_x.x(), node.m_x.y(), node.m_x.z());
@@ -5440,12 +5439,12 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
 	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
 
-    // TODO if it turns out that there are some situations where penetrations have to be resolved in a single step (because of explosions etc.), then
-    // it can be achieved by doing a collision detection step at the end of this method (use the btCollisionWorld::contactPairTest to do a CD test for only this btSoftBody).
-    // If there are still penetrations, then repeat the applyLastSafeWorldTransform. It might sound expensive, but compared to how they do penetration free simulation in the OGC paper,
-    // it is still quite cheap.
+	// TODO if it turns out that there are some situations where penetrations have to be resolved in a single step (because of explosions etc.), then
+	// it can be achieved by doing a collision detection step at the end of this method (use the btCollisionWorld::contactPairTest to do a CD test for only this btSoftBody).
+	// If there are still penetrations, then repeat the applyLastSafeWorldTransform. It might sound expensive, but compared to how they do penetration free simulation in the OGC paper,
+	// it is still quite cheap.
 
-    // TODO always use this
+	// TODO always use this
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		std::map<btSoftBody::Node*, std::vector<btVector3>> nodesInCollision;
@@ -5486,7 +5485,7 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 			dst->m_x = src.m_x;
 			dst->m_q = src.m_q;
 
-            // Velocities are modified (projected), so that they do not cause the penetration again
+			// Velocities are modified (projected), so that they do not cause the penetration again
 			for (const auto& normal : normals)
 			{
 				if (dst->m_v.dot(normal) < 0.0)
@@ -5495,8 +5494,6 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				if (dst->m_vn.dot(normal) < 0.0)
 					dst->m_vn = dst->m_vn.rejectFrom(normal);
 			}
-
 		}
-
 	}
 }
