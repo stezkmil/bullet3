@@ -850,6 +850,9 @@ void btDeformableMultiBodyDynamicsWorld::updateLastSafeTransforms(int reverifyIt
 		fprintf(stderr, "drawpoint \"reverify is true, calling cd again etc.\" [0,0,0]\n");
 
 		btCollisionObject::gDebug = true;
+		// TODO update broadphase boxset also for the rigids. Answer: this is already done in btCollisionWorld::performDiscreteCollisionDetection()
+		// TODO call psb->updateBounds(); to update broadphase boxset
+		// TODO could psb->updateBounds(); be called somehow in updateAabbs(); ?
 		performDiscreteCollisionDetection();
 		btCollisionObject::gDebug = false;
 		updateLastSafeTransforms(reverifyIteration + 1);

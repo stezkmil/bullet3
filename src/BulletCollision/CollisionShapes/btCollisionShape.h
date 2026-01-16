@@ -166,6 +166,14 @@ public:
 		return m_userIndex2;
 	}
 
+	virtual void updateBound()
+	{
+	}
+
+	virtual void postUpdate()
+	{
+	}
+
 	virtual int calculateSerializeBufferSize() const;
 
 	///fills the dataBuffer and returns the struct name (and 0 on failure)

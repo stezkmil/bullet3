@@ -165,7 +165,7 @@ btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btV
 		n.m_safe.copy_from_node(n);
 		m_X[i] = n.m_x;
 	}
-	updateBounds();
+	updateBounds(false);
 	setCollisionQuadrature(3);
 	m_fdbvnt = 0;
 }
@@ -3085,7 +3085,7 @@ void btSoftBody::updateNormals()
 }
 
 //
-void btSoftBody::updateBounds()
+void btSoftBody::updateBounds(bool updateShapeBounds)
 {
 	/*if( m_acceleratedSoftBody )
 	{
@@ -3125,6 +3125,15 @@ void btSoftBody::updateBounds()
 	//    }
 	if (m_nodes.size())
 	{
+		// TODO broadphase aabb update here should really use the aabb of the collision shape (updated here below), but since the sim vertices form a sort of bound
+		// around the collision mesh, it is not such a big issue.
+		if (isActive() && updateShapeBounds)
+		{
+			// TODO verify if there aren't some redundant updates happening during a typical sim step
+			getCollisionShape()->postUpdate();
+			getCollisionShape()->updateBound();
+		}
+
 		btVector3 mins = m_nodes[0].m_x;
 		btVector3 maxs = m_nodes[0].m_x;
 		for (int i = 1; i < m_nodes.size(); ++i)
@@ -4482,10 +4491,10 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 
 	// Whole sphere should be covered by these conical buckets, so if we now have number of bins which is equal or larger than kMaxBucketsPerNode
 	// it indicates a bug somewhere
-	btAssert(bucketCount < kMaxBucketsPerNode &&
+	btAssert(bucketCount <= kMaxBucketsPerNode &&
 			 "Directional coverage theory broken – investigate!");
 
-	if (bucketCount >= kMaxBucketsPerNode)
+	if (bucketCount > kMaxBucketsPerNode)
 		return true;  // safety valve – should never fire in practice
 
 	return merged;
@@ -5472,10 +5481,14 @@ bool btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 
 		fprintf(stderr, "drawpoint \"total node count %d nodesInCollision size %zd\" [0,0,0]\n", m_nodes.size(), nodesInCollision.size());
 
+		bool changed = false;
 		for (auto& [nodeInCollision, normals] : nodesInCollision)
 		{
 			const auto& src = nodeInCollision->m_safe;
 			auto& dst = nodeInCollision;
+
+			if (!changed)
+				changed = true;
 
 #ifdef BT_SAFE_UPDATE_DEBUG
 			fprintf(stderr, "drawpoint \"apply pt\" [%f,%f,%f][0,0,1,1] \n", src.m_x.x(), src.m_x.y(), src.m_x.z());
@@ -5497,6 +5510,10 @@ bool btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				if (dst->m_vn.dot(normal) < 0.0)
 					dst->m_vn = dst->m_vn.rejectFrom(normal);
 			}
+		}
+		if (changed && getCollisionShape())
+		{
+			updateBounds();
 		}
 	}
 	return reverify;

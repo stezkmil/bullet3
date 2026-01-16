@@ -93,6 +93,7 @@ protected:
 		}
 		else
 		{
+			setGlobalBoundHint();
 			m_box_set.update();
 		}
 		unlockChildShapes();
@@ -109,14 +110,15 @@ public:
 		localScaling.setValue(1.f, 1.f, 1.f);
 	}
 
+	virtual void setGlobalBoundHint() = 0;
+
 	//! performs refit operation
 	/*!
 	Updates the entire Box set of this shape.
-	\pre postUpdate() must be called for attemps to calculating the box set, else this function
-		will does nothing.
+	\pre postUpdate() must be called for attemps to calculating the box set, else this function will do nothing.
 	\post if m_needs_update == true, then it calls calcLocalAABB();
 	*/
-	SIMD_FORCE_INLINE void updateBound()
+	SIMD_FORCE_INLINE void updateBound() override
 	{
 		if (!m_needs_update) return;
 		calcLocalAABB();
@@ -136,7 +138,7 @@ public:
 	}
 
 	//! Tells to this object that is needed to refit the box set
-	virtual void postUpdate()
+	virtual void postUpdate() override
 	{
 		m_needs_update = true;
 	}
@@ -884,9 +886,17 @@ public:
 
 	// There is this bug in quantized bvh, where the calculation of global aabb depends on the value of previous global aabb (the m_global_bound member)
 	// when doing a refit. This workaround sets the new global aabb before doing the refit.
-	void setGlobalBoundHint(const btAABB& global_bound)
+	void setGlobalBoundHint() override
 	{
-		m_box_set.setGlobalBoundHint(global_bound);
+		btAABB aabb;
+		aabb.invalidate();
+		for (int i = 0; i < m_primitive_manager->get_vertex_count(); ++i)
+		{
+			btVector3 vertex;
+			m_primitive_manager->get_vertex(i, vertex);
+			aabb.merge_point(vertex);
+		}
+		m_box_set.setGlobalBoundHint(aabb);
 	}
 
 	// Optimization which allows faster parallel refit
@@ -965,6 +975,13 @@ public:
 			delete part;
 		}
 		m_mesh_parts.clear();
+	}
+
+	void setGlobalBoundHint() override
+	{
+		int i = m_mesh_parts.size();
+		while (i--)
+			m_mesh_parts[i]->setGlobalBoundHint();
 	}
 
 	btStridingMeshInterface* getMeshInterface()

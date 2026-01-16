@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 ///btDbvtBroadphase implementation by Nathanael Presson
 
 #include "btDbvtBroadphase.h"
@@ -253,7 +252,7 @@ void btDbvtBroadphase::rayTest(const btVector3& rayFrom, const btVector3& rayTo,
 	int threadIndex = btGetCurrentThreadIndex();
 	btAlignedObjectArray<const btDbvtNode*> localStack;
 	//todo(erwincoumans, "why do we get tsan issue here?")
-	if (0)//threadIndex < m_rayTestStacks.size())
+	if (0)  //threadIndex < m_rayTestStacks.size())
 	//if (threadIndex < m_rayTestStacks.size())
 	{
 		// use per-thread preallocated stack if possible to avoid dynamic allocations
