@@ -843,16 +843,17 @@ void btDeformableMultiBodyDynamicsWorld::updateLastSafeTransforms(int reverifyIt
 {
 	BT_PROFILE("updateLastSafeTransforms");
 
+	const auto maxReverifyIteration = 10;
 	auto reverify = processLastSafeTransforms(m_nonStaticRigidBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_nonStaticRigidBodies[0]), m_nonStaticRigidBodies.size(),
 											  m_softBodies.size() == 0 ? nullptr : reinterpret_cast<btCollisionObject**>(&m_softBodies[0]), m_softBodies.size(), reverifyIteration);
-	if (reverify)
+	// Even though the CD is called repeatedly until there are no penetrations for the softs, it is still possible to see penetrations in the render, because after updateLastSafeTransforms
+	// in the simulation step, there is solveConstraints(timeStep), which moves the sim vertex nodes for the softs. There would have to be again some CD step after it, or some other scheme
+	// to resolve pens.
+	if (reverify && maxReverifyIteration < 10)
 	{
 		fprintf(stderr, "drawpoint \"reverify is true, calling cd again etc.\" [0,0,0]\n");
 
 		btCollisionObject::gDebug = true;
-		// TODO update broadphase boxset also for the rigids. Answer: this is already done in btCollisionWorld::performDiscreteCollisionDetection()
-		// TODO call psb->updateBounds(); to update broadphase boxset
-		// TODO could psb->updateBounds(); be called somehow in updateAabbs(); ?
 		performDiscreteCollisionDetection();
 		btCollisionObject::gDebug = false;
 		updateLastSafeTransforms(reverifyIteration + 1);
