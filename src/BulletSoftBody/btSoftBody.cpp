@@ -5433,18 +5433,9 @@ void btSoftBody::updateLastSafeWorldTransform()
 
 void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
 {
-	// Fallback to the last safe position for softs is done when the penetration reaches extreme levels. For example when
-	// a cube falls freely onto a flat ground, the penetrations are still reasonable and harmless, no need to fallback to safe
-	// but when the cube is squeezed into a very tight crevice, the impulses from the opposing crevice faces can cause an impulse ping-pong
-	// with major penetrations followed by an explosion. In such scenario the last safe apply is done.
-	// Observed in the flexi naraznik scene when squeezing the ends of the bumper into those narrow ridges.
+	// If it turns out that there are some situations where penetrations have to be resolved in a single step:
+	// it is implemented on this branch in bullet3 repo recursive_safe_apply and on VRUT-6981_recursive_safe_apply
 
-	// TODO if it turns out that there are some situations where penetrations have to be resolved in a single step (because of explosions etc.), then
-	// it can be achieved by doing a collision detection step at the end of this method (use the btCollisionWorld::contactPairTest to do a CD test for only this btSoftBody).
-	// If there are still penetrations, then repeat the applyLastSafeWorldTransform. It might sound expensive, but compared to how they do penetration free simulation in the OGC paper,
-	// it is still quite cheap.
-
-	// TODO always use this
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		std::map<btSoftBody::Node*, std::vector<btVector3>> nodesInCollision;
