@@ -679,7 +679,7 @@ struct GroupedParams
 };
 
 // This is the most promising candidate so far
-static void _find_quantized_collision_pairs_recursive_par(GroupedParams& groupedParams, int node0, int node1, int level, bool complete_primitive_tests)
+static void _find_quantized_collision_pairs_recursive_par(GroupedParams& groupedParams, int node0, int node1, int level, bool complete_primitive_tests, std::vector<int> node0Prev, std::vector<int> node1Prev)
 {
 	if (groupedParams.findOnlyFirstTriPair != btFindOnlyFirstPairEnum::DISABLED)
 	{
@@ -693,9 +693,12 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 		// Why is EvalPair called also here? It is a speed optimization. The assumption is that the tri-tri test is similar in cost as the aabb-obb test in
 		// _quantized_node_collision below, so it makes sense to check if both are leaves here and doing the tri-tri immediately, thus avoiding the aabb-obb test
 		// in _quantized_node_collision below. Doing also the aabb-obb would just waste time.
-		btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstTriPair, groupedParams.isSelfCollision, &groupedParams.perThreadIntermediateResults, nullptr);
+		btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstTriPair, groupedParams.isSelfCollision, node0Prev, node1Prev, &groupedParams.perThreadIntermediateResults, nullptr);
 		return;
 	}
+
+    node0Prev.push_back(node0);
+    node1Prev.push_back(node1);
 
 	// This branch is here only to correctly handle the remaining cases in one boxset colliding against itself (for soft body self collisions)
 	// See btDbvt::collideTT for reference (the "if (p.a == p.b)" branch)
@@ -709,30 +712,30 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 			if (level < groupedParams.threadLaunchStopLevel)
 			{
 				tbb::parallel_invoke(
-					[&groupedParams, leftNode, rightNode, level]
+					[&groupedParams, leftNode, rightNode, level, node0Prev, node1Prev]
 					{
 						//collide left0 left0
-						_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, leftNode, level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, leftNode, level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, leftNode, rightNode, level]
+					[&groupedParams, leftNode, rightNode, level, node0Prev, node1Prev]
 					{
 						//collide right0 right0
-						_find_quantized_collision_pairs_recursive_par(groupedParams, rightNode, rightNode, level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, rightNode, rightNode, level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, leftNode, rightNode, level]
+					[&groupedParams, leftNode, rightNode, level, node0Prev, node1Prev]
 					{
 						//collide left0 right0
-						_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, rightNode, level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, rightNode, level + 1, false, node0Prev, node1Prev);
 					});
 			}
 			else
 			{
 				//collide left0 left0
-				_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, leftNode, level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, leftNode, level + 1, false, node0Prev, node1Prev);
 				//collide right0 right0
-				_find_quantized_collision_pairs_recursive_par(groupedParams, rightNode, rightNode, level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, rightNode, rightNode, level + 1, false, node0Prev, node1Prev);
 				//collide left0 right0
-				_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, rightNode, level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, leftNode, rightNode, level + 1, false, node0Prev, node1Prev);
 			}
 			return;
 		}
@@ -752,7 +755,7 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 			// collision result
 			if (groupedParams.findOnlyFirstTriPair != btFindOnlyFirstPairEnum::DISABLED)
 			{
-				if (btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstTriPair, groupedParams.isSelfCollision, &groupedParams.perThreadIntermediateResults, nullptr))
+				if (btGImpactPairEval::EvalPair({groupedParams.boxset0->getNodeData(node0), groupedParams.boxset1->getNodeData(node1)}, groupedParams.grpParams, groupedParams.findOnlyFirstTriPair, groupedParams.isSelfCollision, node0Prev, node1Prev, &groupedParams.perThreadIntermediateResults, nullptr))
 					groupedParams.firstTriPairFound = true;
 			}
 			return;
@@ -762,23 +765,23 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 			if (level < groupedParams.threadLaunchStopLevel)
 			{
 				tbb::parallel_invoke(
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
 						//collide left recursive
-						_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getLeftNode(node1), level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getLeftNode(node1), level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
 						//collide right recursive
-						_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getRightNode(node1), level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getRightNode(node1), level + 1, false, node0Prev, node1Prev);
 					});
 			}
 			else
 			{
 				//collide left recursive
-				_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getLeftNode(node1), level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getLeftNode(node1), level + 1, false, node0Prev, node1Prev);
 				//collide right recursive
-				_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getRightNode(node1), level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, node0, groupedParams.boxset1->getRightNode(node1), level + 1, false, node0Prev, node1Prev);
 			}
 		}
 	}
@@ -790,19 +793,19 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 			if (level < groupedParams.threadLaunchStopLevel)
 			{
 				tbb::parallel_invoke(
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
-						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), node1, level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), node1, level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
-						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), node1, level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), node1, level + 1, false, node0Prev, node1Prev);
 					});
 			}
 			else
 			{
-				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), node1, level + 1, false);
-				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), node1, level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), node1, level + 1, false, node0Prev, node1Prev);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), node1, level + 1, false, node0Prev, node1Prev);
 			}
 		}
 		else
@@ -810,37 +813,37 @@ static void _find_quantized_collision_pairs_recursive_par(GroupedParams& grouped
 			if (level < groupedParams.threadLaunchStopLevel)
 			{
 				tbb::parallel_invoke(
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
 						//collide left0 left1
-						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
 						//collide left0 right1
-						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
 						//collide right0 left1
-						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false, node0Prev, node1Prev);
 					},
-					[&groupedParams, node0, node1, level]
+					[&groupedParams, node0, node1, level, node0Prev, node1Prev]
 					{
 						//collide right0 right1
-						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false);
+						_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false, node0Prev, node1Prev);
 					});
 			}
 			else
 			{
 				//collide left0 left1
-				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false, node0Prev, node1Prev);
 				//collide left0 right1
-				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getLeftNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false, node0Prev, node1Prev);
 				//collide right0 left1
-				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getLeftNode(node1), level + 1, false, node0Prev, node1Prev);
 				//collide right0 right1
-				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false);
+				_find_quantized_collision_pairs_recursive_par(groupedParams, groupedParams.boxset0->getRightNode(node0), groupedParams.boxset1->getRightNode(node1), level + 1, false, node0Prev, node1Prev);
 			}
 		}  // else if node1 is not a leaf
 	}  // else if node0 is not a leaf
@@ -884,7 +887,10 @@ void btGImpactQuantizedBvh::find_collision(const btGImpactQuantizedBvh* boxset0,
 	if (std::get<0>(grpParams.previouslyConsumedTime) <= 100 || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING || findOnlyFirstTriPair == btFindOnlyFirstPairEnum::TOUCHING || disableParallel)
 		threadLaunchStopLevel = 0;
 	GroupedParams groupedParams(boxset0, boxset1, perThreadIntermediateResults, trans_cache_1to0, findOnlyFirstTriPair, boxset0 == boxset1, firstTriPairFound, threadLaunchStopLevel, grpParams);
-	_find_quantized_collision_pairs_recursive_par(groupedParams, 0, 0, 0, true);
+	std::vector<int> leftParents, rightParents;
+	leftParents.reserve(10);
+	rightParents.reserve(10);
+	_find_quantized_collision_pairs_recursive_par(groupedParams, 0, 0, 0, true, leftParents, rightParents);
 	//auto end = std::chrono::steady_clock::now();
 
 	//auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);

@@ -4,6 +4,7 @@
 bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 								 btGimpactVsGimpactGroupedParams& grpParams, btFindOnlyFirstPairEnum findOnlyFirstTriPair,
 								 bool isSelfCollision,
+								 std::vector<int> node0Prev, std::vector<int> node1Prev,
 								 ThreadLocalGImpactResult* perThreadIntermediateResults,
 								 std::vector<btGImpactIntermediateResult>* intermediateResults)
 {
@@ -30,14 +31,22 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 	{
 		if (isSelfCollision)
 		{
+			int upIdx = 0;
+			for (auto i = node0Prev.size() - 1, j = node1Prev.size() - 1; i >= 0 && j >= 0; --i, --j, ++upIdx)
+			{
+				if (node0Prev[i] == node1Prev[j])
+					break;
+			}
+			if (upIdx < 2)
+				return false;
 			// It would seem natural just to compare the triangle indices to check if the triangles are adjacent, but we are doing mesh subdivisions which
 			// do not do create shared indices (to make the subdivisions less costly), so all that we can do now is to compare the vertex coordinates. This
 			// is not completely bulletproof, but probably the best I can do now.
-			constexpr btScalar vertIsEqualEpsilon = 0.001;
-			for (auto i = 0; i < 3; ++i)
-				for (auto j = 0; j < 3; ++j)
-					if ((ptri0.m_vertices[i] - ptri1.m_vertices[j]).length2() < vertIsEqualEpsilon)
-						return false;  // It is an adjacent triangle. We ignore adjacent triangles in self collisions now.
+			//constexpr btScalar vertIsEqualEpsilon = 0.001;
+			//for (auto i = 0; i < 3; ++i)
+			//	for (auto j = 0; j < 3; ++j)
+			//		if ((ptri0.m_vertices[i] - ptri1.m_vertices[j]).length2() < vertIsEqualEpsilon)
+			//			return false;  // It is an adjacent triangle. We ignore adjacent triangles in self collisions now.
 		}
 
 		//build planes

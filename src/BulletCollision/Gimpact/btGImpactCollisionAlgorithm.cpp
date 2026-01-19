@@ -690,7 +690,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 	std::vector<btGImpactIntermediateResult> intermediateResults;
 	for (auto pairIter = auxPairSet.begin(); pairIter != auxPairSet.end(); ++pairIter)
 	{
-		btGImpactPairEval::EvalPair(*pairIter, grpParams, btFindOnlyFirstPairEnum::DISABLED, false, nullptr, &intermediateResults);
+		btGImpactPairEval::EvalPair(*pairIter, grpParams, btFindOnlyFirstPairEnum::DISABLED, false, {}, {}, nullptr, &intermediateResults);
 	}
 
 	collide_sat_triangles_post(nullptr, &intermediateResults, body0Wrap, body1Wrap, shape0, shape1, findAllContacts, findOnlyContactCounts);
