@@ -1531,6 +1531,14 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			if (!isSoft && body->getLastSafeWorldTransform() == btTransform::getIdentity())
 				continue;
 
+            // This is a band-aid for the self collision unstucks. They do not work that great for self collisions now. They frequently result in mid-air stoppages of the sim vertices involved (e.g. the cable
+            // in the 20250414_motor_10_TSi_v5_upraveno scene). There is already a filter in btGImpactPairEval::EvalPair not to test adjacent triangles, but it seems that it is not enough. One TODO idea
+			// is to try to determine the triangle distance based on bvh ancestry. Test only triangles which have a common ancestor within N levels up the bvh. Do not test triangles which have a common
+            // parent - that is too close. If some better scheme was developed, it would then be possible to remove this line "btScalar margin = isSelfCollision ? 0.0 : (m_margin + other.m_margin);" which disables
+            // margins for self collisions (this is one more neccessary evil to prevent explosions, but it still worsens the stability).
+            if (bothSoft && body == opposingBody)
+				continue;
+
 			if (!(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING))
 				body->resetLastSafeApplyCounter();
 
