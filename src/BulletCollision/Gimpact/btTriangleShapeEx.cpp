@@ -1,4 +1,4 @@
-﻿/*! \file btGImpactTriangleShape.h
+/*! \file btGImpactTriangleShape.h
 \author Francisco Leon Najera
 */
 /*
@@ -822,7 +822,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 																   const btTransform& thisTransformLastSafe, const btTransform& otherTransformLastSafe,
 																   const btPrimitiveTriangle& thisBackup, const btPrimitiveTriangle& otherBackup, bool doUnstuck, bool isSelfCollision)
 {
-	btScalar margin = isSelfCollision ? 0.0 : (m_margin + other.m_margin);
+	btScalar margin = m_margin + other.m_margin;
 	btScalar marginEpsilon = margin / 40.0;
 
 	contacts.m_point_count = 0;

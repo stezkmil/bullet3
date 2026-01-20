@@ -221,7 +221,7 @@ void btGImpactMeshShapePart::processAllTrianglesRay(btTriangleCallback* callback
 	int i = collided.size();
 	while (i--)
 	{
-		getPrimitiveTriangle(collided[i], triangle);
+		getPrimitiveTriangle(collided[i], triangle, false);
 		callback->processTriangle(triangle.m_vertices, part, collided[i]);
 	}
 	unlockChildShapes();
@@ -248,7 +248,7 @@ void btGImpactMeshShapePart::processAllTriangles(btTriangleCallback* callback, c
 	int i = collided.size();
 	while (i--)
 	{
-		this->getPrimitiveTriangle(collided[i], triangle);
+		this->getPrimitiveTriangle(collided[i], triangle, false);
 		callback->processTriangle(triangle.m_vertices, part, collided[i]);
 	}
 	unlockChildShapes();

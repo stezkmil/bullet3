@@ -422,7 +422,7 @@ void debug_pairs(const std::span<const std::pair<int, int>>& pairSpan, const btT
 		btPrimitiveTriangle ptri1;
 
 		auto faceIndex = elemIter->second;
-		shape0->getPrimitiveTriangle(faceIndex, ptri0);
+		shape0->getPrimitiveTriangle(faceIndex, ptri0, false);
 		if (fh)
 		{
 			btScalar occur = elemIter->first / (btScalar)maxOccur;
@@ -441,7 +441,7 @@ void debug_pairs(const std::span<const std::pair<int, int>>& pairSpan, const btT
 		btPrimitiveTriangle ptri0;
 		btPrimitiveTriangle ptri1;
 
-		shape1->getPrimitiveTriangle(elemIter->second, ptri0);
+		shape1->getPrimitiveTriangle(elemIter->second, ptri0, false);
 		btTransform tran;
 		tran.setOrigin(trans_cache_1to0.m_T1to0);
 		tran.setBasis(trans_cache_1to0.m_R1to0);

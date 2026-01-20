@@ -430,7 +430,7 @@ public:
 
 	SIMD_FORCE_INLINE void getNodeTriangle(int nodeindex, btPrimitiveTriangle& triangle) const
 	{
-		m_primitive_manager->get_primitive_triangle(getNodeData(nodeindex), triangle);
+		m_primitive_manager->get_primitive_triangle(getNodeData(nodeindex), triangle, false);
 	}
 
 	SIMD_FORCE_INLINE const BT_QUANTIZED_BVH_NODE* get_node_pointer(int index = 0) const
