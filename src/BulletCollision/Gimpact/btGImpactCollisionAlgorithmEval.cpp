@@ -49,7 +49,6 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 			btPrimitiveTriangle ptri_orig0;
 			btPrimitiveTriangle ptri_orig1;
 
-			//fprintf(stderr, "pair.m_index1 %d pair.m_index2 %d\n", pair.m_index1, pair.m_index2);
 			grpParams.shape0->getPrimitiveTriangle(pair.m_index1, ptri_orig0, true);
 			grpParams.shape1->getPrimitiveTriangle(pair.m_index2, ptri_orig1, true);
 

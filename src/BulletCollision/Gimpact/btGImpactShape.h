@@ -230,9 +230,9 @@ public:
 	}
 
 	//! if this trimesh
-	SIMD_FORCE_INLINE void getPrimitiveTriangle(int index, btPrimitiveTriangle& triangle, bool get_orig) const
+	SIMD_FORCE_INLINE void getPrimitiveTriangle(int index, btPrimitiveTriangle& triangle, bool get_original) const
 	{
-		getPrimitiveManager()->get_primitive_triangle(index, triangle, get_orig);
+		getPrimitiveManager()->get_primitive_triangle(index, triangle, get_original);
 	}
 
 	SIMD_FORCE_INLINE bool getPrimitiveTriangleSafe(int index, btPrimitiveTriangle& triangle) const
@@ -368,7 +368,7 @@ public:
 			(void)C;
 		}
 
-		virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle, bool get_orig) const override
+		virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle, bool get_original) const override
 		{
 			btAssert(0);
 			(void)prim_index;
@@ -679,7 +679,7 @@ public:
 			}
 		}
 
-		virtual void get_vertex(unsigned int vertex_index, btVector3& vertex, bool get_orig) const
+		virtual void get_vertex(unsigned int vertex_index, btVector3& vertex, bool get_original) const
 		{
 			if (type == PHY_DOUBLE)
 			{
@@ -711,13 +711,13 @@ public:
 			get_indices(prim_index, A, B, C);
 		}
 
-		virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle, bool get_orig) const override
+		virtual void get_primitive_triangle(int prim_index, btPrimitiveTriangle& triangle, bool get_original) const override
 		{
 			unsigned int indices[3];
 			get_indices(prim_index, indices[0], indices[1], indices[2]);
-			get_vertex(indices[0], triangle.m_vertices[0], get_orig);
-			get_vertex(indices[1], triangle.m_vertices[1], get_orig);
-			get_vertex(indices[2], triangle.m_vertices[2], get_orig);
+			get_vertex(indices[0], triangle.m_vertices[0], get_original);
+			get_vertex(indices[1], triangle.m_vertices[1], get_original);
+			get_vertex(indices[2], triangle.m_vertices[2], get_original);
 			triangle.m_margin = m_margin;
 		}
 
