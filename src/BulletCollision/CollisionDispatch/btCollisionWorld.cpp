@@ -1531,6 +1531,13 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			if (!isSoft && body->getLastSafeWorldTransform() == btTransform::getIdentity())
 				continue;
 
+			// This is a band-aid for the self collision unstucks. They do not work that great for self collisions yet. For example when quickly manipulating a self colliding
+			// cloth, the simulation sometimes goes into a vicious cycle. The safe is applied, then the simulation is OK for one step and then the simulation progresses in such a way
+			// that we are in a penetrating state again, so the safe is applied and the cycle repeats, with no apparent progression in the simulation. This happens even if I modify
+			// the code to reset all the node velocities. A careful debugging session is needed to diagnose why this phenomena is not observed in simulations without self collisions.
+			if (bothSoft && body == opposingBody)
+				continue;
+
 			if (!(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING))
 				body->resetLastSafeApplyCounter();
 
