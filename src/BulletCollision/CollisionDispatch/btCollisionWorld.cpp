@@ -1535,8 +1535,10 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			// cloth, the simulation sometimes goes into a vicious cycle. The safe is applied, then the simulation is OK for one step and then the simulation progresses in such a way
 			// that we are in a penetrating state again, so the safe is applied and the cycle repeats, with no apparent progression in the simulation. This happens even if I modify
 			// the code to reset all the node velocities. A careful debugging session is needed to diagnose why this phenomena is not observed in simulations without self collisions.
-			if (bothSoft && body == opposingBody)
-				continue;
+			// UPDATE: disabled for now - found out that it works better like this for my wire case (some spasms on the wire otherwise when self colliding), but as mentioned above,
+			// not so well for the fact cloth movements. There is no time for a proper fix, so I choose the lesser evil and go for the working wire case.
+			//if (bothSoft && body == opposingBody)
+			//	continue;
 
 			if (!(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING))
 				body->resetLastSafeApplyCounter();
