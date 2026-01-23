@@ -541,10 +541,16 @@ void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstr
 
 	if (body0)
 	{
+		btScalar m0 = (body0->getInvMass() > 0) ? btScalar(1) / body0->getInvMass() : btScalar(0);
+
+		// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+		// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+		btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = body0->getInvInertiaTensorWorld() * m0;
+
 		solverConstraint.m_contactNormal1 = normalAxis;
 		btVector3 ftorqueAxis1 = rel_pos1.cross(solverConstraint.m_contactNormal1);
 		solverConstraint.m_relpos1CrossNormal = ftorqueAxis1;
-		solverConstraint.m_angularComponentA = body0->getInvInertiaTensorWorld() * ftorqueAxis1 * body0->getAngularFactor();
+		solverConstraint.m_angularComponentA = invInertiaTensorWorldAsIfUnitMass_0 * ftorqueAxis1 * body0->getAngularFactor();
 	}
 	else
 	{
@@ -555,10 +561,16 @@ void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstr
 
 	if (bodyA)
 	{
+		btScalar mA = (bodyA->getInvMass() > 0) ? btScalar(1) / bodyA->getInvMass() : btScalar(0);
+
+		// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+		// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+		btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = bodyA->getInvInertiaTensorWorld() * mA;
+
 		solverConstraint.m_contactNormal2 = -normalAxis;
 		btVector3 ftorqueAxis1 = rel_pos2.cross(solverConstraint.m_contactNormal2);
 		solverConstraint.m_relpos2CrossNormal = ftorqueAxis1;
-		solverConstraint.m_angularComponentB = bodyA->getInvInertiaTensorWorld() * ftorqueAxis1 * bodyA->getAngularFactor();
+		solverConstraint.m_angularComponentB = invInertiaTensorWorldAsIfUnitMass_A * ftorqueAxis1 * bodyA->getAngularFactor();
 	}
 	else
 	{
@@ -648,20 +660,32 @@ void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSol
 	solverConstraint.m_appliedImpulse = 0.f;
 	solverConstraint.m_appliedPushImpulse = 0.f;
 
+    btScalar m0 = (body0 && body0->getInvMass() > 0) ? btScalar(1) / body0->getInvMass() : btScalar(0);
+
+	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = body0 ? (body0->getInvInertiaTensorWorld() * m0) : btMatrix3x3::getIdentity();
+
+    btScalar mA = (bodyA && bodyA->getInvMass() > 0) ? btScalar(1) / bodyA->getInvMass() : btScalar(0);
+
+	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = bodyA ? (bodyA->getInvInertiaTensorWorld() * mA) : btMatrix3x3::getIdentity();
+
 	{
 		btVector3 ftorqueAxis1 = -normalAxis1;
 		solverConstraint.m_relpos1CrossNormal = ftorqueAxis1;
-		solverConstraint.m_angularComponentA = body0 ? body0->getInvInertiaTensorWorld() * ftorqueAxis1 * body0->getAngularFactor() : btVector3(0, 0, 0);
+		solverConstraint.m_angularComponentA = body0 ? invInertiaTensorWorldAsIfUnitMass_0 * ftorqueAxis1 * body0->getAngularFactor() : btVector3(0, 0, 0);
 	}
 	{
 		btVector3 ftorqueAxis1 = normalAxis1;
 		solverConstraint.m_relpos2CrossNormal = ftorqueAxis1;
-		solverConstraint.m_angularComponentB = bodyA ? bodyA->getInvInertiaTensorWorld() * ftorqueAxis1 * bodyA->getAngularFactor() : btVector3(0, 0, 0);
+		solverConstraint.m_angularComponentB = bodyA ? invInertiaTensorWorldAsIfUnitMass_A * ftorqueAxis1 * bodyA->getAngularFactor() : btVector3(0, 0, 0);
 	}
 
 	{
-		btVector3 iMJaA = body0 ? body0->getInvInertiaTensorWorld() * solverConstraint.m_relpos1CrossNormal : btVector3(0, 0, 0);
-		btVector3 iMJaB = bodyA ? bodyA->getInvInertiaTensorWorld() * solverConstraint.m_relpos2CrossNormal : btVector3(0, 0, 0);
+		btVector3 iMJaA = body0 ? invInertiaTensorWorldAsIfUnitMass_0 * solverConstraint.m_relpos1CrossNormal : btVector3(0, 0, 0);
+		btVector3 iMJaB = bodyA ? invInertiaTensorWorldAsIfUnitMass_A * solverConstraint.m_relpos2CrossNormal : btVector3(0, 0, 0);
 		btScalar sum = 0;
 		sum += iMJaA.dot(solverConstraint.m_relpos1CrossNormal);
 		sum += iMJaB.dot(solverConstraint.m_relpos2CrossNormal);
@@ -852,10 +876,22 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 
 	cfm *= invTimeStep;
 
+    btScalar m0 = (rb0 && rb0->getInvMass() > 0) ? btScalar(1) / rb0->getInvMass() : btScalar(0);
+
+	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = rb0 ? (rb0->getInvInertiaTensorWorld() * m0) : btMatrix3x3::getIdentity();
+
+    btScalar m1 = (rb1 && rb1->getInvMass() > 0) ? btScalar(1) / rb1->getInvMass() : btScalar(0);
+
+	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_1 = rb1 ? (rb1->getInvInertiaTensorWorld() * m1) : btMatrix3x3::getIdentity();
+
 	btVector3 torqueAxis0 = rel_pos1.cross(cp.m_normalWorldOnB);
-	solverConstraint.m_angularComponentA = rb0 ? rb0->getInvInertiaTensorWorld() * torqueAxis0 * rb0->getAngularFactor() : btVector3(0, 0, 0);
+	solverConstraint.m_angularComponentA = rb0 ? invInertiaTensorWorldAsIfUnitMass_0 * torqueAxis0 * rb0->getAngularFactor() : btVector3(0, 0, 0);
 	btVector3 torqueAxis1 = rel_pos2.cross(cp.m_normalWorldOnB);
-	solverConstraint.m_angularComponentB = rb1 ? rb1->getInvInertiaTensorWorld() * -torqueAxis1 * rb1->getAngularFactor() : btVector3(0, 0, 0);
+	solverConstraint.m_angularComponentB = rb1 ? invInertiaTensorWorldAsIfUnitMass_1 * -torqueAxis1 * rb1->getAngularFactor() : btVector3(0, 0, 0);
 
 	{
 #ifdef COMPUTE_IMPULSE_DENOM
@@ -1260,7 +1296,7 @@ void btSequentialImpulseConstraintSolver::convertJoint(btSolverConstraint* curre
 			btScalar mA = (rbA.getInvMass() > 0) ? btScalar(1) / rbA.getInvMass() : btScalar(0);
 			btScalar mB = (rbB.getInvMass() > 0) ? btScalar(1) / rbB.getInvMass() : btScalar(0);
 
-			// This is a workaround for weak constrinats when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
+			// This is a workaround for weak constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 			// strong as they should be in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
 			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = rbA.getInvInertiaTensorWorld() * mA;
 			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_B = rbB.getInvInertiaTensorWorld() * mB;
