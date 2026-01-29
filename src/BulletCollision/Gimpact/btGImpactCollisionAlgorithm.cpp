@@ -777,8 +777,8 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		}
 	}
 
-	//auxPairSet.clear();                    // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
-	//perThreadIntermediateResults.clear();  // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
+	m_auxPairSet.clear();                    // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean. UPDATE: surprisingly not superfluous - initial tolerances were broken after a reset without this. Investigate.
+	m_perThreadIntermediateResults.clear();  // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean. UPDATE: surprisingly not superfluous - initial tolerances were broken after a reset without this. Investigate.
 
 	btGimpactVsGimpactGroupedParams grpParams;
 
