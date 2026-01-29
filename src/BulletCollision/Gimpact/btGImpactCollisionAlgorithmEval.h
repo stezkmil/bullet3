@@ -64,7 +64,7 @@ struct btGimpactVsGimpactGroupedParams
 	btTransform lastSafeTrans0;
 	btTransform lastSafeTrans1;
 	bool doUnstuck;
-	std::tuple<int, bool> previouslyConsumedTime;
+	int previouslyConsumedTime;
 	btGimpactVsGimpactGroupedParams() {}
 };
 

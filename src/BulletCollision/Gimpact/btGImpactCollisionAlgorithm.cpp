@@ -578,14 +578,9 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 	const auto& prevTimeMap = m_dispatcher->getPreviouslyConsumedTime();
 	auto timeIter = prevTimeMap.find({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()});
 	if (timeIter != prevTimeMap.end())
-	{
-		grpParams.previouslyConsumedTime = timeIter->second;
-	}
+		grpParams.previouslyConsumedTime = std::get<0>(timeIter->second);
 	else
-	{
-		std::get<0>(grpParams.previouslyConsumedTime) = 0;
-		std::get<1>(grpParams.previouslyConsumedTime) = false;
-	}
+		grpParams.previouslyConsumedTime = 0;
 
 	shape0->lockChildShapes();
 	shape1->lockChildShapes();
@@ -782,8 +777,8 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 		}
 	}
 
-	auxPairSet.clear();                    // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
-	perThreadIntermediateResults.clear();  // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
+	//auxPairSet.clear();                    // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
+	//perThreadIntermediateResults.clear();  // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean
 
 	btGimpactVsGimpactGroupedParams grpParams;
 
@@ -796,14 +791,14 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	}
 
 	auto start = std::chrono::steady_clock::now();
-	gimpact_vs_gimpact_find_pairs(grpParams, grpParams.orgtrans0, grpParams.orgtrans1, perThreadIntermediateResults, auxPairSet, findOnlyFirstTriPair);
+	gimpact_vs_gimpact_find_pairs(grpParams, grpParams.orgtrans0, grpParams.orgtrans1, m_perThreadIntermediateResults, m_auxPairSet, findOnlyFirstTriPair);
 
 	auto end = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	m_dispatcher->addPreviouslyConsumedTime({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()}, {duration.count(), true});
+	m_dispatcher->addPreviouslyConsumedTime({body0Wrap->getCollisionObject()->getUserIndex(), body1Wrap->getCollisionObject()->getUserIndex()}, {duration.count(), m_dispatchInfo->m_stepCounter});
 
 	bool pairsExist = false;
-	for (auto perThreadIter = perThreadIntermediateResults.begin(); perThreadIter != perThreadIntermediateResults.end(); ++perThreadIter)
+	for (auto perThreadIter = m_perThreadIntermediateResults.begin(); perThreadIter != m_perThreadIntermediateResults.end(); ++perThreadIter)
 	{
 		pairsExist |= !perThreadIter->empty();
 		if (pairsExist)
@@ -823,13 +818,13 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	{
 		const btGImpactMeshShapePart* shapepart0 = static_cast<const btGImpactMeshShapePart*>(shape0);
 		const btGImpactMeshShapePart* shapepart1 = static_cast<const btGImpactMeshShapePart*>(shape1);
-		collide_sat_triangles_post(&perThreadIntermediateResults, nullptr, body0Wrap, body1Wrap, shapepart0, shapepart1, isSoft, isOnlyGatherContactCounts);
+		collide_sat_triangles_post(&m_perThreadIntermediateResults, nullptr, body0Wrap, body1Wrap, shapepart0, shapepart1, isSoft, isOnlyGatherContactCounts);
 	}
 
 	//printf("pairset.size() %d\n", pairset.size());
 
 	// We do not need this data anymore here and it can be quite hefty if for example the CF_ONLY_GATHER_CONTACT_COUNTS is used
-	perThreadIntermediateResults.clear();
+	m_perThreadIntermediateResults.clear();
 
 	if (shape0->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART &&
 		shape1->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART)
@@ -840,8 +835,8 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 #ifdef BULLET_TRIANGLE_COLLISION
 		collide_gjk_triangles(body0Wrap, body1Wrap, shapepart0, shapepart1, &pairset[0].m_index1, pairset.size());
 #else
-		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, auxPairSet, isSoft, isOnlyGatherContactCounts);
-		auxPairSet.clear();
+		collide_sat_triangles_aux(body0Wrap, body1Wrap, shapepart0, shapepart1, m_auxPairSet, isSoft, isOnlyGatherContactCounts);
+		m_auxPairSet.clear();
 #endif
 
 		// TODO this section seems misplaced from the Bullet architecture viewpoint. The m_dispatcher->needsResponse call should not be replicated here, but we should

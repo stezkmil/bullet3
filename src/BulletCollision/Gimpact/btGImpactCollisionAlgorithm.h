@@ -70,8 +70,8 @@ protected:
 	int m_part0;
 	int m_triface1;
 	int m_part1;
-	btPairSet auxPairSet;
-	ThreadLocalGImpactResult perThreadIntermediateResults;
+	btPairSet m_auxPairSet;
+	ThreadLocalGImpactResult m_perThreadIntermediateResults;
 	btCollisionAlgorithm* m_algorithmForSoftVsRigid;
 	btCollisionAlgorithm* m_algorithmForSoftVsSoft;
 

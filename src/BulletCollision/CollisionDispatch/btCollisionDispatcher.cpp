@@ -283,11 +283,9 @@ void btCollisionDispatcher::dispatchAllCollisionPairs(btOverlappingPairCache* pa
 {
 	//m_blockedForChanges = true;
 
-	for (auto& time : previouslyConsumedTime)
-	{
-		std::get<1>(time.second) = false;  // out of date
-	}
-
+	// For now, some simple periodical cleanup scheme, so that we do not accumulate and store outdated time data forever
+	if (!(dispatchInfo.m_stepCounter % previouslyConsumedTimeCleanupPeriod))
+		clearPreviouslyConsumedTime(dispatchInfo.m_stepCounter, false);
 	btCollisionPairCallback collisionCallback(dispatchInfo, this);
 
 	{

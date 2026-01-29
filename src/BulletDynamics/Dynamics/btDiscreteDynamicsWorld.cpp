@@ -469,7 +469,6 @@ void btDiscreteDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 	btDispatcherInfo& dispatchInfo = getDispatchInfo();
 
 	dispatchInfo.m_timeStep = timeStep;
-	dispatchInfo.m_stepCount = 0;
 	dispatchInfo.m_debugDraw = getDebugDrawer();
 
 	createPredictiveContacts(timeStep);
@@ -506,6 +505,9 @@ void btDiscreteDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 	{
 		(*m_internalTickCallback)(this, timeStep);
 	}
+
+	++m_executed_step_counter;
+	m_dispatchInfo.m_stepCounter = m_executed_step_counter;
 }
 
 void btDiscreteDynamicsWorld::setGravity(const btVector3& gravity)

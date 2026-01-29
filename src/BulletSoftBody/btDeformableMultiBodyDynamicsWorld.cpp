@@ -183,6 +183,9 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	// End solver-wise simulation step
 	// ///////////////////////////////
+
+	++m_executed_step_counter;
+	m_dispatchInfo.m_stepCounter = m_executed_step_counter;
 }
 
 void btDeformableMultiBodyDynamicsWorld::performDeformableCollisionDetection()
@@ -534,7 +537,6 @@ void btDeformableMultiBodyDynamicsWorld::reinitialize(btScalar timeStep)
 	m_deformableBodySolver->reinitialize(m_softBodies, timeStep);
 	btDispatcherInfo& dispatchInfo = btMultiBodyDynamicsWorld::getDispatchInfo();
 	dispatchInfo.m_timeStep = timeStep;
-	dispatchInfo.m_stepCount = 0;
 	dispatchInfo.m_debugDraw = btMultiBodyDynamicsWorld::getDebugDrawer();
 	btMultiBodyDynamicsWorld::getSolverInfo().m_timeStep = timeStep;
 	if (m_useProjection)

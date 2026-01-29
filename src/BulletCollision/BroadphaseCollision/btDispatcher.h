@@ -23,6 +23,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 
 #include <set>
 #include <map>
+#include <unordered_map>
 
 class btCollisionAlgorithm;
 struct btBroadphaseProxy;
@@ -43,7 +44,7 @@ struct btDispatcherInfo
 	};
 	btDispatcherInfo()
 		: m_timeStep(btScalar(0.)),
-		  m_stepCount(0),
+		  m_stepCounter(0),
 		  m_dispatchFunc(DISPATCH_DISCRETE),
 		  m_timeOfImpact(btScalar(1.)),
 		  m_useContinuous(true),
@@ -58,7 +59,7 @@ struct btDispatcherInfo
 	{
 	}
 	btScalar m_timeStep;
-	int m_stepCount;
+	uint64_t m_stepCounter;
 	int m_dispatchFunc;
 	mutable btScalar m_timeOfImpact;
 	bool m_useContinuous;
@@ -85,7 +86,17 @@ class btDispatcher
 public:
 	typedef std::set<std::pair<const btCollisionObject*, const btCollisionObject*>> btInitialCollisionParticipants;
 	typedef std::set<const btCollisionObject*> btInitialCollisionParticipantsSingle;
-	typedef std::map<std::pair<int, int>, std::tuple<int, bool>> btPreviouslyFoundPairMap;  // value int is the time itself, bool is whether the value is up to date
+
+	struct btPreviouslyFoundPairMapHash
+	{
+		std::size_t operator()(const std::pair<int, int>& p) const noexcept
+		{
+			std::size_t h1 = std::hash<int>{}(p.first);
+			std::size_t h2 = std::hash<int>{}(p.second);
+			return h1 ^ (h2 << 1);
+		}
+	};
+	typedef std::unordered_map<std::pair<int, int>, std::tuple<int, uint64_t>, btPreviouslyFoundPairMapHash> btPreviouslyFoundPairMap;  // value int is the time itself, uint64_t is the simulation step number
 
 	virtual ~btDispatcher();
 
@@ -131,6 +142,8 @@ public:
 	virtual void addPreviouslyConsumedTime(btPreviouslyFoundPairMap::key_type key, btPreviouslyFoundPairMap::mapped_type value) = 0;
 
 	virtual const btPreviouslyFoundPairMap& getPreviouslyConsumedTime() const = 0;
+
+	virtual void clearPreviouslyConsumedTime(uint64_t currentStep, bool forceClearAll) = 0;
 };
 
 #endif  //BT_DISPATCHER_H

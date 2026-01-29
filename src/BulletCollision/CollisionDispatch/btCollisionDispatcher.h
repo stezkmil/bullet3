@@ -48,6 +48,8 @@ typedef void (*btProgressReportCallback)(void* ptr, int index, int total);
 class btCollisionDispatcher : public btDispatcher
 {
 protected:
+	static const auto previouslyConsumedTimeCleanupPeriod = 10000;
+
 	int m_dispatcherFlags;
 
 	btAlignedObjectArray<btPersistentManifold*> m_manifoldsPtr;
@@ -112,6 +114,18 @@ public:
 	const btPreviouslyFoundPairMap& getPreviouslyConsumedTime() const override
 	{
 		return previouslyConsumedTime;
+	}
+
+	void clearPreviouslyConsumedTime(uint64_t currentStep, bool forceClearAll) override
+	{
+		if (forceClearAll)
+			previouslyConsumedTime.clear();
+		else
+			for (auto it = previouslyConsumedTime.begin(); it != previouslyConsumedTime.end();)
+				if ((currentStep - std::get<1>(it->second)) > previouslyConsumedTimeCleanupPeriod)
+					it = previouslyConsumedTime.erase(it);
+				else
+					++it;
 	}
 
 	const btInitialCollisionParticipants& getInitialCollisionParticipants() const override

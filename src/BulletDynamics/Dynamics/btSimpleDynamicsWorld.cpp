@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #include "btSimpleDynamicsWorld.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "BulletCollision/BroadphaseCollision/btSimpleBroadphase.h"
@@ -61,7 +60,6 @@ int btSimpleDynamicsWorld::stepSimulation(btScalar timeStep, int maxSubSteps, bt
 
 	btDispatcherInfo& dispatchInfo = getDispatchInfo();
 	dispatchInfo.m_timeStep = timeStep;
-	dispatchInfo.m_stepCount = 0;
 	dispatchInfo.m_debugDraw = getDebugDrawer();
 
 	///perform collision detection

@@ -17,7 +17,6 @@ subject to the following restrictions:
 This is a modified version of the Bullet Continuous Collision Detection and Physics Library
 */
 
-
 #ifndef BT_DYNAMICS_WORLD_H
 #define BT_DYNAMICS_WORLD_H
 
@@ -40,7 +39,7 @@ enum btDynamicsWorldType
 	BT_SOFT_RIGID_DYNAMICS_WORLD = 4,
 	BT_GPU_DYNAMICS_WORLD = 5,
 	BT_SOFT_MULTIBODY_DYNAMICS_WORLD = 6,
-    BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD = 7
+	BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD = 7
 };
 
 ///The btDynamicsWorld is the interface class for several dynamics implementation, basic, discrete, parallel, and continuous etc.
@@ -54,10 +53,11 @@ protected:
 
 	btContactSolverInfo m_solverInfo;
 
+	uint64_t m_executed_step_counter;
+
 public:
 	btDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* broadphase, btCollisionConfiguration* collisionConfiguration)
-		: btCollisionWorld(dispatcher, broadphase, collisionConfiguration), m_internalTickCallback(0), m_internalPreTickCallback(0),
-		m_internalPostDiscreteCollisionDetectionTickCallback(0), m_worldUserInfo(0)
+		: btCollisionWorld(dispatcher, broadphase, collisionConfiguration), m_internalTickCallback(0), m_internalPreTickCallback(0), m_internalPostDiscreteCollisionDetectionTickCallback(0), m_worldUserInfo(0), m_executed_step_counter(0)
 	{
 	}
 
@@ -166,6 +166,8 @@ public:
 	virtual void addCharacter(btActionInterface* character) { (void)character; }
 	///obsolete, use removeAction instead
 	virtual void removeCharacter(btActionInterface* character) { (void)character; }
+
+	uint64_t getExecutedStepCount() const { return m_executed_step_counter; }
 };
 
 ///do not change those serialization structures, it requires an updated sBulletDNAstr/sBulletDNAstr64
