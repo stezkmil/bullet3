@@ -196,6 +196,50 @@ public:
 		}
 	}
 
+	virtual void addScaledHessian(btScalar scale)
+	{
+		for (int i = 0; i < m_softBodies.size(); ++i)
+		{
+			btSoftBody* psb = m_softBodies[i];
+			if (!psb->isActive() || psb->isStaticObject())
+			{
+				continue;
+			}
+			for (int j = 0; j < psb->m_links.size(); ++j)
+			{
+				const btSoftBody::Link& link = psb->m_links[j];
+				btSoftBody::Node* node1 = link.m_n[0];
+				btSoftBody::Node* node2 = link.m_n[1];
+				btScalar r = link.m_rl;
+
+				btVector3 dir = (node1->m_q - node2->m_q);
+				btScalar dir_norm = dir.norm();
+				if (dir_norm > SIMD_EPSILON)
+				{
+					btVector3 dir_normalized = dir.normalized();
+					btScalar scaled_k = scale * (scale + m_dampingStiffness) * (link.m_bbending ? m_bendingStiffness : m_elasticStiffness);
+					btMatrix3x3 K;
+					btScalar coeff = scaled_k * ((dir_norm - r) / dir_norm);
+					btScalar coeff2 = scaled_k - coeff;
+					// df1 = - K * dx
+					// K = coeff * I + coeff2 * (dir_n * dir_n^T)
+					// m_effectiveMass -= K
+					K = btMatrix3x3::getIdentity() * coeff;
+					// Manual OuterProduct add
+					for(int i=0; i<3; ++i)
+					{
+						for(int k=0; k<3; ++k)
+						{
+							K[i][k] += coeff2 * dir_normalized[i] * dir_normalized[k];
+						}
+					}
+					node1->m_effectiveMass -= K;
+					node2->m_effectiveMass -= K;
+				}
+			}
+		}
+	}
+
 	virtual double totalElasticEnergy(btScalar dt)
 	{
 		double energy = 0;

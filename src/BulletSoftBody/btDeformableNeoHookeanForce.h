@@ -326,6 +326,96 @@ public:
 
 	virtual void buildDampingForceDifferentialDiagonal(btScalar scale, TVStack& diagA) {}
 
+	virtual void addScaledHessian(btScalar scale)
+	{
+		for (int i = 0; i < m_softBodies.size(); ++i)
+		{
+			btSoftBody* psb = m_softBodies[i];
+			if (!psb->isActive() || psb->isStaticObject())
+			{
+				continue;
+			}
+			for (int j = 0; j < psb->m_tetras.size(); ++j)
+			{
+				btSoftBody::Tetra& tetra = psb->m_tetras[j];
+				btSoftBody::Node* node0 = tetra.m_n[0];
+				btSoftBody::Node* node1 = tetra.m_n[1];
+				btSoftBody::Node* node2 = tetra.m_n[2];
+				btSoftBody::Node* node3 = tetra.m_n[3];
+				btScalar scale1 = scale * (scale + m_mu_damp / m_mu) * tetra.m_element_measure;
+
+				btMatrix3x3 dF_r[4];
+				btVector3 r[3] = {btVector3(1, 0, 0), btVector3(0, 1, 0), btVector3(0, 0, 1)};
+
+				// df_i/dx_i
+				// dx_0 = r
+				for (int k = 0; k < 3; ++k)
+				{
+					// Ds = (dx1-dx0, dx2-dx0, dx3-dx0)^T = (-r, -r, -r)^T
+					btMatrix3x3 Ds = btMatrix3x3(-r[k], -r[k], -r[k]).transpose();
+					dF_r[k] = Ds * tetra.m_Dm_inverse;
+				}
+				for (int k = 0; k < 3; ++k)
+				{
+					btMatrix3x3 dP;
+					firstPiolaDifferential(psb->m_tetraScratches[j], dF_r[k], dP);
+					btMatrix3x3 df_on_node123 = dP * tetra.m_Dm_inverse.transpose();
+					btVector3 df_on_node0 = df_on_node123 * btVector3(-1, -1, -1);
+					// node0->m_effectiveMass.getColumn(k) -= df_on_node0 * scale1;
+					for (int r = 0; r < 3; ++r) node0->m_effectiveMass[r][k] -= df_on_node0[r] * scale1;
+				}
+
+				// dx_1 = r
+				for (int k = 0; k < 3; ++k)
+				{
+					// Ds = (dx1-dx0, dx2-dx0, dx3-dx0)^T = (r, 0, 0)^T
+					btMatrix3x3 Ds = btMatrix3x3(r[k], btVector3(0, 0, 0), btVector3(0, 0, 0)).transpose();
+					dF_r[k] = Ds * tetra.m_Dm_inverse;
+				}
+				for (int k = 0; k < 3; ++k)
+				{
+					btMatrix3x3 dP;
+					firstPiolaDifferential(psb->m_tetraScratches[j], dF_r[k], dP);
+					btMatrix3x3 df_on_node123 = dP * tetra.m_Dm_inverse.transpose();
+					// node1->m_effectiveMass.getColumn(k) -= df_on_node123.getColumn(0) * scale1;
+					for (int r = 0; r < 3; ++r) node1->m_effectiveMass[r][k] -= df_on_node123[r][0] * scale1;
+				}
+
+				// dx_2 = r
+				for (int k = 0; k < 3; ++k)
+				{
+					// Ds = (dx1-dx0, dx2-dx0, dx3-dx0)^T = (0, r, 0)^T
+					btMatrix3x3 Ds = btMatrix3x3(btVector3(0, 0, 0), r[k], btVector3(0, 0, 0)).transpose();
+					dF_r[k] = Ds * tetra.m_Dm_inverse;
+				}
+				for (int k = 0; k < 3; ++k)
+				{
+					btMatrix3x3 dP;
+					firstPiolaDifferential(psb->m_tetraScratches[j], dF_r[k], dP);
+					btMatrix3x3 df_on_node123 = dP * tetra.m_Dm_inverse.transpose();
+					// node2->m_effectiveMass.getColumn(k) -= df_on_node123.getColumn(1) * scale1;
+					for (int r = 0; r < 3; ++r) node2->m_effectiveMass[r][k] -= df_on_node123[r][1] * scale1;
+				}
+
+				// dx_3 = r
+				for (int k = 0; k < 3; ++k)
+				{
+					// Ds = (dx1-dx0, dx2-dx0, dx3-dx0)^T = (0, 0, r)^T
+					btMatrix3x3 Ds = btMatrix3x3(btVector3(0, 0, 0), btVector3(0, 0, 0), r[k]).transpose();
+					dF_r[k] = Ds * tetra.m_Dm_inverse;
+				}
+				for (int k = 0; k < 3; ++k)
+				{
+					btMatrix3x3 dP;
+					firstPiolaDifferential(psb->m_tetraScratches[j], dF_r[k], dP);
+					btMatrix3x3 df_on_node123 = dP * tetra.m_Dm_inverse.transpose();
+					// node3->m_effectiveMass.getColumn(k) -= df_on_node123.getColumn(2) * scale1;
+					for (int r = 0; r < 3; ++r) node3->m_effectiveMass[r][k] -= df_on_node123[r][2] * scale1;
+				}
+			}
+		}
+	}
+
 	virtual void addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df)
 	{
 		int numNodes = getNumNodes();
