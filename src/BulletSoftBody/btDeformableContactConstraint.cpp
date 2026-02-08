@@ -84,12 +84,38 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 	btVector3 vb = getVb();
 	btVector3 vr = (vb - va);
 	// + (m_anchor->m_node->m_x - cti.m_colObj->getWorldTransform() * m_anchor->m_local) * 10.0
-	const btScalar dn = btDot(vr, vr);
-	// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
-	btScalar residualSquare = dn * dn;
-	btVector3 impulse = m_anchor->m_c0 * vr;
+	//btVector3 pA = cti.m_colObj->getWorldTransform() * m_anchor->m_local;
+	//btVector3 pB = m_anchor->m_node->m_x;
+	//btVector3 C = pB - pA;
+
+	btScalar dt = infoGlobal.m_timeStep;
+	btScalar erp = 0.01;
+
+	const btTransform& Ta =
+		cti.m_colObj->getInterpolationWorldTransform();  // preferred
+	btVector3 pA_pred = Ta * m_anchor->m_local;
+
+	btSoftBody::Node* n = m_anchor->m_node;
+	btVector3 pB_pred = n->m_x + dt * (n->m_v + n->m_splitv);
+
+	btVector3 C_pred = pB_pred - pA_pred;
+	btVector3 bias = (erp / dt) * C_pred;
+
+	btScalar maxBiasSpeed = 1000.0;  // mm/s, tune
+	btScalar b2 = bias.length2();
+	if (b2 > maxBiasSpeed * maxBiasSpeed)
+		bias *= maxBiasSpeed / btSqrt(b2);
+
+	btVector3 J = m_anchor->m_c0 * (-(vr + bias));
+	//btVector3 J = (1.0 / dt) * (m_anchor->m_c0 * (-(vr + bias)));
+
+	btVector3 r = vr + bias;  // (optionally + cfmTerm)
+	btScalar residual = r.dot(r);
+
+	fprintf(stderr, "va (rigid) %f %f %f vb (soft) %f %f %f vr (vb - va) %f %f %f C_pred %f %f %f J %f %f %f bias %f %f %f erp %f dt %f residual %f\n", va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(), vr.x(), vr.y(), vr.z(), C_pred.x(), C_pred.y(), C_pred.z(), J.x(), J.y(), J.z(), bias.x(), bias.y(), bias.z(), erp, dt, residual);
+	//btVector3 impulse = m_anchor->m_c0 * vr;
 	// apply impulse to deformable nodes involved and change their velocities
-	applyImpulse(impulse);
+	applyImpulse(J);
 
 	// apply impulse to the rigid/multibodies involved and change their velocities
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
@@ -98,7 +124,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
 		if (rigidCol && rigidCol->isActive())
 		{
-			rigidCol->applyImpulse(impulse, m_anchor->m_c1);
+			rigidCol->applyImpulse(-J, m_anchor->m_c1);
 		}
 	}
 	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
@@ -109,15 +135,15 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		{
 			const btScalar* deltaV_normal = &m_anchor->jacobianData_normal.m_deltaVelocitiesUnitImpulse[0];
 			// apply normal component of the impulse
-			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_normal, impulse.dot(cti.m_normal));
+			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_normal, J.dot(cti.m_normal));
 			// apply tangential component of the impulse
 			const btScalar* deltaV_t1 = &m_anchor->jacobianData_t1.m_deltaVelocitiesUnitImpulse[0];
-			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t1, impulse.dot(m_anchor->t1));
+			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t1, J.dot(m_anchor->t1));
 			const btScalar* deltaV_t2 = &m_anchor->jacobianData_t2.m_deltaVelocitiesUnitImpulse[0];
-			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t2, impulse.dot(m_anchor->t2));
+			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t2, J.dot(m_anchor->t2));
 		}
 	}
-	return residualSquare;
+	return residual;
 }
 
 btVector3 btDeformableNodeAnchorConstraint::getVb() const
@@ -128,7 +154,7 @@ btVector3 btDeformableNodeAnchorConstraint::getVb() const
 void btDeformableNodeAnchorConstraint::applyImpulse(const btVector3& impulse)
 {
 	btVector3 dv = impulse * m_anchor->m_c2;
-	m_anchor->m_node->m_v -= dv;
+	m_anchor->m_node->m_v += dv;
 }
 
 /* ================   Deformable vs. Rigid   =================== */

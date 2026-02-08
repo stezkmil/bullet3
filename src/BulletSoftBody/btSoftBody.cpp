@@ -594,14 +594,20 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 	c.m_cti.m_offset = dst;
 	c.m_node = &m_nodes[node];
 	const btScalar fc = m_cfg.kDF * body->getFriction();
-	c.m_c2 = ima;
+
+	//c.m_c2 = ima;
+	btScalar anchorMassScale = 0.01;  // tune
+	btScalar ima_eff = ima * anchorMassScale;
+	btScalar cfm = 1e-6;  // tune
+	c.m_c2 = ima_eff;
+
 	c.m_c3 = fc;
 	c.m_c4 = body->isStaticOrKinematicObject() ? m_cfg.kKHR : m_cfg.kCHR;
 	static const btMatrix3x3 iwiStatic(0, 0, 0, 0, 0, 0, 0, 0, 0);
 	const btMatrix3x3& iwi = body->getInvInertiaTensorWorld();
 	const btVector3 ra = n.m_x - wtr.getOrigin();
 
-	c.m_c0 = ImpulseMatrix(1, ima, imb, iwi, ra);
+	c.m_c0 = ImpulseMatrix2(0.002 /*TODO fix*/, ima_eff, imb, iwi, ra, cfm);
 	c.m_c1 = ra;
 	c.m_local = body->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;

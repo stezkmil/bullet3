@@ -1,4 +1,4 @@
-﻿/*
+/*
 Bullet Continuous Collision Detection and Physics Library
 Copyright (c) 2003-2006 Erwin Coumans  https://bulletphysics.org
 
@@ -1009,6 +1009,25 @@ static inline btMatrix3x3 ImpulseMatrix(btScalar dt,
 										const btVector3& r)
 {
 	return (Diagonal(1 / dt) * Add(Diagonal(ima), MassMatrix(imb, iwi, r)).inverse());
+}
+
+static inline btMatrix3x3 ImpulseMatrix2(btScalar dt, btScalar ima_eff,
+										 btScalar imb,
+										 const btMatrix3x3& iwi,
+										 const btVector3& r,
+										 btScalar cfm)
+{
+	btMatrix3x3 K = Add(Diagonal(ima_eff), MassMatrix(imb, iwi, r));
+
+	// CFM in velocity constraints is usually "softness" on K. If you keep Bullet's style,
+	// make it dt-aware:
+	// K += (cfm / dt) * I   (or equivalently add cfm' to diagonal then multiply by 1/dt later)
+
+	K[0][0] += cfm /*/ dt*/;
+	K[1][1] += cfm /*/ dt*/;
+	K[2][2] += cfm /*/ dt*/;
+
+	return /*Diagonal(1 / dt) * */ K.inverse();
 }
 
 //
