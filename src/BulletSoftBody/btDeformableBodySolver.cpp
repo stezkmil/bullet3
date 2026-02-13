@@ -547,7 +547,7 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 			//fprintf(stderr, "a.m_local %d %f %f %f\n", j, a.m_local.x(), a.m_local.y(), a.m_local.z());
 			//fprintf(stderr, "n->m_x orig %d %f %f %f\n", j, n->m_x.x(), n->m_x.y(), n->m_x.z());
 			//fprintf(stderr, "getWorldTransform %d %f %f %f\n", j, a.m_cti.m_colObj->getWorldTransform().getOrigin().x(), a.m_cti.m_colObj->getWorldTransform().getOrigin().y(), a.m_cti.m_colObj->getWorldTransform().getOrigin().z());
-			n->m_x = a.m_cti.m_colObj->getWorldTransform() * a.m_local;
+			//n->m_x = a.m_cti.m_colObj->getWorldTransform() * a.m_local;
 			//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", j, n->m_x.x(), n->m_x.y(), n->m_x.z());
 
 			// update multibody anchor info

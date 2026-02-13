@@ -127,6 +127,13 @@ public:
 	virtual btVector3 getVa() const;
 	// get the velocity of the deformable node in contact
 	virtual btVector3 getVb() const;
+
+	// --- hard positional (split-impulse) anchor solve ---
+	btVector3 getSplitVa() const;
+	btVector3 getSplitVb() const;
+	void applySplitImpulse(const btVector3& impulse);
+	btScalar solveSplitImpulseSoft(const btContactSolverInfo& infoGlobal);
+
 	virtual btVector3 getDv(const btSoftBody::Node* n) const
 	{
 		return btVector3(0, 0, 0);

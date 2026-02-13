@@ -103,6 +103,7 @@ void btRigidBody::setupRigidBody(const btRigidBody::btRigidBodyConstructionInfo&
 
 void btRigidBody::predictIntegratedTransform(btScalar timeStep, btTransform& predictedTransform)
 {
+	fprintf(stderr, "btRigidBody::predictIntegratedTransform m_linearVelocity %f %f %f from %f %f %f\n", m_linearVelocity.x(), m_linearVelocity.y(), m_linearVelocity.z(), m_worldTransform.getOrigin().x(), m_worldTransform.getOrigin().y(), m_worldTransform.getOrigin().z());
 	btTransformUtil::integrateTransform(m_worldTransform, m_linearVelocity, m_angularVelocity, timeStep, predictedTransform);
 }
 
@@ -425,6 +426,7 @@ void btRigidBody::setCenterOfMassTransform(const btTransform& xform)
 	m_interpolationLinearVelocity = getLinearVelocity();
 	m_interpolationAngularVelocity = getAngularVelocity();
 	m_worldTransform = xform;
+	fprintf(stderr, "btRigidBody::setCenterOfMassTransform %f %f %f\n", m_worldTransform.getOrigin().x(), m_worldTransform.getOrigin().y(), m_worldTransform.getOrigin().z());
 	updateInertiaTensor();
 }
 

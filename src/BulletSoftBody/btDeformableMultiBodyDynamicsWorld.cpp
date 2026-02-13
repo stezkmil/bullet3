@@ -366,6 +366,10 @@ void btDeformableMultiBodyDynamicsWorld::positionCorrection(btScalar timeStep)
 		if (pushVelocity[0] != 0.f || pushVelocity[1] != 0 || pushVelocity[2] != 0 || turnVelocity[0] != 0.f || turnVelocity[1] != 0 || turnVelocity[2] != 0)
 		{
 			btTransformUtil::integrateTransform(rb->getWorldTransform(), pushVelocity, turnVelocity * infoGlobal.m_splitImpulseTurnErp, timeStep, newTransform);
+			fprintf(stderr, "btDeformableMultiBodyDynamicsWorld::positionCorrection from %f %f %f to %f %f %f pushVelocity %f %f %f\n",
+					rb->getWorldTransform().getOrigin().x(), rb->getWorldTransform().getOrigin().y(), rb->getWorldTransform().getOrigin().z(),
+					newTransform.getOrigin().x(), newTransform.getOrigin().y(), newTransform.getOrigin().z(),
+					pushVelocity.x(), pushVelocity.y(), pushVelocity.z());
 			rb->setWorldTransform(newTransform);
 			rb->setPushVelocity(zero);
 			rb->setTurnVelocity(zero);

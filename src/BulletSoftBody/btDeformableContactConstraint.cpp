@@ -117,7 +117,10 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t2, impulse.dot(m_anchor->t2));
 		}
 	}
-	return residualSquare;
+
+	fprintf(stderr, "va (rigid) %f %f %f vb (soft) %f %f %f vr (vb - va) %f %f %f residual %f\n", va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(), vr.x(), vr.y(), vr.z(), residualSquare);
+
+	return residualSquare /*0.0*/;
 }
 
 btVector3 btDeformableNodeAnchorConstraint::getVb() const
@@ -129,6 +132,122 @@ void btDeformableNodeAnchorConstraint::applyImpulse(const btVector3& impulse)
 {
 	btVector3 dv = impulse * m_anchor->m_c2;
 	m_anchor->m_node->m_v -= dv;
+}
+
+btVector3 btDeformableNodeAnchorConstraint::getSplitVa() const
+
+{
+	const btSoftBody::sCti& cti = m_anchor->m_cti;
+	btVector3 va(0, 0, 0);
+	if (cti.m_colObj->hasContactResponse())
+	{
+		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
+		{
+			btRigidBody* rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
+			va = rigidCol ? rigidCol->getPushVelocityInLocalPoint(m_anchor->m_c1) : btVector3(0, 0, 0);
+		}
+		// TODO feather
+	}
+	return va;
+}
+
+btVector3 btDeformableNodeAnchorConstraint::getSplitVb() const
+{
+	return m_anchor->m_node->m_splitv;
+}
+
+void btDeformableNodeAnchorConstraint::applySplitImpulse(const btVector3& impulse)
+{
+	btVector3 dv = impulse * m_anchor->m_c2;
+	m_anchor->m_node->m_splitv -= dv;
+}
+
+btScalar btDeformableNodeAnchorConstraint::solveSplitImpulseSoft(const btContactSolverInfo& infoGlobal)
+{
+	const btSoftBody::sCti& cti = m_anchor->m_cti;
+	btVector3 va = getSplitVa() + getVa();
+	btVector3 vb = /*getSplitVb()*/ getVb();
+	//btVector3 va_split = getSplitVa();
+	//btVector3 vb_split = getSplitVb();
+	//btVector3 va_nonsplit = getVa();
+	//btVector3 vb_nonsplit = getVb();
+	auto rigid_pt = (cti.m_colObj->getWorldTransform() * m_anchor->m_local);
+	auto trigger = (m_anchor->m_node->m_x) - rigid_pt;
+	fprintf(stderr, "m_anchor->m_node->m_x %f %f %f cti.m_colObj->getWorldTransform() * m_anchor->m_local %f %f %f diff %f %f %f\n", m_anchor->m_node->m_x.x(), m_anchor->m_node->m_x.y(), m_anchor->m_node->m_x.z(), rigid_pt.x(), rigid_pt.y(), rigid_pt.z(), trigger.x(), trigger.y(), trigger.z());
+	auto rigid_pos = cti.m_colObj->getWorldTransform() * m_anchor->m_local;
+	auto xb_pred = (m_anchor->m_node->m_x + vb * infoGlobal.m_timeStep);
+
+	btTransform tr0 = cti.m_colObj->getWorldTransform();
+	btTransform trPred;
+	btTransformUtil::integrateTransform(
+		tr0,
+		m_anchor->m_body->getLinearVelocity() + m_anchor->m_body->getPushVelocity(),
+		m_anchor->m_body->getAngularVelocity() + m_anchor->m_body->getTurnVelocity() * infoGlobal.m_splitImpulseTurnErp,
+		infoGlobal.m_timeStep,
+		trPred);
+	btVector3 xa_pred = trPred * m_anchor->m_local;
+	auto xa_pred_alt = (cti.m_colObj->getWorldTransform() * m_anchor->m_local + va * infoGlobal.m_timeStep);
+
+	btVector3 vr = xb_pred - xa_pred;
+
+	const btVector3 dv_rel_target = (-vr) * (1.0 / infoGlobal.m_timeStep);
+	// Current relative split velocity is (vb - va)
+	const btVector3 dv = dv_rel_target /*- (vb - va)*/;
+
+	btVector3 impulse = m_anchor->m_c0 * dv;
+	//auto imp_len = impulse.length();
+	//if (imp_len > 0.00001)
+	//	impulse = impulse.normalized() * imp_len * 0.5;
+
+	// apply impulse to deformable nodes involved and change their velocities
+	//applySplitImpulse(-impulse);
+	applyImpulse(-impulse);
+
+	// apply impulse to the rigid/multibodies involved and change their velocities
+	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
+	{
+		btRigidBody* rigidCol = 0;
+		rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
+		if (rigidCol && rigidCol->isActive())
+		{
+			rigidCol->applyPushImpulse(-impulse, m_anchor->m_c1);
+			//rigidCol->applyImpulse(-impulse, m_anchor->m_c1);
+		}
+	}
+
+	btVector3 check_va = getSplitVa() + getVa();
+	btVector3 check_vb = /*getSplitVb()*/ getVb();
+	btVector3 check_va_split = getSplitVa();
+	//btVector3 check_vb_split = getSplitVb();
+	btVector3 check_va_nonsplit = getVa();
+	//btVector3 check_vb_nonsplit = getVb();
+
+	auto va_diff = check_va - va;
+	auto vb_diff = check_vb - vb;
+	fprintf(stderr, "(check_va - va) %f %f %f (check_vb - vb) %f %f %f check_va %f %f %f check_va_split %f %f %f check_va_nonsplit %f %f %f check_vb %f %f %f va %f %f %f vb %f %f %f\n", va_diff.x(), va_diff.y(), va_diff.z(), vb_diff.x(), vb_diff.y(), vb_diff.z(), check_va.x(), check_va.y(), check_va.z(), check_va_split.x(), check_va_split.y(), check_va_split.z(), check_va_nonsplit.x(), check_va_nonsplit.y(), check_va_nonsplit.z(), check_vb.x(), check_vb.y(), check_vb.z(), va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z());
+
+	auto soft_check = (m_anchor->m_node->m_x + check_vb * infoGlobal.m_timeStep);
+	btTransform rigid_pred;
+	btTransformUtil::integrateTransform(cti.m_colObj->getWorldTransform(), m_anchor->m_body->getLinearVelocity() + m_anchor->m_body->getPushVelocity(), m_anchor->m_body->getAngularVelocity() + m_anchor->m_body->getTurnVelocity() * infoGlobal.m_splitImpulseTurnErp, infoGlobal.m_timeStep, rigid_pred);
+	auto rigid_check_anchor_pos = rigid_pred * m_anchor->m_local;
+	auto check = soft_check - rigid_check_anchor_pos;
+
+	const btScalar dn = btDot(check, check);
+	// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
+	btScalar residualSquare = dn * dn;
+
+	fprintf(stderr, "xa_pred %f %f %f xb_pred %f %f %f rigid_check_anchor_pos %f %f %f soft_check %f %f %f check %f %f %f va (rigid) %f %f %f vb (soft) %f %f %f vr (xb_pred - xa_pred) %f %f %f residual %f\n",
+			xa_pred.x(), xa_pred.y(), xa_pred.z(),
+			xb_pred.x(), xb_pred.y(), xb_pred.z(),
+			rigid_check_anchor_pos.x(), rigid_check_anchor_pos.y(), rigid_check_anchor_pos.z(),
+			soft_check.x(), soft_check.y(), soft_check.z(),
+			check.x(), check.y(), check.z(),
+			va.x(), va.y(), va.z(),
+			vb.x(), vb.y(), vb.z(),
+			vr.x(), vr.y(), vr.z(),
+			residualSquare);
+
+	return residualSquare /*0.0*/;
 }
 
 /* ================   Deformable vs. Rigid   =================== */
