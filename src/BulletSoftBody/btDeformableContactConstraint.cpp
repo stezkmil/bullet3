@@ -166,7 +166,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulseSoft(const btContact
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
 	btVector3 va = getSplitVa() + getVa();
-	btVector3 vb = /*getSplitVb()*/ getVb();
+	btVector3 vb = /*getSplitVb()*/ /*getVb()*/ m_anchor->m_node->m_vn;
 	//btVector3 va_split = getSplitVa();
 	//btVector3 vb_split = getSplitVb();
 	//btVector3 va_nonsplit = getVa();
@@ -201,7 +201,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulseSoft(const btContact
 
 	// apply impulse to deformable nodes involved and change their velocities
 	//applySplitImpulse(-impulse);
-	applyImpulse(-impulse);
+	//applyImpulse(-impulse);
 
 	// apply impulse to the rigid/multibodies involved and change their velocities
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
@@ -216,7 +216,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulseSoft(const btContact
 	}
 
 	btVector3 check_va = getSplitVa() + getVa();
-	btVector3 check_vb = /*getSplitVb()*/ getVb();
+	btVector3 check_vb = /*getSplitVb()*/ /*getVb()*/ m_anchor->m_node->m_vn;
 	btVector3 check_va_split = getSplitVa();
 	//btVector3 check_vb_split = getSplitVb();
 	btVector3 check_va_nonsplit = getVa();
@@ -224,7 +224,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulseSoft(const btContact
 
 	auto va_diff = check_va - va;
 	auto vb_diff = check_vb - vb;
-	fprintf(stderr, "(check_va - va) %f %f %f (check_vb - vb) %f %f %f check_va %f %f %f check_va_split %f %f %f check_va_nonsplit %f %f %f check_vb %f %f %f va %f %f %f vb %f %f %f\n", va_diff.x(), va_diff.y(), va_diff.z(), vb_diff.x(), vb_diff.y(), vb_diff.z(), check_va.x(), check_va.y(), check_va.z(), check_va_split.x(), check_va_split.y(), check_va_split.z(), check_va_nonsplit.x(), check_va_nonsplit.y(), check_va_nonsplit.z(), check_vb.x(), check_vb.y(), check_vb.z(), va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z());
+	fprintf(stderr, "(check_va - va) %f %f %f (check_vb - vb) %f %f %f check_va %f %f %f check_va_split %f %f %f check_va_nonsplit %f %f %f check_vb %f %f %f va %f %f %f vb %f %f %f vn %f %f %f\n", va_diff.x(), va_diff.y(), va_diff.z(), vb_diff.x(), vb_diff.y(), vb_diff.z(), check_va.x(), check_va.y(), check_va.z(), check_va_split.x(), check_va_split.y(), check_va_split.z(), check_va_nonsplit.x(), check_va_nonsplit.y(), check_va_nonsplit.z(), check_vb.x(), check_vb.y(), check_vb.z(), va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(), m_anchor->m_node->m_vn.x(), m_anchor->m_node->m_vn.y(), m_anchor->m_node->m_vn.z());
 
 	auto soft_check = (m_anchor->m_node->m_x + check_vb * infoGlobal.m_timeStep);
 	btTransform rigid_pred;
@@ -236,10 +236,11 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulseSoft(const btContact
 	// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
 	btScalar residualSquare = dn * dn;
 
-	fprintf(stderr, "xa_pred %f %f %f xb_pred %f %f %f rigid_check_anchor_pos %f %f %f soft_check %f %f %f check %f %f %f va (rigid) %f %f %f vb (soft) %f %f %f vr (xb_pred - xa_pred) %f %f %f residual %f\n",
+	fprintf(stderr, "xa_pred %f %f %f xb_pred %f %f %f rigid_check_anchor_pos %f %f %f rigid_check_world_pos %f %f %f soft_check %f %f %f check %f %f %f va (rigid) %f %f %f vb (soft) %f %f %f vr (xb_pred - xa_pred) %f %f %f residual %f\n",
 			xa_pred.x(), xa_pred.y(), xa_pred.z(),
 			xb_pred.x(), xb_pred.y(), xb_pred.z(),
 			rigid_check_anchor_pos.x(), rigid_check_anchor_pos.y(), rigid_check_anchor_pos.z(),
+			rigid_pred.getOrigin().x(), rigid_pred.getOrigin().y(), rigid_pred.getOrigin().z(),
 			soft_check.x(), soft_check.y(), soft_check.z(),
 			check.x(), check.y(), check.z(),
 			va.x(), va.y(), va.z(),
@@ -379,6 +380,7 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	btVector3 vb = getVb();
 	btVector3 vr = vb - va;
 	btScalar dn = btDot(vr, cti.m_normal) + m_total_normal_dv.dot(cti.m_normal) * infoGlobal.m_deformable_cfm;
+    // TODO add some comments trying to describe the m_penetration logic. Maybe there should not be any m_penetration handling if infoGlobal.m_splitImpulse is true? Because then penetrations are completely handled in btDeformableRigidContactConstraint::solveSplitImpulse?
 	if (m_penetration < 0)
 	{
 		dn += m_penetration / infoGlobal.m_timeStep;
