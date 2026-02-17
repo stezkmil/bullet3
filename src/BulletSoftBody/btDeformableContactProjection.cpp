@@ -35,12 +35,12 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 				btScalar localResidualSquare = constraint.solveConstraint(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
-			/*for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
+			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
 				btScalar localResidualSquare = constraint.solveConstraint(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
-			}*/
+			}
 			for (int k = 0; k < m_faceRigidConstraints[j].size(); ++k)
 			{
 				btDeformableFaceRigidContactConstraint& constraint = m_faceRigidConstraints[j][k];
@@ -85,8 +85,7 @@ btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** de
 			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
-				//btScalar localResidualSquare = constraint.solveSplitImpulseHard(infoGlobal);
-				btScalar localResidualSquare = constraint.solveSplitImpulseSoft(infoGlobal);
+				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
 		}

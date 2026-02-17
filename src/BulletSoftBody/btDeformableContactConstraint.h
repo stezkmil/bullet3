@@ -132,7 +132,7 @@ public:
 	btVector3 getSplitVa() const;
 	btVector3 getSplitVb() const;
 	void applySplitImpulse(const btVector3& impulse);
-	btScalar solveSplitImpulseSoft(const btContactSolverInfo& infoGlobal);
+	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal);
 
 	virtual btVector3 getDv(const btSoftBody::Node* n) const
 	{

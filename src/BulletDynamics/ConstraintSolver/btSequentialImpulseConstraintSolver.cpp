@@ -300,6 +300,7 @@ static btScalar gResolveSplitPenetrationImpulse_scalar_reference(
 		deltaImpulse = c.m_rhsPenetration - btScalar(c.m_appliedPushImpulse) * c.m_cfm;
 		const btScalar deltaVel1Dotn = c.m_contactNormal1.dot(bodyA.internalGetPushVelocity()) + c.m_relpos1CrossNormal.dot(bodyA.internalGetTurnVelocity());
 		const btScalar deltaVel2Dotn = c.m_contactNormal2.dot(bodyB.internalGetPushVelocity()) + c.m_relpos2CrossNormal.dot(bodyB.internalGetTurnVelocity());
+		//fprintf(stderr, "pre bodyA.internalGetPushVelocity() %f %f %f bodyB.internalGetPushVelocity() %f %f %f\n", bodyA.internalGetPushVelocity().x(), bodyA.internalGetPushVelocity().y(), bodyA.internalGetPushVelocity().z(), bodyB.internalGetPushVelocity().x(), bodyB.internalGetPushVelocity().y(), bodyB.internalGetPushVelocity().z());
 
 		deltaImpulse -= deltaVel1Dotn * c.m_jacDiagABInv;
 		deltaImpulse -= deltaVel2Dotn * c.m_jacDiagABInv;
@@ -316,6 +317,8 @@ static btScalar gResolveSplitPenetrationImpulse_scalar_reference(
 		bodyA.internalApplyPushImpulse(c.m_contactNormal1 * bodyA.internalGetInvMass(), c.m_angularComponentA, deltaImpulse);
 		bodyB.internalApplyPushImpulse(c.m_contactNormal2 * bodyB.internalGetInvMass(), c.m_angularComponentB, deltaImpulse);
 		//printf("c.m_contactNormal2 %f %f %f\n", c.m_contactNormal2.x(), c.m_contactNormal2.y(), c.m_contactNormal2.z());
+
+		//fprintf(stderr, "c.m_rhsPenetration %f bodyA.internalGetPushVelocity() %f %f %f bodyB.internalGetPushVelocity() %f %f %f deltaVel1Dotn %f deltaVel2Dotn %f deltaImpulse %f c.m_jacDiagABInv %f deltaImpulse * (1. / c.m_jacDiagABInv) %f\n", c.m_rhsPenetration, bodyA.internalGetPushVelocity().x(), bodyA.internalGetPushVelocity().y(), bodyA.internalGetPushVelocity().z(), bodyB.internalGetPushVelocity().x(), bodyB.internalGetPushVelocity().y(), bodyB.internalGetPushVelocity().z(), deltaVel1Dotn, deltaVel2Dotn, deltaImpulse, c.m_jacDiagABInv, deltaImpulse * (1. / c.m_jacDiagABInv));
 	}
 	return deltaImpulse * (1. / c.m_jacDiagABInv);
 }
@@ -660,13 +663,13 @@ void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSol
 	solverConstraint.m_appliedImpulse = 0.f;
 	solverConstraint.m_appliedPushImpulse = 0.f;
 
-    btScalar m0 = (body0 && body0->getInvMass() > 0) ? btScalar(1) / body0->getInvMass() : btScalar(0);
+	btScalar m0 = (body0 && body0->getInvMass() > 0) ? btScalar(1) / body0->getInvMass() : btScalar(0);
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
 	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = body0 ? (body0->getInvInertiaTensorWorld() * m0) : btMatrix3x3::getIdentity();
 
-    btScalar mA = (bodyA && bodyA->getInvMass() > 0) ? btScalar(1) / bodyA->getInvMass() : btScalar(0);
+	btScalar mA = (bodyA && bodyA->getInvMass() > 0) ? btScalar(1) / bodyA->getInvMass() : btScalar(0);
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
@@ -876,13 +879,13 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 
 	cfm *= invTimeStep;
 
-    btScalar m0 = (rb0 && rb0->getInvMass() > 0) ? btScalar(1) / rb0->getInvMass() : btScalar(0);
+	btScalar m0 = (rb0 && rb0->getInvMass() > 0) ? btScalar(1) / rb0->getInvMass() : btScalar(0);
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
 	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = rb0 ? (rb0->getInvInertiaTensorWorld() * m0) : btMatrix3x3::getIdentity();
 
-    btScalar m1 = (rb1 && rb1->getInvMass() > 0) ? btScalar(1) / rb1->getInvMass() : btScalar(0);
+	btScalar m1 = (rb1 && rb1->getInvMass() > 0) ? btScalar(1) / rb1->getInvMass() : btScalar(0);
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
