@@ -209,6 +209,16 @@ btSolverBody
 		return m_deltaAngularVelocity;
 	}
 
+    btVector3& internalGetLinearVelocity()
+	{
+		return m_linearVelocity;
+	}
+
+	btVector3& internalGetAngularVelocity()
+	{
+		return m_angularVelocity;
+	}
+
 	const btVector3& internalGetAngularFactor() const
 	{
 		return m_angularFactor;

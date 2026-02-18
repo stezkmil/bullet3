@@ -318,7 +318,9 @@ static btScalar gResolveSplitPenetrationImpulse_scalar_reference(
 		bodyB.internalApplyPushImpulse(c.m_contactNormal2 * bodyB.internalGetInvMass(), c.m_angularComponentB, deltaImpulse);
 		//printf("c.m_contactNormal2 %f %f %f\n", c.m_contactNormal2.x(), c.m_contactNormal2.y(), c.m_contactNormal2.z());
 
-		//fprintf(stderr, "c.m_rhsPenetration %f bodyA.internalGetPushVelocity() %f %f %f bodyB.internalGetPushVelocity() %f %f %f deltaVel1Dotn %f deltaVel2Dotn %f deltaImpulse %f c.m_jacDiagABInv %f deltaImpulse * (1. / c.m_jacDiagABInv) %f\n", c.m_rhsPenetration, bodyA.internalGetPushVelocity().x(), bodyA.internalGetPushVelocity().y(), bodyA.internalGetPushVelocity().z(), bodyB.internalGetPushVelocity().x(), bodyB.internalGetPushVelocity().y(), bodyB.internalGetPushVelocity().z(), deltaVel1Dotn, deltaVel2Dotn, deltaImpulse, c.m_jacDiagABInv, deltaImpulse * (1. / c.m_jacDiagABInv));
+        auto impA = c.m_contactNormal1 * bodyA.internalGetInvMass() * deltaImpulse;
+        auto impB = c.m_contactNormal2 * bodyB.internalGetInvMass() * deltaImpulse;
+		fprintf(stderr, "bodyA linear impulse %f %f %f bodyB linear impulse %f %f %f c.m_rhsPenetration %f bodyA.internalGetPushVelocity() %f %f %f bodyB.internalGetPushVelocity() %f %f %f deltaVel1Dotn %f deltaVel2Dotn %f deltaImpulse %f c.m_jacDiagABInv %f deltaImpulse * (1. / c.m_jacDiagABInv) %f\n", impA.x(), impA.y(), impA.z(), impB.x(), impB.y(), impB.z(), c.m_rhsPenetration, bodyA.internalGetPushVelocity().x(), bodyA.internalGetPushVelocity().y(), bodyA.internalGetPushVelocity().z(), bodyB.internalGetPushVelocity().x(), bodyB.internalGetPushVelocity().y(), bodyB.internalGetPushVelocity().z(), deltaVel1Dotn, deltaVel2Dotn, deltaImpulse, c.m_jacDiagABInv, deltaImpulse * (1. / c.m_jacDiagABInv));
 	}
 	return deltaImpulse * (1. / c.m_jacDiagABInv);
 }

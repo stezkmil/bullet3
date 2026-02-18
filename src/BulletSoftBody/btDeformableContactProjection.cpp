@@ -58,40 +58,79 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 	return residualSquare;
 }
 
-btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
+btScalar btDeformableContactProjection::solveSplitImpulse(
+	btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
+{
+	// Fallback: no solver body info => constraints fall back to btRigidBody push buffers
+	btAlignedObjectArray<btSolverBody> dummy;
+	return solveSplitImpulse(deformableBodies, numDeformableBodies, infoGlobal, dummy);
+}
+
+static btSolverBody* findSolverBody(btAlignedObjectArray<btSolverBody>& solverBodies, const btRigidBody* rb)
+{
+	for (int i = 0; i < solverBodies.size(); ++i)
+		if (solverBodies[i].m_originalBody == rb)
+			return &solverBodies[i];
+	return nullptr;
+}
+
+
+btScalar btDeformableContactProjection::solveSplitImpulse(
+	btCollisionObject** deformableBodies, int numDeformableBodies,
+	const btContactSolverInfo& infoGlobal,
+	btAlignedObjectArray<btSolverBody>& solverBodies,
+	const btSolverConstraint& solveManifold)
 {
 	btScalar residualSquare = 0;
+
 	for (int i = 0; i < numDeformableBodies; ++i)
 	{
 		for (int j = 0; j < m_softBodies.size(); ++j)
 		{
 			btCollisionObject* psb = m_softBodies[j];
 			if (psb != deformableBodies[i])
-			{
 				continue;
-			}
+
+			// Node-rigid
 			for (int k = 0; k < m_nodeRigidConstraints[j].size(); ++k)
 			{
-				btDeformableNodeRigidContactConstraint& constraint = m_nodeRigidConstraints[j][k];
-				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
-				residualSquare = btMax(residualSquare, localResidualSquare);
+				auto& c = m_nodeRigidConstraints[j][k];
+				// You must add: btSolverBody* m_solverBody = nullptr; to this constraint type
+				const btRigidBody* rb = btRigidBody::upcast(c.m_contact->m_cti.m_colObj);
+				c.m_solverBody = (rb && solverBodies.size()) ? findSolverBody(solverBodies, rb) : nullptr;
+
+                // TODO try to also use solver bodies
+				btScalar r = c.solveSplitImpulse(infoGlobal);
+				residualSquare = btMax(residualSquare, r);
 			}
+
+			// Face-rigid
 			for (int k = 0; k < m_faceRigidConstraints[j].size(); ++k)
 			{
-				btDeformableFaceRigidContactConstraint& constraint = m_faceRigidConstraints[j][k];
-				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
-				residualSquare = btMax(residualSquare, localResidualSquare);
+				auto& c = m_faceRigidConstraints[j][k];
+				const btRigidBody* rb = btRigidBody::upcast(c.m_contact->m_cti.m_colObj);
+				c.m_solverBody = (rb && solverBodies.size()) ? findSolverBody(solverBodies, rb) : nullptr;
+
+                // TODO try to also use solver bodies
+				btScalar r = c.solveSplitImpulse(infoGlobal);
+				residualSquare = btMax(residualSquare, r);
 			}
+
+			// Anchors
 			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
-				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
-				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
-				residualSquare = btMax(residualSquare, localResidualSquare);
+				auto& c = m_nodeAnchorConstraints[j][k];
+				const btRigidBody* rb = c.m_anchor->m_body;
+				c.m_solverBody = (rb && solverBodies.size()) ? findSolverBody(solverBodies, rb) : nullptr;
+
+				btScalar r = c.solveSplitImpulse(infoGlobal, solveManifold.m_rhsPenetration);
+				residualSquare = btMax(residualSquare, r);
 			}
 		}
 	}
 	return residualSquare;
 }
+
 
 void btDeformableContactProjection::setConstraints(const btContactSolverInfo& infoGlobal)
 {

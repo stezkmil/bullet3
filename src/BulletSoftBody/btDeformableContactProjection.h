@@ -17,6 +17,7 @@
 #define BT_CONTACT_PROJECTION_H
 #include "btCGProjection.h"
 #include "btSoftBody.h"
+#include "BulletDynamics/ConstraintSolver/btSolverConstraint.h"
 #include "BulletDynamics/Featherstone/btMultiBodyLinkCollider.h"
 #include "BulletDynamics/Featherstone/btMultiBodyConstraint.h"
 #include "btDeformableContactConstraint.h"
@@ -91,6 +92,13 @@ public:
 	virtual void reinitialize(bool nodeUpdated);
 
 	btScalar solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal);
+	btScalar solveSplitImpulse(
+		btCollisionObject** deformableBodies,
+		int numDeformableBodies,
+		const btContactSolverInfo& infoGlobal,
+		btAlignedObjectArray<btSolverBody>& solverBodies,
+		const btSolverConstraint& solveManifold);
+
 
 	virtual void setLagrangeMultiplier();
 

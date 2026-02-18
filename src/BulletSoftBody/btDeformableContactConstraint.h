@@ -25,6 +25,7 @@ public:
 	// False if the friction is dynamic
 	bool m_static;
 	const btContactSolverInfo* m_infoGlobal;
+	btSolverBody* m_solverBody = nullptr;
 
 	// normal of the contact
 	btVector3 m_normal;
@@ -132,7 +133,7 @@ public:
 	btVector3 getSplitVa() const;
 	btVector3 getSplitVb() const;
 	void applySplitImpulse(const btVector3& impulse);
-	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal);
+	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal, btScalar penetration);
 
 	virtual btVector3 getDv(const btSoftBody::Node* n) const
 	{
