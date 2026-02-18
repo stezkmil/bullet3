@@ -219,6 +219,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 			// Inv mass and linear factor applied to counter their application in applyCentralPushImpulse. Remember - we do not need physically corerct impulse application, we just correct a drift.
 			// One pitfall here is to reason that we could perhaps use applyCentralPushImpulse here and get away with it, because anchor is only a positional constraint. It does not converge when multiple
 			// anchors are involved. Only when rotations are involved, the gap is reduced on the current anchor and at least partially preserved on the previous anchor.
+            // TODO verify how angular turn velocity is applied in the end - AI suggests that it is not compensated correctly now here.
 			m_anchor->m_body->applyPushImpulse((impulse / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
 		}
 	}
