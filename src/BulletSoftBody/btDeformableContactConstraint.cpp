@@ -84,9 +84,8 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 	btVector3 va = getVa();
 	btVector3 vb = getVb();
 	btVector3 vr = (vb - va);
-	const btScalar dn = btDot(vr, vr);
+	const btScalar residualSquare = btDot(vr, vr);
 	// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
-	btScalar residualSquare = dn * dn;
 	btVector3 impulse = m_anchor->m_c0 * vr;
 	// apply impulse to deformable nodes involved and change their velocities
 	applyImpulse(impulse);
@@ -117,6 +116,9 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t2, impulse.dot(m_anchor->t2));
 		}
 	}
+
+	//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint va %f %f %f vb %f %f %f residual %f\n", va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
+	//		residualSquare);
 
 	return residualSquare;
 }
@@ -191,8 +193,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 
 	btVector3 pos_diff = anchor_soft_predicted - anchor_rigid_predicted;
 
-	const btScalar diff_len_squared = btDot(pos_diff, pos_diff);
-	btScalar residualSquare = diff_len_squared * diff_len_squared;
+	const btScalar residualSquare = btDot(pos_diff, pos_diff);
 
 	// Maybe this early return would prevent some slight overshoot?
 	//if (residualSquare < infoGlobal.m_leastSquaresResidualThreshold)
@@ -215,33 +216,61 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 	// push veloities from resolveSplitPenetrationImpulse and also add them to the soft anchor nodes here. This would ease the work for the solver tremendously. It still has to be tried if the solver body based solution
 	// becomes unavoidable for some reason. Alternative workaround is the heuristic below. Instead of fighting against the solver body push velocity, we just give up and make the anchor solve be fully soft body based when
 	// there are penetrations. This workaround can also be implemented on the solver body based solution, but obsoletes the solver body based solution because then there is no push velocities fight at all.
-	if (m_anchor_rigid_penetration)
+	if (m_anchor_rigid_penetration || !m_anchor->m_body->isActive())
 	{
 		rigid_impulse_fraction = 0.0;
 		soft_impulse_fraction = 1.0;
 	}
-	btVector3 rigid_impulse = (pos_diff * rigid_impulse_fraction) / infoGlobal.m_timeStep;
-	btVector3 soft_impulse = (pos_diff * soft_impulse_fraction) / infoGlobal.m_timeStep;
+	btVector3 rigid_velocity = (pos_diff * rigid_impulse_fraction) / infoGlobal.m_timeStep;
+	btVector3 soft_velocity = (pos_diff * soft_impulse_fraction) / infoGlobal.m_timeStep;
 
-	// Applies impulse to the rigid body, to minimize the gap between rigid and soft anchor positions.
+	// Applies velocity to the rigid body, to minimize the gap between rigid and soft anchor positions.
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
 	{
 		if (m_anchor->m_body)
 		{
-			// TODO the question of activity. If the activate line is here, the soft never falls asleep. If it isn't there, the rigid sometimes falls asleep even if the soft is moving.
-			m_anchor->m_body->activate();
-			// Inv mass and linear factor applied to counter their application in applyCentralPushImpulse. Remember - we do not need physically corerct impulse application, we just correct a drift.
+			// Not applying real impulses but directly adding velocities significantly reduces the number of solver iterations needed to converge.
+			// Remember - we do not need physically corerct impulse application, we just correct a drift.
 			// One pitfall here is to reason that we could perhaps use applyCentralPushImpulse here and get away with it, because anchor is only a positional constraint. It does not converge when multiple
 			// anchors are involved. Only when rotations are involved, the gap is reduced on the current anchor and at least partially preserved on the previous anchor.
-			// TODO verify how angular turn velocity is applied in the end - AI suggests that it is not compensated correctly now here.
-			m_anchor->m_body->applyPushImpulse((rigid_impulse / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
+
+			// Since we are not applying impulses but directly changing velocities, we have to use a purely
+			// kinematic way of applying velocity at a point, similar to the way the impulse application does it, but
+			// without any inertia tensor or mass usage when updating rotation velocities.
+			if (!m_anchor->m_body->isStaticOrKinematicObject())
+			{
+				// Why this works:
+				// Identity: if dvRot ⟂ r, then ω = (r×dvRot)/|r|^2 gives ω×r = dvRot.
+				// This is a clean kinematic solve
+				btVector3 dvPoint = rigid_velocity;
+				btVector3 r = m_anchor->m_c1;
+				btScalar r2 = r.length2();
+				if (r2 > SIMD_EPSILON)
+				{
+					btVector3 dvPar = r * (dvPoint.dot(r) / r2);
+					btVector3 dvPerp = dvPoint - dvPar;  // Remove component parallel to r
+
+					m_anchor->m_body->setPushVelocity(m_anchor->m_body->getPushVelocity() + dvPar);
+
+					// Choose omega so that omega x r = dvPerp
+					btVector3 domega = r.cross(dvPerp) / r2;
+					m_anchor->m_body->setTurnVelocity(m_anchor->m_body->getTurnVelocity() + domega);
+				}
+				else
+				{
+					m_anchor->m_body->setPushVelocity(m_anchor->m_body->getPushVelocity() + dvPoint);
+				}
+			}
+			//m_anchor->m_body->applyPushImpulse((rigid_velocity / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
+			//fprintf(stderr, "real_push %f %f %f real_turn %f %f %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
+			//		m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z());
 		}
 	}
 
 	// I thought that I could do it by only pushing the rigid body, but there are problems with that. If soft and rigid are connected by many anchors, then the soft anchored nodes might get slightly squashed
-	// by elasticity and the rigid will then never be able to reach all anchor positions with sufficient accuracy, so it will never converge and run full iteration count. To counter that, the soft must also contribute
-	// by being impulsed.
-	applySplitImpulse(soft_impulse / m_anchor->m_c2);
+	// by elasticity and the rigid will then never be able to reach all anchor positions with sufficient accuracy, so it will never converge and will run full iteration count (slow).
+	// To counter that, the soft must also contribute by being pushed.
+	applySplitImpulse(soft_velocity / m_anchor->m_c2);
 
 	// Another pitfall here is to try to perform a final prediction here and return a residual based on that. Not only would that be a redundant code duplication, because that same functionality
 	// would be done at the start of the next solveSplitImpulse, but it also causes partial mis-convergence.
