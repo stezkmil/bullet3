@@ -225,8 +225,6 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 
 	// residual: use squared error (not ^4)
 	btScalar residualSquare = pos_diff.length2();
-	// TODO try to remove - only to maintain compatibility
-	residualSquare = residualSquare * residualSquare;
 
 	if (m_solverBody)
 		fprintf(stderr, "m_solverBody->getPushVelocity() %f %f %f m_solverBody->getTurnVelocity() %f %f %f anchor_rigid_predicted %f %f %f anchor_soft_predicted %f %f %f pos_diff %f %f %f residual %f\n",
