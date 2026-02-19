@@ -16,6 +16,7 @@
 #include "btDeformableMultiBodyConstraintSolver.h"
 #include "BulletReducedDeformableBody/btReducedDeformableBodySolver.h"
 #include <iostream>
+#include <unordered_map>
 
 // override the iterations method to include deformable/multibody contact
 btScalar btDeformableMultiBodyConstraintSolver::solveDeformableGroupIterations(btCollisionObject** bodies, int numBodies, btCollisionObject** deformableBodies, int numDeformableBodies, btPersistentManifold** manifoldPtr, int numManifolds, btTypedConstraint** constraints, int numConstraints, const btContactSolverInfo& infoGlobal, btIDebugDraw* debugDrawer)
@@ -201,6 +202,7 @@ void btDeformableMultiBodyConstraintSolver::solveGroupCacheFriendlySplitImpulseI
 				fprintf(stderr, "iteration %d\n", iteration);
 				btScalar leastSquaresResidual = 0.f;
 				{
+					std::unordered_map<const btRigidBody*, btScalar> bodyPenetrations;
 					int numPoolConstraints = m_tmpSolverContactConstraintPool.size();
 					int j;
 					for (j = 0; j < numPoolConstraints; j++)
@@ -209,12 +211,31 @@ void btDeformableMultiBodyConstraintSolver::solveGroupCacheFriendlySplitImpulseI
 
 						btScalar residual = resolveSplitPenetrationImpulse(m_tmpSolverBodyPool[solveManifold.m_solverBodyIdA], m_tmpSolverBodyPool[solveManifold.m_solverBodyIdB], solveManifold);
 						leastSquaresResidual = btMax(leastSquaresResidual, residual * residual);
+
+						auto origBodyA = m_tmpSolverBodyPool[solveManifold.m_solverBodyIdA].m_originalBody;
+						auto origBodyB = m_tmpSolverBodyPool[solveManifold.m_solverBodyIdB].m_originalBody;
+						if (origBodyA)
+						{
+							auto existingPen = 0.0;
+							auto it = bodyPenetrations.find(origBodyA);
+							if (it != bodyPenetrations.end())
+								existingPen = it->second;
+							bodyPenetrations.insert_or_assign(origBodyA, std::max(existingPen, solveManifold.m_rhsPenetration));
+						}
+						if (origBodyB)
+						{
+							auto existingPen = 0.0;
+							auto it = bodyPenetrations.find(origBodyB);
+							if (it != bodyPenetrations.end())
+								existingPen = it->second;
+							bodyPenetrations.insert_or_assign(origBodyB, std::max(existingPen, solveManifold.m_rhsPenetration));
+						}
 					}
 					// solve the position correction between deformable and rigid/multibody
 					//                    btScalar residual = m_deformableSolver->solveSplitImpulse(infoGlobal);
 					//btScalar residual = m_deformableSolver->m_objective->m_projection.solveSplitImpulse(deformableBodies, numDeformableBodies, infoGlobal);
 					btScalar residual = m_deformableSolver->m_objective->m_projection.solveSplitImpulse(
-						deformableBodies, numDeformableBodies, infoGlobal, m_tmpSolverBodyPool, solveManifold);
+						deformableBodies, numDeformableBodies, infoGlobal, m_tmpSolverBodyPool, bodyPenetrations);
 
 					leastSquaresResidual = btMax(leastSquaresResidual, residual * residual);
 				}

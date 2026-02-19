@@ -115,6 +115,7 @@ class btDeformableNodeAnchorConstraint : public btDeformableContactConstraint
 {
 public:
 	const btSoftBody::DeformableNodeRigidAnchor* m_anchor;
+	btScalar m_anchor_rigid_penetration = 0.0;
 
 	btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& c, const btContactSolverInfo& infoGlobal);
 	btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other);
@@ -133,7 +134,7 @@ public:
 	btVector3 getSplitVa() const;
 	btVector3 getSplitVb() const;
 	void applySplitImpulse(const btVector3& impulse);
-	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal, btScalar penetration);
+	btScalar solveSplitImpulse(const btContactSolverInfo& infoGlobal);
 
 	virtual btVector3 getDv(const btSoftBody::Node* n) const
 	{
