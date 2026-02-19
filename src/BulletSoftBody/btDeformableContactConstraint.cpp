@@ -206,8 +206,22 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 			vb.x(), vb.y(), vb.z(),
 			residualSquare);*/
 
-	// 0.5 so that the rigid goes halfway and the soft also goes halfway.
-	btVector3 impulse = (pos_diff * 0.5) / infoGlobal.m_timeStep;
+	auto rigid_impulse_fraction = 0.5;
+	auto soft_impulse_fraction = 0.5;
+	// About this heuristic. When there are penetrations, there is this fight between the solver body push velocity and the regular body push velocity (same applies for turn velocities naturally).
+	// This results in bad penetration resolve when the anchored rigid is penetrating. One solution is to make this method be solver body based too. It was actually implemented on commit c619f118e060011efd3892b41f09851253a98f04
+	// but there were problems. There was still a fight between solver body push velocities for unstuck and for anchor solve when they were acting against each other. For example the unstuck added positive X direction to the
+	// push velocity, but the anchor solve subtracted from the X direction to maintain the anchorage. In worst case, this resulted in explosive growth of push velocities. One workaround would be to remeber the applied
+	// push veloities from resolveSplitPenetrationImpulse and also add them to the soft anchor nodes here. This would ease the work for the solver tremendously. It still has to be tried if the solver body based solution
+	// becomes unavoidable for some reason. Alternative workaround is the heuristic below. Instead of fighting against the solver body push velocity, we just give up and make the anchor solve be fully soft body based when
+	// there are penetrations. This workaround can also be implemented on the solver body based solution, but obsoletes the solver body based solution because then there is no push velocities fight at all.
+	if (m_anchor_rigid_penetration)
+	{
+		rigid_impulse_fraction = 0.0;
+		soft_impulse_fraction = 1.0;
+	}
+	btVector3 rigid_impulse = (pos_diff * rigid_impulse_fraction) / infoGlobal.m_timeStep;
+	btVector3 soft_impulse = (pos_diff * soft_impulse_fraction) / infoGlobal.m_timeStep;
 
 	// Applies impulse to the rigid body, to minimize the gap between rigid and soft anchor positions.
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
@@ -219,15 +233,15 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 			// Inv mass and linear factor applied to counter their application in applyCentralPushImpulse. Remember - we do not need physically corerct impulse application, we just correct a drift.
 			// One pitfall here is to reason that we could perhaps use applyCentralPushImpulse here and get away with it, because anchor is only a positional constraint. It does not converge when multiple
 			// anchors are involved. Only when rotations are involved, the gap is reduced on the current anchor and at least partially preserved on the previous anchor.
-            // TODO verify how angular turn velocity is applied in the end - AI suggests that it is not compensated correctly now here.
-			m_anchor->m_body->applyPushImpulse((impulse / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
+			// TODO verify how angular turn velocity is applied in the end - AI suggests that it is not compensated correctly now here.
+			m_anchor->m_body->applyPushImpulse((rigid_impulse / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
 		}
 	}
 
 	// I thought that I could do it by only pushing the rigid body, but there are problems with that. If soft and rigid are connected by many anchors, then the soft anchored nodes might get slightly squashed
 	// by elasticity and the rigid will then never be able to reach all anchor positions with sufficient accuracy, so it will never converge and run full iteration count. To counter that, the soft must also contribute
 	// by being impulsed.
-	applySplitImpulse(impulse / m_anchor->m_c2);
+	applySplitImpulse(soft_impulse / m_anchor->m_c2);
 
 	// Another pitfall here is to try to perform a final prediction here and return a residual based on that. Not only would that be a redundant code duplication, because that same functionality
 	// would be done at the start of the next solveSplitImpulse, but it also causes partial mis-convergence.

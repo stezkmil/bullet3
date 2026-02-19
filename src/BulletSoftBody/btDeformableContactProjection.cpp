@@ -58,7 +58,7 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 	return residualSquare;
 }
 
-btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
+btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal, const std::unordered_map<const btRigidBody*, btScalar>& penetrations)
 {
 	btScalar residualSquare = 0;
 	for (int i = 0; i < numDeformableBodies; ++i)
@@ -85,6 +85,13 @@ btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** de
 			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
+				{
+					auto it = penetrations.find(constraint.m_anchor->m_body);
+					if (it != penetrations.end())
+						constraint.m_anchor_rigid_penetration = it->second;
+					else
+						constraint.m_anchor_rigid_penetration = 0.0;
+				}
 				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}

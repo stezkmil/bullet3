@@ -114,6 +114,7 @@ class btDeformableNodeAnchorConstraint : public btDeformableContactConstraint
 {
 public:
 	const btSoftBody::DeformableNodeRigidAnchor* m_anchor;
+	btScalar m_anchor_rigid_penetration = 0.0;
 
 	btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& c, const btContactSolverInfo& infoGlobal);
 	btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other);
