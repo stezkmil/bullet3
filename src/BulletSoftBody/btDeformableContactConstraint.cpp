@@ -252,10 +252,8 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 	// --- Apply to rigid via solver body if available ---
 	if (m_solverBody && m_solverBody->m_originalBody == m_anchor->m_body)
 	{
-		// relPosWorld from COM: m_c1 is "local point" as used elsewhere
-		const btVector3 relPosWorld = m_solverBody->getWorldTransform().getBasis() * m_anchor->m_c1;
 		auto imp = (rigid_impulse / m_solverBody->internalGetInvMass());
-		solverBodyApplyPushImpulseAtPoint(*m_solverBody, relPosWorld, imp) /* TODO compensate lin and ang factors*/;
+		solverBodyApplyPushImpulseAtPoint(*m_solverBody, m_anchor->m_c1, imp) /* TODO compensate lin and ang factors*/;
 		fprintf(stderr, "applied impulse to rigid %f %f %f\n", imp.x(), imp.y(), imp.z());
 	}
 	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY && m_anchor->m_body)
