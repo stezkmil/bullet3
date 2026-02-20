@@ -536,11 +536,6 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 				}
 			}
 			node.m_x = node.m_x + timeStep * (node.m_v + node.m_splitv);
-			if (j == 866)
-				fprintf(stderr, "b real pos %f %f %f node.m_v %f %f %f node.m_splitv %f %f %f\n",
-						node.m_x.x(), node.m_x.y(), node.m_x.z(),
-						node.m_v.x(), node.m_v.y(), node.m_v.z(),
-						node.m_splitv.x(), node.m_splitv.y(), node.m_splitv.z());
 			node.m_q = node.m_x;
 			node.m_vn = node.m_v;
 		}
