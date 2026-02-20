@@ -29,6 +29,9 @@ public:
 	// normal of the contact
 	btVector3 m_normal;
 
+	btScalar m_previous_residual = -1.0;
+	btScalar m_convergence_based_relaxation = 1.0;
+
 	btDeformableContactConstraint(const btVector3& normal, const btContactSolverInfo& infoGlobal) : m_static(false), m_normal(normal), m_infoGlobal(&infoGlobal)
 	{
 	}
@@ -40,7 +43,7 @@ public:
 	btDeformableContactConstraint() : m_static(false) {}
 
 	btDeformableContactConstraint(const btDeformableContactConstraint& other)
-		: m_static(other.m_static), m_normal(other.m_normal), m_infoGlobal(other.m_infoGlobal)
+		: m_static(other.m_static), m_normal(other.m_normal), m_infoGlobal(other.m_infoGlobal), m_convergence_based_relaxation(other.m_convergence_based_relaxation)
 	{
 	}
 

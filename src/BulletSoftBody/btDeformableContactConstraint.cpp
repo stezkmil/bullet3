@@ -85,8 +85,25 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 	btVector3 vb = getVb();
 	btVector3 vr = (vb - va);
 	const btScalar residualSquare = btDot(vr, vr);
+
+	const btScalar misconvergenceRelaxationFactor = 0.5;
+	const btScalar convergenceRelaxationFactor = 1.1;
+
+	// If the current residual is larger than the last one, we are heading towards an explosion. We use this information as a hint that impulse magintudes should be dampened.
+	// This greatly improves convergence.
+	if (m_previous_residual != -1.0)
+		if (residualSquare > m_previous_residual)
+			m_convergence_based_relaxation = std::max(0.1, m_convergence_based_relaxation * misconvergenceRelaxationFactor);
+		else
+			m_convergence_based_relaxation = std::min(1.0, m_convergence_based_relaxation * convergenceRelaxationFactor);
+	m_previous_residual = residualSquare;
+
 	// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
-	btVector3 impulse = m_anchor->m_c0 * vr;
+	btVector3 impulse = (m_anchor->m_c0 * vr) * m_convergence_based_relaxation;
+
+	// TODO impulses applied in iteration 0 can be way off. Warmstart the first impulse. It should work similar to the way the m_appliedImpulse works. This should reduce the iteration count somewhat.
+	// TODO still some instabilities were observed when the bodies have 3 orders of magnitude mass difference. To be investigated later. Maybe a mass ratio based clamping of the impulse is needed.
+
 	// apply impulse to deformable nodes involved and change their velocities
 	applyImpulse(impulse);
 
@@ -117,7 +134,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		}
 	}
 
-	//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint va %f %f %f vb %f %f %f residual %f\n", va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
+	//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
 	//		residualSquare);
 
 	return residualSquare;
@@ -233,6 +250,8 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 			// Remember - we do not need physically corerct impulse application, we just correct a drift.
 			// One pitfall here is to reason that we could perhaps use applyCentralPushImpulse here and get away with it, because anchor is only a positional constraint. It does not converge when multiple
 			// anchors are involved. Only when rotations are involved, the gap is reduced on the current anchor and at least partially preserved on the previous anchor.
+			// UPDATE: If direct velocity manipulation turns out to be problematic for any reason, we can again try with regular impulses, but also with the impulse warmstarting
+			// (see the comment about m_appliedImpulse in btDeformableNodeAnchorConstraint::solveConstraint) and similar m_previous_residual logic like in btDeformableNodeAnchorConstraint::solveConstraint
 
 			// Since we are not applying impulses but directly changing velocities, we have to use a purely
 			// kinematic way of applying velocity at a point, similar to the way the impulse application does it, but
@@ -262,8 +281,8 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 				}
 			}
 			//m_anchor->m_body->applyPushImpulse((rigid_velocity / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
-			//fprintf(stderr, "real_push %f %f %f real_turn %f %f %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
-			//		m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z());
+			//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveSplitImpulse real_push %f %f %f real_turn %f %f %f residual %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
+			//		m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z(), residualSquare);
 		}
 	}
 

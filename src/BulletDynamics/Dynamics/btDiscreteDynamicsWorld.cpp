@@ -962,7 +962,6 @@ void btDiscreteDynamicsWorld::createPredictiveContacts(btScalar timeStep)
 
 void btDiscreteDynamicsWorld::integrateTransformsInternal(btRigidBody** bodies, int numBodies, btScalar timeStep)
 {
-	fprintf(stderr, "btDiscreteDynamicsWorld::integrateTransformsInternal\n");
 	btTransform predictedTrans;
 	for (int i = 0; i < numBodies; i++)
 	{
