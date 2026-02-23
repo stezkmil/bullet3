@@ -334,6 +334,7 @@ public:
 		static constexpr int kMaxTetraMembershipPerNode = 32;
 		int m_tetraMembership[kMaxTetraMembershipPerNode];
 		int m_tetraMembershipCount;
+		int m_frozen;  // Whether the node is frozen (not updated by the solver)
 	};
 	/* Link			*/
 	ATTRIBUTE_ALIGNED16(struct)
@@ -440,6 +441,7 @@ public:
 		btVector3 m_local;  // Anchor position in body space
 		uint32_t m_userIndex;
 		btRigidBody* m_body = nullptr;  // Body
+		int m_freezeContribution = 0;
 	};
 
 	class DeformableFaceRigidContact : public DeformableRigidContact
@@ -1068,6 +1070,9 @@ public:
 	/* Set mass																*/
 	void setMass(int node,
 				 btScalar mass);
+
+    void freezeNode(int node, bool freeze);
+
 	/* Get mass																*/
 	btScalar getMass(int node) const;
 	/* Get total mass														*/

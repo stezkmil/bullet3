@@ -712,8 +712,8 @@ btSoftBody* btSoftBodyHelpers::CreateRope(btSoftBodyWorldInfo& worldInfo, const 
 		m[i] = 1;
 	}
 	btSoftBody* psb = new btSoftBody(&worldInfo, r, x, m);
-	if (fixeds & 1) psb->setMass(0, 0);
-	if (fixeds & 2) psb->setMass(r - 1, 0);
+	if (fixeds & 1) psb->freezeNode(0, true);
+	if (fixeds & 2) psb->freezeNode(r - 1, true);
 	delete[] x;
 	delete[] m;
 	/* Create links	*/
@@ -765,10 +765,10 @@ btSoftBody* btSoftBodyHelpers::CreatePatch(btSoftBodyWorldInfo& worldInfo, const
 		}
 	}
 	btSoftBody* psb = new btSoftBody(&worldInfo, tot, x, m);
-	if (fixeds & 1) psb->setMass(IDX(0, 0), 0);
-	if (fixeds & 2) psb->setMass(IDX(rx - 1, 0), 0);
-	if (fixeds & 4) psb->setMass(IDX(0, ry - 1), 0);
-	if (fixeds & 8) psb->setMass(IDX(rx - 1, ry - 1), 0);
+	if (fixeds & 1) psb->freezeNode(IDX(0, 0), true);
+	if (fixeds & 2) psb->freezeNode(IDX(rx - 1, 0), true);
+	if (fixeds & 4) psb->freezeNode(IDX(0, ry - 1), true);
+	if (fixeds & 8) psb->freezeNode(IDX(rx - 1, ry - 1), true);
 	delete[] x;
 	delete[] m;
 	/* Create links	and faces */
@@ -912,15 +912,15 @@ btSoftBody* btSoftBodyHelpers::CreatePatchUV(btSoftBodyWorldInfo& worldInfo,
 		}
 	}
 	btSoftBody* psb = new btSoftBody(&worldInfo, tot, x, m);
-	if (fixeds & 1) psb->setMass(IDX(0, 0), 0);
-	if (fixeds & 2) psb->setMass(IDX(rx - 1, 0), 0);
-	if (fixeds & 4) psb->setMass(IDX(0, ry - 1), 0);
-	if (fixeds & 8) psb->setMass(IDX(rx - 1, ry - 1), 0);
-	if (fixeds & 16) psb->setMass(IDX((rx - 1) / 2, 0), 0);
-	if (fixeds & 32) psb->setMass(IDX(0, (ry - 1) / 2), 0);
-	if (fixeds & 64) psb->setMass(IDX(rx - 1, (ry - 1) / 2), 0);
-	if (fixeds & 128) psb->setMass(IDX((rx - 1) / 2, ry - 1), 0);
-	if (fixeds & 256) psb->setMass(IDX((rx - 1) / 2, (ry - 1) / 2), 0);
+	if (fixeds & 1) psb->freezeNode(IDX(0, 0), true);
+	if (fixeds & 2) psb->freezeNode(IDX(rx - 1, 0), true);
+	if (fixeds & 4) psb->freezeNode(IDX(0, ry - 1), true);
+	if (fixeds & 8) psb->freezeNode(IDX(rx - 1, ry - 1), true);
+	if (fixeds & 16) psb->freezeNode(IDX((rx - 1) / 2, 0), true);
+	if (fixeds & 32) psb->freezeNode(IDX(0, (ry - 1) / 2), true);
+	if (fixeds & 64) psb->freezeNode(IDX(rx - 1, (ry - 1) / 2), true);
+	if (fixeds & 128) psb->freezeNode(IDX((rx - 1) / 2, ry - 1), true);
+	if (fixeds & 256) psb->freezeNode(IDX((rx - 1) / 2, (ry - 1) / 2), true);
 	delete[] x;
 	delete[] m;
 

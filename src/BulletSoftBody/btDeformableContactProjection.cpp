@@ -111,10 +111,35 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			continue;
 		}
 
+		auto isImmovable = [](btRigidBody* rb) -> bool
+		{
+			if (!rb) return true;
+			return rb->isStaticOrKinematicObject() || (rb->getInvMass() == btScalar(0) || !rb->isActive());
+		};
+
+		for (int a = 0; a < psb->m_deformableAnchors.size(); ++a)
+		{
+			int wantFreeze = 0;
+			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[a];
+			
+			btRigidBody* rb = anchor.m_body;
+			if (isImmovable(rb))
+				wantFreeze = 1;
+
+			int hadFreeze = anchor.m_freezeContribution;
+
+			if (wantFreeze != hadFreeze)
+			{
+				anchor.m_node->m_frozen += (wantFreeze - hadFreeze);  // +1 or -1
+				btAssert(anchor.m_node->m_frozen >= 0);
+				anchor.m_freezeContribution = wantFreeze;
+			}
+		}
+
 		// set Dirichlet constraint
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
-			if (psb->m_nodes[j].m_im == 0)
+			if (psb->m_nodes[j].m_frozen > 0)
 			{
 				btDeformableStaticConstraint static_constraint(&psb->m_nodes[j], infoGlobal);
 				m_staticConstraints[i].push_back(static_constraint);
@@ -126,7 +151,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[j];
 			// skip fixed points
-			if (anchor.m_node->m_im == 0)
+			if (anchor.m_node->m_frozen > 0)
 			{
 				continue;
 			}
@@ -150,7 +175,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			const btSoftBody::DeformableNodeRigidContact& contact = psb->m_nodeRigidContacts[j];
 			// skip fixed points
-			if (contact.m_node->m_im == 0)
+			if (contact.m_node->m_frozen > 0)
 			{
 				continue;
 			}
