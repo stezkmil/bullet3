@@ -606,6 +606,15 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 	c.m_local = body->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
 	c.m_userIndex = userIndex;
+
+    auto isImmovable = [](btRigidBody* rb) -> bool
+	{
+		if (!rb) return true;
+		return rb->isStaticOrKinematicObject() || (rb->getInvMass() == btScalar(0) || !rb->isActive());
+	};
+	if (isImmovable(body) && n.m_frozen > 0)
+		asdf;
+	//c.m_freezeContribution = body->isStaticOrKinematicObject() || body->getInvMass() == btScalar(0) || !body->isActive();
 	m_deformableAnchors.push_back(c);
 	body->addAnchorRef(this);
 }
@@ -1021,6 +1030,17 @@ void btSoftBody::addVelocity(const btVector3& velocity, int node)
 	}
 }
 
+void btSoftBody::freezeNode(int node, bool freeze)
+{
+	if (freeze)
+		++m_nodes[node].m_frozen;
+	else
+	{
+		--m_nodes[node].m_frozen;
+		btAssert(m_nodes[node].m_frozen >= 0);
+	}
+}
+
 //
 void btSoftBody::setMass(int node, btScalar mass)
 {
@@ -1055,7 +1075,7 @@ void btSoftBody::setTotalMass(btScalar mass, bool fromfaces)
 	{
 		for (i = 0; i < m_nodes.size(); ++i)
 		{
-			if (m_nodes[i].m_im == 0)
+			if (m_nodes[i].m_frozen > 0)
 				anchors.emplace_back(i);
 			else
 				m_nodes[i].m_im = 0;
@@ -1104,7 +1124,7 @@ void btSoftBody::setVolumeMass(btScalar mass)
 
 	for (i = 0; i < m_nodes.size(); ++i)
 	{
-		if (m_nodes[i].m_im == 0)
+		if (m_nodes[i].m_frozen > 0)
 			anchors.emplace_back(i);
 		else
 			m_nodes[i].m_im = 0;
@@ -1149,7 +1169,7 @@ btVector3 btSoftBody::getLinearVelocity()
 	btVector3 total_momentum = btVector3(0, 0, 0);
 	for (int i = 0; i < m_nodes.size(); ++i)
 	{
-		btScalar mass = m_nodes[i].m_im == 0 ? 0 : 1.0 / m_nodes[i].m_im;
+		btScalar mass = m_nodes[i].m_frozen > 0 ? 0 : 1.0 / m_nodes[i].m_im;
 		total_momentum += mass * m_nodes[i].m_v;
 	}
 	btScalar total_mass = getTotalMass();
@@ -3292,7 +3312,7 @@ void btSoftBody::initializeClusters()
 		c.m_masses.resize(c.m_nodes.size());
 		for (int j = 0; j < c.m_nodes.size(); ++j)
 		{
-			if (c.m_nodes[j]->m_im == 0)
+			if (c.m_nodes[j]->m_frozen > 0)
 			{
 				c.m_containsAnchor = true;
 				c.m_masses[j] = BT_LARGE_FLOAT;
@@ -4696,7 +4716,7 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 			continue;
 		btVector3 vt = vr - vn * n;
 		btScalar I = 0;
-		btScalar mass = node->m_im == 0 ? 0 : btScalar(1) / node->m_im;
+		btScalar mass = node->m_frozen > 0 ? 0 : btScalar(1) / node->m_im;
 		if (applySpringForce)
 			I = -btMin(m_repulsionStiffness * timeStep * d, mass * (OVERLAP_REDUCTION_FACTOR * d / timeStep - vn));
 		if (vn < 0)

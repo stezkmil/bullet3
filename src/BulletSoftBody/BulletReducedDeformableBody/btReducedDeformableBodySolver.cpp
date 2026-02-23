@@ -208,7 +208,7 @@ void btReducedDeformableBodySolver::setConstraints(const btContactSolverInfo& in
 		for (int j = 0; j < rsb->m_fixedNodes.size(); ++j)
 		{
 			int i_node = rsb->m_fixedNodes[j];
-			if (rsb->m_nodes[i_node].m_im == 0)
+			if (rsb->m_nodes[i_node].m_frozen > 0)
 			{
 				for (int k = 0; k < 3; ++k)
 				{
@@ -226,7 +226,7 @@ void btReducedDeformableBodySolver::setConstraints(const btContactSolverInfo& in
 		{
 			const btSoftBody::DeformableNodeRigidContact& contact = rsb->m_nodeRigidContacts[j];
 			// skip fixed points
-			if (contact.m_node->m_im == 0)
+			if (contact.m_node->m_frozen > 0)
 			{
 				continue;
 			}

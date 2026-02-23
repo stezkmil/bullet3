@@ -93,7 +93,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		const btScalar misconvergenceRelaxationFactor = 0.5;
 		const btScalar convergenceRelaxationFactor = 1.1;
 
-		// If the current residual is larger than the last one, we are heading towards an explosion. We use this information as a hint that impulse magintudes should be dampened.
+		// If the current residual is larger than the last one, we are heading towards an explosion. We use this information as a hint that impulse magnitudes should be dampened.
 		// This greatly improves convergence.
 		if (m_previous_residual != -1.0)
 			if (residualSquare > m_previous_residual)
@@ -116,7 +116,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		{
 			btRigidBody* rigidCol = 0;
 			rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
-			if (rigidCol && rigidCol->isActive())
+			if (rigidCol)
 			{
 				rigidCol->applyImpulse(impulse, m_anchor->m_c1);
 			}
@@ -138,16 +138,10 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			}
 		}
 
-		//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
-		//		residualSquare);
+		fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
+				residualSquare);
 	}
-    else
-    {
-		btVector3 xOld = m_anchor->m_node->m_x;
-		btVector3 xNew = m_anchor->m_cti.m_colObj->getWorldTransform() * m_anchor->m_local;
-		m_anchor->m_node->m_v = (xNew - xOld) / infoGlobal.m_timeStep;
-		m_anchor->m_node->m_vn = m_anchor->m_node->m_v;
-    }
+    
 
 	return residualSquare;
 }
@@ -300,8 +294,9 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 				applySplitImpulse(soft_velocity / m_anchor->m_c2);
 
 				//m_anchor->m_body->applyPushImpulse((rigid_velocity / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
-				//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveSplitImpulse real_push %f %f %f real_turn %f %f %f residual %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
-				//		m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z(), residualSquare);
+				fprintf(stderr, "btDeformableNodeAnchorConstraint::solveSplitImpulse real_push %f %f %f real_turn %f %f %f residual %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
+						m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z(), residualSquare);
+				fprintf(stderr, "regular m_anchor->m_node->m_v %f %f %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z());
 			}
 		}
 	}
@@ -309,6 +304,10 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
     else
     {
 		m_anchor->m_node->m_x = m_anchor->m_cti.m_colObj->getWorldTransform() * m_anchor->m_local;
+		//fprintf(stderr, "fallback m_anchor->m_node->m_v %f %f %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z());
+
+        //m_anchor->m_node->m_v = btVector3(0,0,0);
+		//m_anchor->m_node->m_vn = btVector3(0,0,0);
 		residualSquare = 0.0;
     }
 
