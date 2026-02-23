@@ -273,7 +273,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 				// without any inertia tensor or mass usage when updating rotation velocities.
 
 				// Why this works:
-				// Identity: if dvRot ⟂ r, then ω = (r×dvRot)/|r|^2 gives ω×r = dvRot.
+				// Identity: if dvPar ⟂ r, then ω = (r×dvPar)/|r|^2 gives ω×r = dvPar.
 				// This is a clean kinematic solve
 				btVector3 dvPoint = rigid_velocity;
 				btVector3 r = m_anchor->m_c1;
