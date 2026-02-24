@@ -138,9 +138,10 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			}
 		}
 
-		fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
-				residualSquare);
+		//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
+		//		residualSquare);
 	}
+	// If the rigid is static, we freeze the soft node.
 
 	return residualSquare;
 }
@@ -299,16 +300,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 			}
 		}
 	}
-	// If the rigid is static, we fall back to the full positional projection. In this case there is nothing to iterate to, which makes the normal drift correction unusable in this case.
-	else
-	{
-		//m_anchor->m_node->m_x = m_anchor->m_cti.m_colObj->getWorldTransform() * m_anchor->m_local;
-		//fprintf(stderr, "fallback m_anchor->m_node->m_v %f %f %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z());
-
-		//m_anchor->m_node->m_v = btVector3(0,0,0);
-		//m_anchor->m_node->m_vn = btVector3(0,0,0);
-		residualSquare = 0.0;
-	}
+	// If the rigid is static, we freeze the soft node. In this case there is nothing to iterate to, which makes the normal drift correction unusable in this case.
 
 	// Another pitfall here is to try to perform a final prediction here and return a residual based on that. Not only would that be a redundant code duplication, because that same functionality
 	// would be done at the start of the next solveSplitImpulse, but it also causes partial mis-convergence.
