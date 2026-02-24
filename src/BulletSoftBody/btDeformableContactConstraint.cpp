@@ -293,10 +293,9 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 				// To counter that, the soft must also contribute by being pushed.
 				applySplitImpulse(soft_velocity / m_anchor->m_c2);
 
-				//m_anchor->m_body->applyPushImpulse((rigid_velocity / m_anchor->m_body->getInvMass()) / m_anchor->m_body->getLinearFactor(), m_anchor->m_c1);
-				fprintf(stderr, "btDeformableNodeAnchorConstraint::solveSplitImpulse real_push %f %f %f real_turn %f %f %f residual %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
-						m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z(), residualSquare);
-				fprintf(stderr, "regular m_anchor->m_node->m_v %f %f %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z());
+				//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveSplitImpulse real_push %f %f %f real_turn %f %f %f residual %f\n", m_anchor->m_body->getPushVelocity().x(), m_anchor->m_body->getPushVelocity().y(), m_anchor->m_body->getPushVelocity().z(),
+				//		m_anchor->m_body->getTurnVelocity().x(), m_anchor->m_body->getTurnVelocity().y(), m_anchor->m_body->getTurnVelocity().z(), residualSquare);
+				//fprintf(stderr, "regular m_anchor->m_node->m_v %f %f %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z());
 			}
 		}
 	}
