@@ -607,14 +607,6 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 	c.m_node->m_battach = 1;
 	c.m_userIndex = userIndex;
 
-    auto isImmovable = [](btRigidBody* rb) -> bool
-	{
-		if (!rb) return true;
-		return rb->isStaticOrKinematicObject() || (rb->getInvMass() == btScalar(0) || !rb->isActive());
-	};
-	if (isImmovable(body) && n.m_frozen > 0)
-		asdf;
-	//c.m_freezeContribution = body->isStaticOrKinematicObject() || body->getInvMass() == btScalar(0) || !body->isActive();
 	m_deformableAnchors.push_back(c);
 	body->addAnchorRef(this);
 }
@@ -640,7 +632,7 @@ void btSoftBody::removeAnchor(int node)
 
 void btSoftBody::removeDeformableAnchor(int node)
 {
-	const btSoftBody::Node& n = m_nodes[node];
+	btSoftBody::Node& n = m_nodes[node];
 	for (int i = 0; i < m_deformableAnchors.size();)
 	{
 		const DeformableNodeRigidAnchor& c = m_deformableAnchors[i];
@@ -649,6 +641,9 @@ void btSoftBody::removeDeformableAnchor(int node)
 			if (c.m_body)
 				c.m_body->removeAnchorRef(this);
 			m_deformableAnchors.removeAtIndex(i);
+
+			if (c.m_freezeContribution && n.m_frozen > 0)
+				--n.m_frozen;
 		}
 		else
 		{
@@ -667,6 +662,8 @@ int btSoftBody::removeDeformableAnchorByUserIndex(int userIndex)
 		{
 			if (c.m_body)
 				c.m_body->removeAnchorRef(this);
+			if (c.m_freezeContribution && c.m_node->m_frozen > 0)
+				--c.m_node->m_frozen;
 			m_deformableAnchors.removeAtIndex(i);
 			++removedCount;
 		}
@@ -1033,11 +1030,17 @@ void btSoftBody::addVelocity(const btVector3& velocity, int node)
 void btSoftBody::freezeNode(int node, bool freeze)
 {
 	if (freeze)
+	{
 		++m_nodes[node].m_frozen;
+		m_nodes[node].m_v = btVector3(0, 0, 0);
+		m_nodes[node].m_vn = btVector3(0, 0, 0);
+	}
 	else
 	{
 		--m_nodes[node].m_frozen;
 		btAssert(m_nodes[node].m_frozen >= 0);
+		if (m_nodes[node].m_frozen < 0)
+			m_nodes[node].m_frozen = 0;
 	}
 }
 

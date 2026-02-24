@@ -121,7 +121,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			int wantFreeze = 0;
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[a];
-			
+
 			btRigidBody* rb = anchor.m_body;
 			if (isImmovable(rb))
 				wantFreeze = 1;
@@ -133,6 +133,13 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 				anchor.m_node->m_frozen += (wantFreeze - hadFreeze);  // +1 or -1
 				btAssert(anchor.m_node->m_frozen >= 0);
 				anchor.m_freezeContribution = wantFreeze;
+				if (anchor.m_node->m_frozen > 0)
+				{
+					anchor.m_node->m_v = btVector3(0, 0, 0);
+					anchor.m_node->m_vn = btVector3(0, 0, 0);
+				}
+				else if (anchor.m_node->m_frozen < 0)
+					anchor.m_node->m_frozen = 0;
 			}
 		}
 
