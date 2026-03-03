@@ -88,7 +88,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		btVector3 va = getVa();
 		btVector3 vb = getVb();
 		btVector3 vr = (vb - va);
-		btScalar residualSquare = btDot(vr, vr);
+		residualSquare = btDot(vr, vr);
 
 		const btScalar misconvergenceRelaxationFactor = 0.5;
 		const btScalar convergenceRelaxationFactor = 1.1;
