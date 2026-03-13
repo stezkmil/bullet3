@@ -49,6 +49,37 @@ struct btGImpactIntermediateResult
 	btScalar depth;
 	btScalar unmodified_depth;
 	int index0, index1;
+
+    bool operator<(const btGImpactIntermediateResult& other) const
+	{
+		if (depth != other.depth)
+			return depth < other.depth;
+
+		if (unmodified_depth != other.unmodified_depth)
+			return unmodified_depth < other.unmodified_depth;
+
+		if (index0 != other.index0)
+			return index0 < other.index0;
+
+		if (index1 != other.index1)
+			return index1 < other.index1;
+
+		if (point.x() != other.point.x())
+			return point.x() < other.point.x();
+		if (point.y() != other.point.y())
+			return point.y() < other.point.y();
+		if (point.z() != other.point.z())
+			return point.z() < other.point.z();
+
+		if (normal.x() != other.normal.x())
+			return normal.x() < other.normal.x();
+		if (normal.y() != other.normal.y())
+			return normal.y() < other.normal.y();
+		if (normal.z() != other.normal.z())
+			return normal.z() < other.normal.z();
+
+		return false;
+	}
 };
 
 typedef tbb::enumerable_thread_specific<std::vector<btGImpactIntermediateResult>> ThreadLocalGImpactResult;

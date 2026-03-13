@@ -624,27 +624,38 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 			if (anyPenetrating && !findAllContacts)
 				break;*/
 		}
-		for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
+
+        // CD parallel run will create nondeterministic results. If determinism is not needed, this copy and sort can be commented out.
+		std::vector<btGImpactIntermediateResult> intermediateResultsSorted;
+		intermediateResultsSorted.reserve(manifoldSizeHint);
+
+        for (const auto& perThreadIntermediateResult : *perThreadIntermediateResults)
 		{
 			for (const auto& ir : perThreadIntermediateResult)
 			{
-				if (anyPenetrating && ir.depth <= 0.0)  // This one is non pen. so it can be wrong. For example a triangle which has completely tunneled through and now it would cause a contact with a normal which would oppose the pen. ones.
-					continue;
-				if (findOnlyContactCounts)
-				{
-					trifacesForCounts0->insert(ir.index0);
-					trifacesForCounts1->insert(ir.index1);
-				}
-				else
-				{
-					m_triface0 = ir.index0;
-					m_triface1 = ir.index1;
-					addContactPoint(body0Wrap, body1Wrap,
-									ir.point,
-									ir.normal,
-									ir.depth,
-									ir.unmodified_depth, manifoldSizeHint);
-				}
+				intermediateResultsSorted.push_back(ir);
+			}
+		}
+		std::sort(intermediateResultsSorted.begin(), intermediateResultsSorted.end());
+
+		for (const auto& ir : intermediateResultsSorted)
+		{
+			if (anyPenetrating && ir.depth <= 0.0)  // This one is non pen. so it can be wrong. For example a triangle which has completely tunneled through and now it would cause a contact with a normal which would oppose the pen. ones.
+				continue;
+			if (findOnlyContactCounts)
+			{
+				trifacesForCounts0->insert(ir.index0);
+				trifacesForCounts1->insert(ir.index1);
+			}
+			else
+			{
+				m_triface0 = ir.index0;
+				m_triface1 = ir.index1;
+				addContactPoint(body0Wrap, body1Wrap,
+								ir.point,
+								ir.normal,
+								ir.depth,
+								ir.unmodified_depth, manifoldSizeHint);
 			}
 		}
 		if (findOnlyContactCounts)
