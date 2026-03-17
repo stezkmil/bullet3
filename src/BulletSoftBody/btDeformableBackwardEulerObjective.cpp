@@ -161,6 +161,8 @@ void btDeformableBackwardEulerObjective::applyForce(TVStack& force, bool setZero
 			{
 				btScalar one_over_mass = (psb->m_nodes[j].m_frozen > 0) ? 0 : psb->m_nodes[j].m_im;
 				psb->m_nodes[j].m_v += one_over_mass * force[counter++];
+				if (j == 0)
+					fprintf(stderr, "node %d vel %f %f %f force %f %f %f oldrepo\n", j, psb->m_nodes[j].m_v.x(), psb->m_nodes[j].m_v.y(), psb->m_nodes[j].m_v.z(), force[counter - 1].x(), force[counter - 1].y(), force[counter - 1].z());
 			}
 		}
 	}

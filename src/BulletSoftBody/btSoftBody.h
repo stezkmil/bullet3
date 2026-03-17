@@ -331,7 +331,7 @@ public:
 		btMatrix3x3 m_effectiveMass;      // effective mass in contact
 		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
 		NodeSafe m_safe;
-		static constexpr int kMaxTetraMembershipPerNode = 32;
+		static constexpr int kMaxTetraMembershipPerNode = 64;
 		int m_tetraMembership[kMaxTetraMembershipPerNode];
 		int m_tetraMembershipCount;
 		int m_frozen;  // Whether the node is frozen (not updated by the solver)
@@ -1071,7 +1071,7 @@ public:
 	void setMass(int node,
 				 btScalar mass);
 
-    void freezeNode(int node, bool freeze);
+	void freezeNode(int node, bool freeze);
 
 	/* Get mass																*/
 	btScalar getMass(int node) const;

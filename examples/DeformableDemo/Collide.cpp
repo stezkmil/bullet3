@@ -66,21 +66,21 @@ public:
 
 	void Ctor_RbUpStack()
 	{
-		float mass = 0.5;
-		btCollisionShape* shape = new btBoxShape(btVector3(2, 2, 2));
+		float mass = 0.0;
+		btCollisionShape* shape = new btBoxShape(btVector3(200, 200, 2));
 		btTransform startTransform;
 		startTransform.setIdentity();
-		startTransform.setOrigin(btVector3(0, -2, 0));
+		startTransform.setOrigin(btVector3(0, 0, 0));
 		btRigidBody* rb = createRigidBody(mass, startTransform, shape);
-		rb->setLinearVelocity(btVector3(0, +COLLIDING_VELOCITY, 0));
+		//rb->setLinearVelocity(btVector3(0, +COLLIDING_VELOCITY, 0));
 	}
 
 	void stepSimulation(float deltaTime)
 	{
 		m_linearElasticity->setPoissonRatio(nu);
-		m_linearElasticity->setYoungsModulus(E);
+		m_linearElasticity->setYoungsModulus(/*E*/ 10.0);
 		m_linearElasticity->setDamping(damping_alpha, damping_beta);
-		float internalTimeStep = 1. / 60.f;
+		float internalTimeStep = 0.002 /*1. / 60.f*/;
 		m_dynamicsWorld->stepSimulation(deltaTime, 1, internalTimeStep);
 	}
 
@@ -130,10 +130,10 @@ void Collide::initPhysics()
 																  TetraCube::getNodes(),
 																  false, true, true);
 		getDeformableDynamicsWorld()->addSoftBody(psb);
-		psb->scale(btVector3(2, 2, 2));
-		psb->translate(btVector3(0, 7, 0));
+		psb->scale(btVector3(100, 100, 100));
+		psb->translate(btVector3(0, 0, 200));
 		psb->getCollisionShape()->setMargin(0.1);
-		psb->setTotalMass(0.5);
+		psb->setTotalMass(50.0);
 		psb->m_cfg.kKHR = 1;  // collision hardness with kinematic objects
 		psb->m_cfg.kCHR = 1;  // collision hardness with rigid body
 		psb->m_cfg.kDF = 0;
@@ -142,18 +142,26 @@ void Collide::initPhysics()
 		psb->m_sleepingThreshold = 0;
 		btSoftBodyHelpers::generateBoundaryFaces(psb);
 
-		psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
+		//psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
 
 		btDeformableLinearElasticityForce* linearElasticity = new btDeformableLinearElasticityForce(100, 100, 0.01);
 		m_linearElasticity = linearElasticity;
 		getDeformableDynamicsWorld()->addForce(psb, linearElasticity);
 		m_forces.push_back(linearElasticity);
+
+		btVector3 gravity = btVector3(0, 0, -9810.0);
+		m_dynamicsWorld->setGravity(gravity);
+		getDeformableDynamicsWorld()->getWorldInfo().m_gravity = gravity;
+
+		btDeformableGravityForce* gravity_force = new btDeformableGravityForce(gravity);
+		getDeformableDynamicsWorld()->addForce(psb, gravity_force);
+		m_forces.push_back(gravity_force);
 	}
-	getDeformableDynamicsWorld()->setImplicit(true);
-	getDeformableDynamicsWorld()->setLineSearch(false);
-	getDeformableDynamicsWorld()->setUseProjection(true);
-	getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
-	getDeformableDynamicsWorld()->getSolverInfo().m_deformable_maxErrorReduction = btScalar(200);
+	//getDeformableDynamicsWorld()->setImplicit(true);
+	//getDeformableDynamicsWorld()->setLineSearch(false);
+	//getDeformableDynamicsWorld()->setUseProjection(true);
+	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
+	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_maxErrorReduction = btScalar(200);
 	getDeformableDynamicsWorld()->getSolverInfo().m_leastSquaresResidualThreshold = 1e-3;
 	getDeformableDynamicsWorld()->getSolverInfo().m_splitImpulse = true;
 	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 100;
