@@ -61,7 +61,7 @@ bool btGImpactPairEval::EvalPair(const GIM_PAIR& pair,
 			auto dist = sqrtf(dist_sq_out);
 
 			const btScalar marginInflationFactor = 5.0;
-			btScalar margin = std::max((ptri_orig0.m_margin + ptri_orig1.m_margin) * marginInflationFactor, 1.0);
+			btScalar margin = (std::max)((ptri_orig0.m_margin + ptri_orig1.m_margin) * marginInflationFactor, 1.0);
 
 			if (ret && dist_sq_out != 0.0 && dist < margin)
 				return false;
