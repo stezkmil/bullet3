@@ -134,7 +134,7 @@ public:
 		for (int vi = 0; vi < trimeshInterface->get_vertex_count(); vi++)
 		{
 			btVector3 vec;
-			trimeshInterface->get_vertex(vi, vec);
+			trimeshInterface->get_vertex(vi, vec, false);
 			vertices.push_back(vec[0]);
 			vertices.push_back(vec[1]);
 			vertices.push_back(vec[2]);
@@ -214,7 +214,7 @@ void btGImpactConvexDecompositionShape::processAllTriangles(btTriangleCallback* 
 		int i = trimeshInterface->get_primitive_count();
 		while (i--)
 		{
-			trimeshInterface->get_primitive_triangle(i, triangle);
+			trimeshInterface->get_primitive_triangle(i, triangle, false);
 			callback->processTriangle(triangle.m_vertices, part, i);
 		}
 
