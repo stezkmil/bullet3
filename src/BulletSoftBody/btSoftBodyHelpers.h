@@ -24,6 +24,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "btSoftBody.h"
 #include <fstream>
 #include <string>
+#include <vector>
 
 //
 // Helpers
@@ -151,6 +152,8 @@ struct btSoftBodyHelpers
 											bool btetralinks,
 											bool bfacesfromtetras);
 	static btSoftBody* CreateFromVtkFile(btSoftBodyWorldInfo& worldInfo, const char* vtk_file);
+
+	static void writeTetGenData(const char* file, const btSoftBody* psb);
 
 	static void writeObj(const char* file, const btSoftBody* psb);
 
