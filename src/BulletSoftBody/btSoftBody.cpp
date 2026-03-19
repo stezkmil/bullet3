@@ -3680,6 +3680,22 @@ void btSoftBody::updateDeformation()
 		btMatrix3x3 Ds(c1.getX(), c2.getX(), c3.getX(),
 					   c1.getY(), c2.getY(), c3.getY(),
 					   c1.getZ(), c2.getZ(), c3.getZ());
+		/*if (i == 0)
+			fprintf(stderr, "c3 %f %f %f\n",
+					c3.x(),
+					c3.y(),
+					c3.z());*/
+		/*if (i == 0)
+			fprintf(stderr, "Ds %f %f %f %f %f %f %f %f %f\n",
+					Ds.getColumn(0).x(),
+					Ds.getColumn(0).y(),
+					Ds.getColumn(0).z(),
+					Ds.getColumn(1).x(),
+					Ds.getColumn(1).y(),
+					Ds.getColumn(1).z(),
+					Ds.getColumn(2).x(),
+					Ds.getColumn(2).y(),
+					Ds.getColumn(2).z());*/
 		t.m_F = Ds * t.m_Dm_inverse;
 
 		btSoftBody::TetraScratch& s = m_tetraScratches[i];

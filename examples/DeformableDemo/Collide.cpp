@@ -27,16 +27,19 @@
 #include "../Utils/b3ResourcePath.h"
 
 ///The Collide shows the contact between volumetric deformable objects and rigid objects.
-static btScalar E = 50;
+static btScalar E = 10;
 static btScalar nu = 0.3;
 static btScalar damping_alpha = 0.1;
 static btScalar damping_beta = 0.01;
 static btScalar COLLIDING_VELOCITY = 15;
 
+namespace FooSpace
+{
 struct TetraCube
 {
-#include "../SoftDemo/cube.inl"
+#include "../SoftDemo/debug_cube.inl"
 };
+}  // namespace FooSpace
 
 class Collide : public CommonDeformableBodyBase
 {
@@ -57,20 +60,20 @@ public:
 
 	void resetCamera()
 	{
-		float dist = 20;
+		float dist = 400;
 		float pitch = 0;
 		float yaw = 90;
-		float targetPos[3] = {0, 3, 0};
+		float targetPos[3] = {0, 0, 0};
 		m_guiHelper->resetCamera(dist, yaw, pitch, targetPos[0], targetPos[1], targetPos[2]);
 	}
 
 	void Ctor_RbUpStack()
 	{
 		float mass = 0.0;
-		btCollisionShape* shape = new btBoxShape(btVector3(200, 200, 2));
+		btCollisionShape* shape = new btBoxShape(btVector3(200, 200, 20));
 		btTransform startTransform;
 		startTransform.setIdentity();
-		startTransform.setOrigin(btVector3(0, 0, 0));
+		startTransform.setOrigin(btVector3(0, 0, -20));
 		btRigidBody* rb = createRigidBody(mass, startTransform, shape);
 		//rb->setLinearVelocity(btVector3(0, +COLLIDING_VELOCITY, 0));
 	}
@@ -78,7 +81,7 @@ public:
 	void stepSimulation(float deltaTime)
 	{
 		m_linearElasticity->setPoissonRatio(nu);
-		m_linearElasticity->setYoungsModulus(/*E*/ 10.0);
+		m_linearElasticity->setYoungsModulus(E);
 		m_linearElasticity->setDamping(damping_alpha, damping_beta);
 		float internalTimeStep = 0.002 /*1. / 60.f*/;
 		m_dynamicsWorld->stepSimulation(deltaTime, 1, internalTimeStep);
@@ -102,7 +105,7 @@ public:
 
 void Collide::initPhysics()
 {
-	m_guiHelper->setUpAxis(1);
+	m_guiHelper->setUpAxis(2);
 
 	///collision configuration contains default setup for memory, collision setup
 	m_collisionConfiguration = new btSoftBodyRigidBodyCollisionConfiguration();
@@ -125,13 +128,14 @@ void Collide::initPhysics()
 	// create volumetric soft body
 	{
 		btSoftBody* psb = btSoftBodyHelpers::CreateFromTetGenData(getDeformableDynamicsWorld()->getWorldInfo(),
-																  TetraCube::getElements(),
+																  FooSpace::TetraCube::getElements(),
 																  0,
-																  TetraCube::getNodes(),
+																  FooSpace::TetraCube::getNodes(),
 																  false, true, true);
 		getDeformableDynamicsWorld()->addSoftBody(psb);
-		psb->scale(btVector3(100, 100, 100));
-		psb->translate(btVector3(0, 0, 200));
+
+		//psb->scale(btVector3(100, 100, 100));
+		//psb->translate(btVector3(0, 0, 70));
 		psb->getCollisionShape()->setMargin(0.1);
 		psb->setTotalMass(50.0);
 		psb->m_cfg.kKHR = 1;  // collision hardness with kinematic objects
@@ -141,6 +145,51 @@ void Collide::initPhysics()
 		psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
 		btSoftBodyHelpers::generateBoundaryFaces(psb);
+
+		fprintf(
+			stderr,
+			"m_c0 %f %f %f m_c1 %f m_c2 %f m_Dm_inverse %f %f %f %f %f %f %f %f %f m_element_measure %f m_F %f %f %f %f %f %f %f %f %f m_P_inv[0] %f %f %f m_P_inv[1] %f %f %f m_P_inv[2] %f %f %f\n",
+			psb->m_tetras[0].m_c0->x(),
+			psb->m_tetras[0].m_c0->y(),
+			psb->m_tetras[0].m_c0->z(),
+
+			psb->m_tetras[0].m_c1,
+
+			psb->m_tetras[0].m_c2,
+
+			psb->m_tetras[0].m_Dm_inverse.getColumn(0).x(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(0).y(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(0).z(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(1).x(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(1).y(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(1).z(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(2).x(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(2).y(),
+			psb->m_tetras[0].m_Dm_inverse.getColumn(2).z(),
+
+			psb->m_tetras[0].m_element_measure,
+
+			psb->m_tetras[0].m_F.getColumn(0).x(),
+			psb->m_tetras[0].m_F.getColumn(0).y(),
+			psb->m_tetras[0].m_F.getColumn(0).z(),
+			psb->m_tetras[0].m_F.getColumn(1).x(),
+			psb->m_tetras[0].m_F.getColumn(1).y(),
+			psb->m_tetras[0].m_F.getColumn(1).z(),
+			psb->m_tetras[0].m_F.getColumn(2).x(),
+			psb->m_tetras[0].m_F.getColumn(2).y(),
+			psb->m_tetras[0].m_F.getColumn(2).z(),
+
+			psb->m_tetras[0].m_P_inv[0].x(),
+			psb->m_tetras[0].m_P_inv[0].y(),
+			psb->m_tetras[0].m_P_inv[0].z(),
+
+			psb->m_tetras[0].m_P_inv[1].x(),
+			psb->m_tetras[0].m_P_inv[1].y(),
+			psb->m_tetras[0].m_P_inv[1].z(),
+
+			psb->m_tetras[0].m_P_inv[2].x(),
+			psb->m_tetras[0].m_P_inv[2].y(),
+			psb->m_tetras[0].m_P_inv[2].z());
 
 		//psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
 
@@ -163,8 +212,8 @@ void Collide::initPhysics()
 	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
 	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_maxErrorReduction = btScalar(200);
 	getDeformableDynamicsWorld()->getSolverInfo().m_leastSquaresResidualThreshold = 1e-3;
-	getDeformableDynamicsWorld()->getSolverInfo().m_splitImpulse = true;
-	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 100;
+	//getDeformableDynamicsWorld()->getSolverInfo().m_splitImpulse = true;
+	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 500;
 	// add a few rigid bodies
 	Ctor_RbUpStack();
 	m_guiHelper->autogenerateGraphicsObjects(m_dynamicsWorld);

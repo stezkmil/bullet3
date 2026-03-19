@@ -280,7 +280,48 @@ public:
 
 				// elastic force
 				btScalar scale1 = scale * tetra.m_element_measure;
-				force[id0] -= scale1 * force_on_node0;
+				auto dbg = scale1 * force_on_node0;
+				force[id0] -= dbg;
+				if (j == 0)
+				{
+					btMatrix3x3 corotated_F = psb->m_tetraScratches[j].m_corotation.transpose() * psb->m_tetraScratches[j].m_F;
+
+					btMatrix3x3 epsilon = (corotated_F + corotated_F.transpose()) * 0.5 - btMatrix3x3::getIdentity();
+					btScalar trace = epsilon[0][0] + epsilon[1][1] + epsilon[2][2];
+					P = epsilon * btScalar(2) * m_mu + btMatrix3x3::getIdentity() * m_lambda * trace;
+
+					fprintf(stderr, "m_mu %f m_lambda %f\n", m_mu, m_lambda);
+					/*fprintf(stderr, "epsilon %f %f %f %f %f %f %f %f %f\n",
+							epsilon.getColumn(0).x(),
+							epsilon.getColumn(0).y(),
+							epsilon.getColumn(0).z(),
+							epsilon.getColumn(1).x(),
+							epsilon.getColumn(1).y(),
+							epsilon.getColumn(1).z(),
+							epsilon.getColumn(2).x(),
+							epsilon.getColumn(2).y(),
+							epsilon.getColumn(2).z());*/
+					/*fprintf(stderr, "psb->m_tetraScratches[j].m_corotation %f %f %f %f %f %f %f %f %f\n",
+							psb->m_tetraScratches[j].m_corotation.getColumn(0).x(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(0).y(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(0).z(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(1).x(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(1).y(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(1).z(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(2).x(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(2).y(),
+							psb->m_tetraScratches[j].m_corotation.getColumn(2).z());
+					fprintf(stderr, "psb->m_tetraScratches[j].m_F %f %f %f %f %f %f %f %f %f\n",
+							psb->m_tetraScratches[j].m_F.getColumn(0).x(),
+							psb->m_tetraScratches[j].m_F.getColumn(0).y(),
+							psb->m_tetraScratches[j].m_F.getColumn(0).z(),
+							psb->m_tetraScratches[j].m_F.getColumn(1).x(),
+							psb->m_tetraScratches[j].m_F.getColumn(1).y(),
+							psb->m_tetraScratches[j].m_F.getColumn(1).z(),
+							psb->m_tetraScratches[j].m_F.getColumn(2).x(),
+							psb->m_tetraScratches[j].m_F.getColumn(2).y(),
+							psb->m_tetraScratches[j].m_F.getColumn(2).z());*/
+				}
 				force[id1] -= scale1 * force_on_node123.getColumn(0);
 				force[id2] -= scale1 * force_on_node123.getColumn(1);
 				force[id3] -= scale1 * force_on_node123.getColumn(2);
