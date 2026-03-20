@@ -28,7 +28,7 @@
 #include "../Utils/b3ResourcePath.h"
 
 ///The Collide shows the contact between volumetric deformable objects and rigid objects.
-static btScalar E = 50;
+static btScalar E = 68000000;
 static btScalar nu = 0.3;
 static btScalar damping_alpha = 0.1;
 static btScalar damping_beta = 0.01;
@@ -63,7 +63,7 @@ public:
 
 	void resetCamera()
 	{
-		float dist = 2000;
+		float dist = 1000;
 		float pitch = 0;
 		float yaw = 0;
 		float targetPos[3] = {0, 0, 0};
@@ -150,16 +150,22 @@ void Collide::initPhysics()
 		//psb->scale(btVector3(2, 2, 2));
 		//psb->translate(btVector3(0, 7, 0));
 		psb->getCollisionShape()->setMargin(0.1);
-		psb->setTotalMass(10.0);
+		psb->setTotalMass(100.0);
 		psb->m_cfg.kKHR = 1;  // collision hardness with kinematic objects
 		psb->m_cfg.kCHR = 1;  // collision hardness with rigid body
 		psb->m_cfg.kDF = 0;
 		psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
 		psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
-		//psb->m_nodes[0].m_frozen = 1;
-		//psb->m_nodes[1].m_frozen = 1;
-		//psb->m_nodes[2].m_frozen = 1;
+		psb->m_nodes[684].m_frozen = 1;
+		psb->m_nodes[685].m_frozen = 1;
+		psb->m_nodes[686].m_frozen = 1;
+		psb->m_nodes[687].m_frozen = 1;
+		psb->m_nodes[688].m_frozen = 1;
+		psb->m_nodes[689].m_frozen = 1;
+		psb->m_nodes[690].m_frozen = 1;
+		psb->m_nodes[691].m_frozen = 1;
+		psb->m_nodes[692].m_frozen = 1;
 		btSoftBodyHelpers::generateBoundaryFaces(psb);
 
 		//psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
@@ -177,7 +183,7 @@ void Collide::initPhysics()
 		getDeformableDynamicsWorld()->addForce(psb, gravity_force);
 		m_forces.push_back(gravity_force);
 	}
-	//getDeformableDynamicsWorld()->setImplicit(true);
+	getDeformableDynamicsWorld()->setImplicit(true);
 	//getDeformableDynamicsWorld()->setLineSearch(false);
 	//getDeformableDynamicsWorld()->setUseProjection(true);
 	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
@@ -220,7 +226,7 @@ void Collide::initPhysics()
 	{
 		SliderParams slider("Young's Modulus", &E);
 		slider.m_minVal = 0;
-		slider.m_maxVal = 2000;
+		slider.m_maxVal = 100'000'000;
 		if (m_guiHelper->getParameterInterface())
 			m_guiHelper->getParameterInterface()->registerSliderFloatParameter(slider);
 	}
