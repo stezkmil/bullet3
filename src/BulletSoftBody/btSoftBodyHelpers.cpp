@@ -376,7 +376,7 @@ void btSoftBodyHelpers::Draw(btSoftBody* psb,
 		{
 			const btSoftBody::Node& n = psb->m_nodes[i];
 			if (0 == (n.m_material->m_flags & btSoftBody::fMaterial::DebugDraw)) continue;
-			if (n.m_im <= 0)
+			if (n.m_frozen > 0 || n.m_im <= 0)
 			{
 				drawVertex(idraw, n.m_x, 0.25, btVector3(1, 0, 0));
 			}

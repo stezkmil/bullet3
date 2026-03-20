@@ -175,9 +175,9 @@ public:
 						btVector3 dir = (node2->m_x - node1->m_x).normalized();
 						for (int d = 0; d < 3; ++d)
 						{
-							if (node1->m_im > 0)
+							if (node1->m_frozen <= 0 && node1->m_im > 0)
 								diagA[id1][d] -= scaled_k_damp * dir[d] * dir[d];
-							if (node2->m_im > 0)
+							if (node2->m_frozen <= 0 && node2->m_im > 0)
 								diagA[id2][d] -= scaled_k_damp * dir[d] * dir[d];
 						}
 					}
@@ -186,9 +186,9 @@ public:
 				{
 					for (int d = 0; d < 3; ++d)
 					{
-						if (node1->m_im > 0)
+						if (node1->m_frozen <= 0 && node1->m_im > 0)
 							diagA[id1][d] -= scaled_k_damp;
-						if (node2->m_im > 0)
+						if (node2->m_frozen <= 0 && node2->m_im > 0)
 							diagA[id2][d] -= scaled_k_damp;
 					}
 				}

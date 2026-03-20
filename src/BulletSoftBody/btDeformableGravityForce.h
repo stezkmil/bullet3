@@ -93,7 +93,7 @@ public:
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
 				const btSoftBody::Node& node = psb->m_nodes[j];
-				if (node.m_im > 0)
+				if (node.m_frozen <= 0 && node.m_im > 0)
 				{
 					e -= m_gravity.dot(node.m_q) / node.m_im;
 				}

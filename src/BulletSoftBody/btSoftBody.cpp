@@ -807,7 +807,7 @@ void btSoftBody::addForce(const btVector3& force)
 void btSoftBody::addForce(const btVector3& force, int node)
 {
 	Node& n = m_nodes[node];
-	if (n.m_im > 0)
+	if (n.m_frozen <= 0 && n.m_im > 0)
 	{
 		n.m_f += force;
 	}
@@ -829,7 +829,7 @@ void btSoftBody::addAeroForceToNode(const btVector3& windVelocity, int nodeIndex
 
 	Node& n = m_nodes[nodeIndex];
 
-	if (n.m_im > 0)
+	if (n.m_frozen <= 0 && n.m_im > 0)
 	{
 		btSoftBody::sMedium medium;
 
@@ -956,7 +956,7 @@ void btSoftBody::addAeroForceToFace(const btVector3& windVelocity, int faceIndex
 
 				for (int j = 0; j < 3; ++j)
 				{
-					if (f.m_n[j]->m_im > 0)
+					if (f.m_n[j]->m_frozen <= 0 && f.m_n[j]->m_im > 0)
 					{
 						// Check if the velocity change resulted by aero drag force exceeds the current velocity of the node.
 						btVector3 del_v_by_fDrag = fDrag * f.m_n[j]->m_im * m_sst.sdt;
@@ -1009,7 +1009,7 @@ void btSoftBody::setVelocity(const btVector3& velocity)
 	for (int i = 0, ni = m_nodes.size(); i < ni; ++i)
 	{
 		Node& n = m_nodes[i];
-		if (n.m_im > 0)
+		if (n.m_frozen <= 0 && n.m_im > 0)
 		{
 			n.m_v = velocity;
 			n.m_vn = velocity;
@@ -1021,7 +1021,7 @@ void btSoftBody::setVelocity(const btVector3& velocity)
 void btSoftBody::addVelocity(const btVector3& velocity, int node)
 {
 	Node& n = m_nodes[node];
-	if (n.m_im > 0)
+	if (n.m_frozen <= 0 && n.m_im > 0)
 	{
 		n.m_v += velocity;
 	}
@@ -2324,7 +2324,7 @@ void btSoftBody::predictMotion(btScalar dt)
 		for (int i = 0, ni = m_nodes.size(); i < ni; ++i)
 		{
 			Node& n = m_nodes[i];
-			if (n.m_im > 0)
+			if (n.m_frozen <= 0 && n.m_im > 0)
 			{
 				const btVector3 x = posetrs * m_pose.m_pos[i] + m_pose.m_com;
 				n.m_x = Lerp(n.m_x, x, m_cfg.kMT);
@@ -3582,7 +3582,7 @@ void btSoftBody::dampClusters()
 			for (int j = 0; j < c.m_nodes.size(); ++j)
 			{
 				Node& n = *c.m_nodes[j];
-				if (n.m_im > 0)
+				if (n.m_frozen <= 0 && n.m_im > 0)
 				{
 					const btVector3 vx = c.m_lv + btCross(c.m_av, c.m_nodes[j]->m_q - c.m_com);
 					if (vx.length2() <= n.m_v.length2())
@@ -3922,7 +3922,7 @@ void btSoftBody::applyForces()
 	for (i = 0, ni = m_nodes.size(); i < ni; ++i)
 	{
 		btSoftBody::Node& n = m_nodes[i];
-		if (n.m_im > 0)
+		if (n.m_frozen <= 0 && n.m_im > 0)
 		{
 			if (use_medium)
 			{
@@ -4428,7 +4428,7 @@ std::vector<int> btSoftBody::findNClosestNodesLinearComplexity(const btVector3& 
 	for (int i = 0; i < m_nodes.size(); ++i)
 	{
 		auto& n = m_nodes[i];
-		if (n.m_im <= 0.0)
+		if (n.m_frozen > 0 || n.m_im <= 0.0)
 			continue;
 		btScalar distSq = (p - n.m_x).length2();
 		nodeDistances.emplace_back(i, distSq);

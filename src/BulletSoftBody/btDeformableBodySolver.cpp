@@ -68,7 +68,7 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 				btSoftBody* psb = m_softBodies[k];
 				for (int j = 0; j < psb->m_nodes.size(); ++j)
 				{
-					if (psb->m_nodes[j].m_im > 0)
+					if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im > 0)
 					{
 						m_residual[counter] = (-1. / psb->m_nodes[j].m_im) * m_dv[counter];
 					}
@@ -128,7 +128,7 @@ btScalar btDeformableBodySolver::kineticEnergy()
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
 			btSoftBody::Node& node = psb->m_nodes[j];
-			if (node.m_im > 0)
+			if (node.m_frozen <= 0 && node.m_im > 0)
 			{
 				ke += m_dv[node.index].length2() * 0.5 / node.m_im;
 			}

@@ -53,7 +53,7 @@ void btDeformableBackwardEulerObjective::reinitialize(bool nodeUpdated, btScalar
 		btSoftBody* psb = m_softBodies[i];
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
-			if (psb->m_nodes[j].m_im > 0)
+			if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im > 0)
 				psb->m_nodes[j].m_effectiveMass = I * (1.0 / psb->m_nodes[j].m_im);
 		}
 	}
@@ -149,7 +149,7 @@ void btDeformableBackwardEulerObjective::applyForce(TVStack& force, bool setZero
 		{
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
-				if (psb->m_nodes[j].m_im != 0)
+				if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im != 0)
 				{
 					psb->m_nodes[j].m_v += psb->m_nodes[j].m_effectiveMass_inv * force[counter++];
 				}
@@ -263,7 +263,7 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 		{
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
-				if (psb->m_nodes[j].m_im > 0)
+				if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im > 0)
 				{
 					psb->m_nodes[j].m_effectiveMass_inv = psb->m_nodes[j].m_effectiveMass.inverse();
 				}

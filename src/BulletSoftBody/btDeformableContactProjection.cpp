@@ -630,7 +630,7 @@ void btDeformableContactProjection::applyDynamicFriction(TVStack& f)
 		{
 			const btDeformableNodeRigidContactConstraint& constraint = m_nodeRigidConstraints[i][j];
 			const btSoftBody::Node* node = constraint.m_node;
-			if (node->m_im != 0)
+			if (node->m_frozen <= 0 && node->m_im != 0)
 			{
 				int index = node->index;
 				f[index] += constraint.getDv(node) * (1. / node->m_im);
@@ -643,7 +643,7 @@ void btDeformableContactProjection::applyDynamicFriction(TVStack& f)
 			for (int k = 0; k < 3; ++k)
 			{
 				const btSoftBody::Node* node = face->m_n[k];
-				if (node->m_im != 0)
+				if (node->m_frozen <= 0 && node->m_im != 0)
 				{
 					int index = node->index;
 					f[index] += constraint.getDv(node) * (1. / node->m_im);
@@ -655,7 +655,7 @@ void btDeformableContactProjection::applyDynamicFriction(TVStack& f)
 			const btDeformableFaceNodeContactConstraint& constraint = m_deformableConstraints[i][j];
 			const btSoftBody::Face* face = constraint.getContact()->m_face;
 			const btSoftBody::Node* node = constraint.getContact()->m_node;
-			if (node->m_im != 0)
+			if (node->m_frozen <= 0 && node->m_im != 0)
 			{
 				int index = node->index;
 				f[index] += constraint.getDv(node) * (1. / node->m_im);
@@ -663,7 +663,7 @@ void btDeformableContactProjection::applyDynamicFriction(TVStack& f)
 			for (int k = 0; k < 3; ++k)
 			{
 				const btSoftBody::Node* node = face->m_n[k];
-				if (node->m_im != 0)
+				if (node->m_frozen <= 0 && node->m_im != 0)
 				{
 					int index = node->index;
 					f[index] += constraint.getDv(node) * (1. / node->m_im);

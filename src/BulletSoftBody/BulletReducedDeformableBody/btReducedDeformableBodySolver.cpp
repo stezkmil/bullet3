@@ -103,7 +103,7 @@ void btReducedDeformableBodySolver::predictReduceDeformableMotion(btScalar solve
 		// calculate inverse mass matrix for all nodes
 		for (int j = 0; j < rsb->m_nodes.size(); ++j)
 		{
-			if (rsb->m_nodes[j].m_im > 0)
+			if (rsb->m_nodes[j].m_frozen <= 0 && rsb->m_nodes[j].m_im > 0)
 			{
 				rsb->m_nodes[j].m_effectiveMass_inv = rsb->m_nodes[j].m_effectiveMass.inverse();
 			}

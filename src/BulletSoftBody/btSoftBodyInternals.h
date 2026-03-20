@@ -1651,7 +1651,7 @@ struct btSoftColliders
 		}
 		void DoNode(btSoftBody::Node& n) const
 		{
-			const btScalar m = n.m_im > 0 ? dynmargin : stamargin;
+			const btScalar m = (n.m_frozen <= 0 && n.m_im > 0) ? dynmargin : stamargin;
 			btSoftBody::RContact c;
 
 			if ((!n.m_battach) &&
@@ -1703,7 +1703,7 @@ struct btSoftColliders
 		}
 		void DoNode(btSoftBody::Node& n) const
 		{
-			const btScalar m = n.m_im > 0 ? dynmargin : stamargin;
+			const btScalar m = (n.m_frozen <= 0 && n.m_im > 0) ? dynmargin : stamargin;
 			btSoftBody::DeformableNodeRigidContact c;
 
 			if (!n.m_battach)
@@ -1815,13 +1815,17 @@ struct btSoftColliders
 			btSoftBody::Node* n0 = f.m_n[0];
 			btSoftBody::Node* n1 = f.m_n[1];
 			btSoftBody::Node* n2 = f.m_n[2];
-			const btScalar m = (n0->m_im > 0 && n1->m_im > 0 && n2->m_im > 0) ? dynmargin : stamargin;
+			const btScalar m = (n0->m_frozen <= 0 && n0->m_im > 0 &&
+								n1->m_frozen <= 0 && n1->m_im > 0 &&
+								n2->m_frozen <= 0 && n2->m_im > 0) ? dynmargin : stamargin;
 			btSoftBody::DeformableFaceRigidContact c;
 			btVector3 contact_point;
 			btVector3 bary;
 			if (psb->checkDeformableFaceContact(m_colObj1Wrap, f, contact_point, bary, m, c.m_cti, true))
 			{
-				btScalar ima = n0->m_im + n1->m_im + n2->m_im;
+				btScalar ima = (n0->m_frozen > 0 ? btScalar(0) : n0->m_im) +
+							   (n1->m_frozen > 0 ? btScalar(0) : n1->m_im) +
+							   (n2->m_frozen > 0 ? btScalar(0) : n2->m_im);
 				const btScalar imb = m_rigidBody ? m_rigidBody->getInvMass() : 0.f;
 				// todo: collision between multibody and fixed deformable face will be missed.
 				const btScalar ms = ima + imb;
@@ -1841,7 +1845,9 @@ struct btSoftColliders
 					const btScalar fc = psb->m_cfg.kDF * m_colObj1Wrap->getCollisionObject()->getFriction();
 
 					// the effective inverse mass of the face as in https://graphics.stanford.edu/papers/cloth-sig02/cloth.pdf
-					ima = bary.getX() * c.m_weights.getX() * n0->m_im + bary.getY() * c.m_weights.getY() * n1->m_im + bary.getZ() * c.m_weights.getZ() * n2->m_im;
+					ima = bary.getX() * c.m_weights.getX() * (n0->m_frozen > 0 ? btScalar(0) : n0->m_im) +
+						  bary.getY() * c.m_weights.getY() * (n1->m_frozen > 0 ? btScalar(0) : n1->m_im) +
+						  bary.getZ() * c.m_weights.getZ() * (n2->m_frozen > 0 ? btScalar(0) : n2->m_im);
 					c.m_c2 = ima;
 					c.m_c3 = fc;
 					c.m_c4 = m_colObj1Wrap->getCollisionObject()->isStaticOrKinematicObject() ? psb->m_cfg.kKHR : psb->m_cfg.kCHR;
@@ -1933,11 +1939,13 @@ struct btSoftColliders
 			{
 				const btSoftBody::Node* n[] = {face->m_n[0], face->m_n[1], face->m_n[2]};
 				const btVector3 w = BaryCoord(n[0]->m_x, n[1]->m_x, n[2]->m_x, p + o);
-				const btScalar ma = node->m_im;
-				btScalar mb = BaryEval(n[0]->m_im, n[1]->m_im, n[2]->m_im, w);
-				if ((n[0]->m_im <= 0) ||
-					(n[1]->m_im <= 0) ||
-					(n[2]->m_im <= 0))
+				const btScalar ma = (node->m_frozen > 0) ? 0 : node->m_im;
+				btScalar mb = BaryEval((n[0]->m_frozen > 0) ? btScalar(0) : n[0]->m_im,
+									   (n[1]->m_frozen > 0) ? btScalar(0) : n[1]->m_im,
+									   (n[2]->m_frozen > 0) ? btScalar(0) : n[2]->m_im, w);
+				if ((n[0]->m_frozen > 0 || n[0]->m_im <= 0) ||
+					(n[1]->m_frozen > 0 || n[1]->m_im <= 0) ||
+					(n[2]->m_frozen > 0 || n[2]->m_im <= 0))
 				{
 					mb = 0;
 				}
@@ -1976,11 +1984,13 @@ struct btSoftColliders
 			{
 				const btSoftBody::Node* n[] = {face->m_n[0], face->m_n[1], face->m_n[2]};
 				const btVector3 w = bary;
-				const btScalar ma = node->m_im;
-				btScalar mb = BaryEval(n[0]->m_im, n[1]->m_im, n[2]->m_im, w);
-				if ((n[0]->m_im <= 0) ||
-					(n[1]->m_im <= 0) ||
-					(n[2]->m_im <= 0))
+				const btScalar ma = (node->m_frozen > 0) ? 0 : node->m_im;
+				btScalar mb = BaryEval((n[0]->m_frozen > 0) ? btScalar(0) : n[0]->m_im,
+									   (n[1]->m_frozen > 0) ? btScalar(0) : n[1]->m_im,
+									   (n[2]->m_frozen > 0) ? btScalar(0) : n[2]->m_im, w);
+				if ((n[0]->m_frozen > 0 || n[0]->m_im <= 0) ||
+					(n[1]->m_frozen > 0 || n[1]->m_im <= 0) ||
+					(n[2]->m_frozen > 0 || n[2]->m_im <= 0))
 				{
 					mb = 0;
 				}

@@ -144,7 +144,7 @@ public:
 			{
 				const btSoftBody::Node& node = psb->m_nodes[j];
 				size_t id = node.index;
-				if (node.m_im > 0)
+				if (node.m_frozen <= 0 && node.m_im > 0)
 				{
 					force[id] -= scale * node.m_v / node.m_im * m_damping_alpha;
 				}
@@ -347,7 +347,7 @@ public:
 			{
 				const btSoftBody::Node& node = psb->m_nodes[j];
 				size_t id = node.index;
-				if (node.m_im > 0)
+				if (node.m_frozen <= 0 && node.m_im > 0)
 				{
 					df[id] -= scale * dv[id] / node.m_im * m_damping_alpha;
 				}
@@ -452,7 +452,7 @@ public:
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
 				btSoftBody::Node& node = psb->m_nodes[j];
-				if (node.m_im > 0)
+				if (node.m_frozen <= 0 && node.m_im > 0)
 				{
 					btMatrix3x3 I;
 					I.setIdentity();

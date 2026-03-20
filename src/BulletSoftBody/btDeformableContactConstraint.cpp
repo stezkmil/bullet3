@@ -662,11 +662,11 @@ void btDeformableFaceRigidContactConstraint::applyImpulse(const btVector3& impul
 	const btScalar& im0 = face->m_n[0]->m_im;
 	const btScalar& im1 = face->m_n[1]->m_im;
 	const btScalar& im2 = face->m_n[2]->m_im;
-	if (im0 > 0)
+	if (face->m_n[0]->m_frozen <= 0 && im0 > 0)
 		v0 -= dv * contact->m_weights[0];
-	if (im1 > 0)
+	if (face->m_n[1]->m_frozen <= 0 && im1 > 0)
 		v1 -= dv * contact->m_weights[1];
-	if (im2 > 0)
+	if (face->m_n[2]->m_frozen <= 0 && im2 > 0)
 		v2 -= dv * contact->m_weights[2];
 	if (m_useStrainLimiting)
 	{
@@ -744,15 +744,15 @@ void btDeformableFaceRigidContactConstraint::applySplitImpulse(const btVector3& 
 	const btScalar& im0 = face->m_n[0]->m_im;
 	const btScalar& im1 = face->m_n[1]->m_im;
 	const btScalar& im2 = face->m_n[2]->m_im;
-	if (im0 > 0)
+	if (face->m_n[0]->m_frozen <= 0 && im0 > 0)
 	{
 		v0 -= dv * contact->m_weights[0];
 	}
-	if (im1 > 0)
+	if (face->m_n[1]->m_frozen <= 0 && im1 > 0)
 	{
 		v1 -= dv * contact->m_weights[1];
 	}
-	if (im2 > 0)
+	if (face->m_n[2]->m_frozen <= 0 && im2 > 0)
 	{
 		v2 -= dv * contact->m_weights[2];
 	}
@@ -810,15 +810,16 @@ btScalar btDeformableFaceNodeContactConstraint::solveConstraint(const btContactS
 
 	btVector3 old_total_tangent_dv = m_total_tangent_dv;
 	// m_c2 is the inverse mass of the deformable node/face
-	if (m_node->m_im > 0)
+	const btScalar deformableInverseMass = (m_node->m_frozen <= 0 && m_node->m_im > 0) ? m_node->m_im : m_contact->m_imf;
+	if (m_node->m_frozen <= 0 && m_node->m_im > 0)
 	{
-		m_total_normal_dv -= impulse_normal * m_node->m_im;
-		m_total_tangent_dv -= impulse_tangent * m_node->m_im;
+		m_total_normal_dv -= impulse_normal * deformableInverseMass;
+		m_total_tangent_dv -= impulse_tangent * deformableInverseMass;
 	}
 	else
 	{
-		m_total_normal_dv -= impulse_normal * m_contact->m_imf;
-		m_total_tangent_dv -= impulse_tangent * m_contact->m_imf;
+		m_total_normal_dv -= impulse_normal * deformableInverseMass;
+		m_total_tangent_dv -= impulse_tangent * deformableInverseMass;
 	}
 
 	if (m_total_normal_dv.dot(m_contact->m_normal) > 0)
@@ -843,7 +844,14 @@ btScalar btDeformableFaceNodeContactConstraint::solveConstraint(const btContactS
 			{
 				m_total_tangent_dv = m_total_tangent_dv.normalized() * m_total_normal_dv.safeNorm() * m_contact->m_friction;
 			}
-			impulse_tangent = -btScalar(1) / m_node->m_im * (m_total_tangent_dv - old_total_tangent_dv);
+			if (deformableInverseMass > 0)
+			{
+				impulse_tangent = -btScalar(1) / deformableInverseMass * (m_total_tangent_dv - old_total_tangent_dv);
+			}
+			else
+			{
+				impulse_tangent.setZero();
+			}
 		}
 		else
 		{
@@ -862,7 +870,7 @@ void btDeformableFaceNodeContactConstraint::applyImpulse(const btVector3& impuls
 	const btSoftBody::DeformableFaceNodeContact* contact = getContact();
 	btVector3 dva = impulse * contact->m_node->m_im;
 	btVector3 dvb = impulse * contact->m_imf;
-	if (contact->m_node->m_im > 0)
+	if (contact->m_node->m_frozen <= 0 && contact->m_node->m_im > 0)
 	{
 		contact->m_node->m_v += dva;
 	}
@@ -874,15 +882,15 @@ void btDeformableFaceNodeContactConstraint::applyImpulse(const btVector3& impuls
 	const btScalar& im0 = face->m_n[0]->m_im;
 	const btScalar& im1 = face->m_n[1]->m_im;
 	const btScalar& im2 = face->m_n[2]->m_im;
-	if (im0 > 0)
+	if (face->m_n[0]->m_frozen <= 0 && im0 > 0)
 	{
 		v0 -= dvb * contact->m_weights[0];
 	}
-	if (im1 > 0)
+	if (face->m_n[1]->m_frozen <= 0 && im1 > 0)
 	{
 		v1 -= dvb * contact->m_weights[1];
 	}
-	if (im2 > 0)
+	if (face->m_n[2]->m_frozen <= 0 && im2 > 0)
 	{
 		v2 -= dvb * contact->m_weights[2];
 	}
