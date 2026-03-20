@@ -40,7 +40,7 @@ namespace FooSpace
 {
 struct TetraCube
 {
-#include "../SoftDemo/single_tet.inl"
+#include "../SoftDemo/cantilever.inl"
 };
 }  // namespace FooSpace
 
@@ -98,7 +98,7 @@ public:
 
 		btDeformableMultiBodyDynamicsWorld* deformableWorld = getDeformableDynamicsWorld();
 		btSoftBody* psb = (btSoftBody*)deformableWorld->getSoftBodyArray()[0];
-		fprintf(stdout, "free node coords %f %f %f\n", psb->m_nodes[3].m_x.x(), psb->m_nodes[3].m_x.y(), psb->m_nodes[3].m_x.z());
+		//fprintf(stdout, "free node coords %f %f %f\n", psb->m_nodes[3].m_x.x(), psb->m_nodes[3].m_x.y(), psb->m_nodes[3].m_x.z());
 	}
 
 	virtual void renderScene()
@@ -157,9 +157,9 @@ void Collide::initPhysics()
 		psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
 		psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
-		psb->m_nodes[0].m_frozen = 1;
-		psb->m_nodes[1].m_frozen = 1;
-		psb->m_nodes[2].m_frozen = 1;
+		//psb->m_nodes[0].m_frozen = 1;
+		//psb->m_nodes[1].m_frozen = 1;
+		//psb->m_nodes[2].m_frozen = 1;
 		btSoftBodyHelpers::generateBoundaryFaces(psb);
 
 		//psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
