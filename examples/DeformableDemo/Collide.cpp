@@ -21,6 +21,7 @@
 #include "BulletSoftBody/btSoftBodyRigidBodyCollisionConfiguration.h"
 #include "BulletDynamics/Featherstone/btMultiBodyConstraintSolver.h"
 #include "../CommonInterfaces/CommonParameterInterface.h"
+#include "../OpenGLWindow/SimpleCamera.h"
 #include <stdio.h>  //printf debugging
 
 #include "../CommonInterfaces/CommonDeformableBodyBase.h"
@@ -32,11 +33,16 @@ static btScalar nu = 0.3;
 static btScalar damping_alpha = 0.1;
 static btScalar damping_beta = 0.01;
 static btScalar COLLIDING_VELOCITY = 15;
+static const float CAMERA_FRUSTUM_NEAR = 1.f;
+static const float CAMERA_FRUSTUM_FAR = 1000000.f;
 
+namespace FooSpace
+{
 struct TetraCube
 {
-#include "../SoftDemo/cube.inl"
+#include "../SoftDemo/single_tet.inl"
 };
+}  // namespace FooSpace
 
 class Collide : public CommonDeformableBodyBase
 {
@@ -57,22 +63,29 @@ public:
 
 	void resetCamera()
 	{
-		float dist = 20;
+		float dist = 2000;
 		float pitch = 0;
-		float yaw = 90;
-		float targetPos[3] = {0, 3, 0};
+		float yaw = 0;
+		float targetPos[3] = {0, 0, 0};
 		m_guiHelper->resetCamera(dist, yaw, pitch, targetPos[0], targetPos[1], targetPos[2]);
+
+		if (m_guiHelper->getRenderInterface() && m_guiHelper->getRenderInterface()->getActiveCamera())
+		{
+			SimpleCamera* camera = static_cast<SimpleCamera*>(m_guiHelper->getRenderInterface()->getActiveCamera());
+			camera->setCameraFrustumNear(CAMERA_FRUSTUM_NEAR);
+			camera->setCameraFrustumFar(CAMERA_FRUSTUM_FAR);
+		}
 	}
 
 	void Ctor_RbUpStack()
 	{
-		float mass = 0.5;
-		btCollisionShape* shape = new btBoxShape(btVector3(2, 2, 2));
+		/*float mass = 0.0;
+		btCollisionShape* shape = new btBoxShape(btVector3(20, 2, 20));
 		btTransform startTransform;
 		startTransform.setIdentity();
 		startTransform.setOrigin(btVector3(0, -2, 0));
-		btRigidBody* rb = createRigidBody(mass, startTransform, shape);
-		rb->setLinearVelocity(btVector3(0, +COLLIDING_VELOCITY, 0));
+		btRigidBody* rb = createRigidBody(mass, startTransform, shape);*/
+		//rb->setLinearVelocity(btVector3(0, +COLLIDING_VELOCITY, 0));
 	}
 
 	void stepSimulation(float deltaTime)
@@ -80,8 +93,12 @@ public:
 		m_linearElasticity->setPoissonRatio(nu);
 		m_linearElasticity->setYoungsModulus(E);
 		m_linearElasticity->setDamping(damping_alpha, damping_beta);
-		float internalTimeStep = 1. / 60.f;
+		float internalTimeStep = 0.002 /*1. / 60.f*/;
 		m_dynamicsWorld->stepSimulation(deltaTime, 1, internalTimeStep);
+
+		btDeformableMultiBodyDynamicsWorld* deformableWorld = getDeformableDynamicsWorld();
+		btSoftBody* psb = (btSoftBody*)deformableWorld->getSoftBodyArray()[0];
+		fprintf(stdout, "free node coords %f %f %f\n", psb->m_nodes[3].m_x.x(), psb->m_nodes[3].m_x.y(), psb->m_nodes[3].m_x.z());
 	}
 
 	virtual void renderScene()
@@ -102,7 +119,7 @@ public:
 
 void Collide::initPhysics()
 {
-	m_guiHelper->setUpAxis(1);
+	m_guiHelper->setUpAxis(2);
 
 	///collision configuration contains default setup for memory, collision setup
 	m_collisionConfiguration = new btSoftBodyRigidBodyCollisionConfiguration();
@@ -125,38 +142,49 @@ void Collide::initPhysics()
 	// create volumetric soft body
 	{
 		btSoftBody* psb = btSoftBodyHelpers::CreateFromTetGenData(getDeformableDynamicsWorld()->getWorldInfo(),
-																  TetraCube::getElements(),
+																  FooSpace::TetraCube::getElements(),
 																  0,
-																  TetraCube::getNodes(),
+																  FooSpace::TetraCube::getNodes(),
 																  false, true, true);
 		getDeformableDynamicsWorld()->addSoftBody(psb);
-		psb->scale(btVector3(2, 2, 2));
-		psb->translate(btVector3(0, 7, 0));
+		//psb->scale(btVector3(2, 2, 2));
+		//psb->translate(btVector3(0, 7, 0));
 		psb->getCollisionShape()->setMargin(0.1);
-		psb->setTotalMass(0.5);
+		psb->setTotalMass(10.0);
 		psb->m_cfg.kKHR = 1;  // collision hardness with kinematic objects
 		psb->m_cfg.kCHR = 1;  // collision hardness with rigid body
 		psb->m_cfg.kDF = 0;
 		psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
 		psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
+		psb->m_nodes[0].m_frozen = 1;
+		psb->m_nodes[1].m_frozen = 1;
+		psb->m_nodes[2].m_frozen = 1;
 		btSoftBodyHelpers::generateBoundaryFaces(psb);
 
-		psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
+		//psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
 
 		btDeformableLinearElasticityForce* linearElasticity = new btDeformableLinearElasticityForce(100, 100, 0.01);
 		m_linearElasticity = linearElasticity;
 		getDeformableDynamicsWorld()->addForce(psb, linearElasticity);
 		m_forces.push_back(linearElasticity);
+
+		btVector3 gravity = btVector3(0, 0, -9810);
+		m_dynamicsWorld->setGravity(gravity);
+		getDeformableDynamicsWorld()->getWorldInfo().m_gravity = gravity;
+
+		btDeformableGravityForce* gravity_force = new btDeformableGravityForce(gravity);
+		getDeformableDynamicsWorld()->addForce(psb, gravity_force);
+		m_forces.push_back(gravity_force);
 	}
-	getDeformableDynamicsWorld()->setImplicit(true);
-	getDeformableDynamicsWorld()->setLineSearch(false);
-	getDeformableDynamicsWorld()->setUseProjection(true);
-	getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
-	getDeformableDynamicsWorld()->getSolverInfo().m_deformable_maxErrorReduction = btScalar(200);
+	//getDeformableDynamicsWorld()->setImplicit(true);
+	//getDeformableDynamicsWorld()->setLineSearch(false);
+	//getDeformableDynamicsWorld()->setUseProjection(true);
+	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
+	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_maxErrorReduction = btScalar(200);
 	getDeformableDynamicsWorld()->getSolverInfo().m_leastSquaresResidualThreshold = 1e-3;
-	getDeformableDynamicsWorld()->getSolverInfo().m_splitImpulse = true;
-	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 100;
+	//getDeformableDynamicsWorld()->getSolverInfo().m_splitImpulse = true;
+	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 500;
 	// add a few rigid bodies
 	Ctor_RbUpStack();
 	m_guiHelper->autogenerateGraphicsObjects(m_dynamicsWorld);
