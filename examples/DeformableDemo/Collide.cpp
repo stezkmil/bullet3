@@ -77,15 +77,16 @@ public:
 		}
 	}
 
-	void Ctor_RbUpStack()
+	btRigidBody* Ctor_RbUpStack()
 	{
-		/*float mass = 0.0;
-		btCollisionShape* shape = new btBoxShape(btVector3(20, 2, 20));
+		float mass = 100.0;
+		btCollisionShape* shape = new btBoxShape(btVector3(10, 10, 10));
 		btTransform startTransform;
 		startTransform.setIdentity();
-		startTransform.setOrigin(btVector3(0, -2, 0));
-		btRigidBody* rb = createRigidBody(mass, startTransform, shape);*/
+		startTransform.setOrigin(btVector3(-1020, 0, 0));
+		btRigidBody* rb = createRigidBody(mass, startTransform, shape);
 		//rb->setLinearVelocity(btVector3(0, +COLLIDING_VELOCITY, 0));
+		return rb;
 	}
 
 	void stepSimulation(float deltaTime)
@@ -139,9 +140,11 @@ void Collide::initPhysics()
 	m_dynamicsWorld->setGravity(gravity);
 	m_guiHelper->createPhysicsDebugDrawer(m_dynamicsWorld);
 
+	btSoftBody* psb = nullptr;
+
 	// create volumetric soft body
 	{
-		btSoftBody* psb = btSoftBodyHelpers::CreateFromTetGenData(getDeformableDynamicsWorld()->getWorldInfo(),
+		psb = btSoftBodyHelpers::CreateFromTetGenData(getDeformableDynamicsWorld()->getWorldInfo(),
 																  FooSpace::TetraCube::getElements(),
 																  0,
 																  FooSpace::TetraCube::getNodes(),
@@ -150,13 +153,14 @@ void Collide::initPhysics()
 		//psb->scale(btVector3(2, 2, 2));
 		//psb->translate(btVector3(0, 7, 0));
 		psb->getCollisionShape()->setMargin(0.1);
-		psb->setTotalMass(100.0);
+		psb->setTotalMass(0.4);
 		psb->m_cfg.kKHR = 1;  // collision hardness with kinematic objects
 		psb->m_cfg.kCHR = 1;  // collision hardness with rigid body
 		psb->m_cfg.kDF = 0;
-		psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
-		psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
+		//psb->m_cfg.collisions = btSoftBody::fCollision::SDF_RD;
+		//psb->m_cfg.collisions |= btSoftBody::fCollision::SDF_RDN;
 		psb->m_sleepingThreshold = 0;
+		
 		psb->m_nodes[684].m_frozen = 1;
 		psb->m_nodes[685].m_frozen = 1;
 		psb->m_nodes[686].m_frozen = 1;
@@ -166,6 +170,7 @@ void Collide::initPhysics()
 		psb->m_nodes[690].m_frozen = 1;
 		psb->m_nodes[691].m_frozen = 1;
 		psb->m_nodes[692].m_frozen = 1;
+
 		btSoftBodyHelpers::generateBoundaryFaces(psb);
 
 		//psb->setVelocity(btVector3(0, -COLLIDING_VELOCITY, 0));
@@ -175,15 +180,15 @@ void Collide::initPhysics()
 		getDeformableDynamicsWorld()->addForce(psb, linearElasticity);
 		m_forces.push_back(linearElasticity);
 
-		btVector3 gravity = btVector3(0, 0, -9810);
+		btVector3 gravity = btVector3(0, 0, -10000);
 		m_dynamicsWorld->setGravity(gravity);
 		getDeformableDynamicsWorld()->getWorldInfo().m_gravity = gravity;
 
-		btDeformableGravityForce* gravity_force = new btDeformableGravityForce(gravity);
+		/*btDeformableGravityForce* gravity_force = new btDeformableGravityForce(gravity);
 		getDeformableDynamicsWorld()->addForce(psb, gravity_force);
-		m_forces.push_back(gravity_force);
+		m_forces.push_back(gravity_force);*/
 	}
-	getDeformableDynamicsWorld()->setImplicit(true);
+	//getDeformableDynamicsWorld()->setImplicit(true);
 	//getDeformableDynamicsWorld()->setLineSearch(false);
 	//getDeformableDynamicsWorld()->setUseProjection(true);
 	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
@@ -192,7 +197,28 @@ void Collide::initPhysics()
 	//getDeformableDynamicsWorld()->getSolverInfo().m_splitImpulse = true;
 	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 500;
 	// add a few rigid bodies
-	Ctor_RbUpStack();
+	auto rb = Ctor_RbUpStack();
+
+	psb->setIgnoreCollisionCheck(rb, true);
+	psb->appendDeformableAnchor(0, rb);
+	psb->appendDeformableAnchor(2, rb);
+	psb->appendDeformableAnchor(3, rb);
+	psb->appendDeformableAnchor(6, rb);
+	psb->appendDeformableAnchor(8, rb);
+	psb->appendDeformableAnchor(10, rb);
+	psb->appendDeformableAnchor(12, rb);
+	psb->appendDeformableAnchor(14, rb);
+	psb->appendDeformableAnchor(16, rb);
+	/*psb->m_nodes[0].m_frozen = 1;
+		psb->m_nodes[2].m_frozen = 1;
+		psb->m_nodes[3].m_frozen = 1;
+		psb->m_nodes[6].m_frozen = 1;
+		psb->m_nodes[8].m_frozen = 1;
+		psb->m_nodes[10].m_frozen = 1;
+		psb->m_nodes[12].m_frozen = 1;
+		psb->m_nodes[14].m_frozen = 1;
+		psb->m_nodes[16].m_frozen = 1;*/
+
 	m_guiHelper->autogenerateGraphicsObjects(m_dynamicsWorld);
 
 	//	{
