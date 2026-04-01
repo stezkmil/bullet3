@@ -196,6 +196,7 @@ void btDeformableMultiBodyConstraintSolver::solveGroupCacheFriendlySplitImpulseI
 	if (infoGlobal.m_splitImpulse)
 	{
 		{
+			m_deformableSolver->m_objective->m_projection.resetAnchorSplitDiagnostics();
 			for (iteration = 0; iteration < infoGlobal.m_numIterations; iteration++)
 			{
 				//fprintf(stderr, "iteration %d\n", iteration);
@@ -242,6 +243,7 @@ void btDeformableMultiBodyConstraintSolver::solveGroupCacheFriendlySplitImpulseI
 					if (iteration >= (infoGlobal.m_numIterations - 1))
 						printf("split impulse residual = %f at iteration #%d\n", leastSquaresResidual, iteration);
 #endif
+					m_deformableSolver->m_objective->m_projection.reportAnchorSplitDiagnostics(iteration + 1, infoGlobal.m_numIterations, infoGlobal.m_leastSquaresResidualThreshold);
 					break;
 				}
 			}

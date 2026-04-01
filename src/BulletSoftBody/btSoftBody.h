@@ -442,6 +442,10 @@ public:
 		uint32_t m_userIndex;
 		btRigidBody* m_body = nullptr;  // Body
 		int m_freezeContribution = 0;
+		btScalar m_previous_residual_velocity_match = -1.0;
+		btScalar m_convergence_based_relaxation_velocity_match = 1.0;
+		btScalar m_previous_residual_position_drift = -1.0;
+		btScalar m_convergence_based_relaxation_position_drift = 1.0;
 	};
 
 	class DeformableFaceRigidContact : public DeformableRigidContact

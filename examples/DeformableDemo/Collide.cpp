@@ -35,6 +35,17 @@ static btScalar damping_beta = 0.01;
 static btScalar COLLIDING_VELOCITY = 15;
 static const float CAMERA_FRUSTUM_NEAR = 1.f;
 static const float CAMERA_FRUSTUM_FAR = 1000000.f;
+static const bool kUseImplicitExperiment = true;
+static const bool kUseProjectionExperiment = true;
+static const bool kUseLineSearchExperiment = false;
+static const float kInternalTimeStepExperiment = 0.001f;
+static const int kMaxSubstepsExperiment = 1;
+static const int kImplicitNewtonIterationsExperiment = 3;
+static const float kImplicitNewtonToleranceExperiment = 1e-5f;
+static const bool kEnableProgrammaticGrabExperiment = true;
+static const float kProgrammaticGrabStartTime = 0.5f;
+static const float kProgrammaticGrabDuration = 0.5f;
+static const btVector3 kProgrammaticGrabOffset(0, 0, 150);
 
 namespace FooSpace
 {
@@ -47,12 +58,28 @@ struct TetraCube
 class Collide : public CommonDeformableBodyBase
 {
 	btDeformableLinearElasticityForce* m_linearElasticity;
+	btRigidBody* m_tipLoad;
+	btScalar m_elapsedTime;
+	bool m_scriptedRigidPickActive;
+	btPoint2PointConstraint* m_scriptedRigidPickConstraint;
+	btVector3 m_scriptedRigidPickTarget;
 
 public:
 	Collide(struct GUIHelperInterface* helper)
 		: CommonDeformableBodyBase(helper)
 	{
 		m_linearElasticity = 0;
+		m_tipLoad = 0;
+		m_elapsedTime = 0;
+		m_scriptedRigidPickActive = false;
+		m_scriptedRigidPickConstraint = 0;
+		m_scriptedRigidPickTarget = btVector3(0, 0, 0);
+		m_pickingForceElasticStiffness = 50000;
+		m_pickingForceDampingStiffness = 100;
+		m_maxPickingForce = 1e10;
+		m_rigidPickingImpulseClamp = 20000;
+		m_rigidPickingTau = 0.2f;
+		m_logPicking = true;
 	}
 	virtual ~Collide()
 	{
@@ -91,15 +118,58 @@ public:
 
 	void stepSimulation(float deltaTime)
 	{
+		m_elapsedTime += deltaTime;
 		m_linearElasticity->setPoissonRatio(nu);
 		m_linearElasticity->setYoungsModulus(E);
 		m_linearElasticity->setDamping(damping_alpha, damping_beta);
-		float internalTimeStep = 0.002 /*1. / 60.f*/;
-		m_dynamicsWorld->stepSimulation(deltaTime, 1, internalTimeStep);
+		if (kEnableProgrammaticGrabExperiment && m_tipLoad)
+		{
+			const bool shouldGrab = (m_elapsedTime >= kProgrammaticGrabStartTime &&
+									 m_elapsedTime < kProgrammaticGrabStartTime + kProgrammaticGrabDuration);
+			if (shouldGrab && !m_scriptedRigidPickActive)
+			{
+				const btVector3 bodyOrigin = m_tipLoad->getWorldTransform().getOrigin();
+				const btVector3 localPivot = m_tipLoad->getCenterOfMassTransform().inverse() * bodyOrigin;
+				m_scriptedRigidPickConstraint = new btPoint2PointConstraint(*m_tipLoad, localPivot);
+				m_scriptedRigidPickConstraint->m_setting.m_impulseClamp = m_rigidPickingImpulseClamp;
+				m_scriptedRigidPickConstraint->m_setting.m_tau = m_rigidPickingTau;
+				m_dynamicsWorld->addConstraint(m_scriptedRigidPickConstraint, true);
+				m_scriptedRigidPickTarget = bodyOrigin + kProgrammaticGrabOffset;
+				m_scriptedRigidPickActive = true;
+				fprintf(stderr, "scripted rigid pick begin t=%f bodyOrigin=(%f,%f,%f) targetOffset=(%f,%f,%f)\n",
+						m_elapsedTime, bodyOrigin.x(), bodyOrigin.y(), bodyOrigin.z(),
+						kProgrammaticGrabOffset.x(), kProgrammaticGrabOffset.y(), kProgrammaticGrabOffset.z());
+			}
+			else if (!shouldGrab && m_scriptedRigidPickActive)
+			{
+				m_dynamicsWorld->removeConstraint(m_scriptedRigidPickConstraint);
+				delete m_scriptedRigidPickConstraint;
+				m_scriptedRigidPickConstraint = 0;
+				m_scriptedRigidPickActive = false;
+				fprintf(stderr, "scripted rigid pick end t=%f\n", m_elapsedTime);
+			}
+			if (m_scriptedRigidPickActive && m_scriptedRigidPickConstraint)
+			{
+				const btVector3 currentOrigin = m_tipLoad->getWorldTransform().getOrigin();
+				m_scriptedRigidPickConstraint->setPivotB(m_scriptedRigidPickTarget);
+				fprintf(stderr, "scripted rigid pick move t=%f target=(%f,%f,%f) origin=(%f,%f,%f)\n",
+						m_elapsedTime, m_scriptedRigidPickTarget.x(), m_scriptedRigidPickTarget.y(), m_scriptedRigidPickTarget.z(),
+						currentOrigin.x(), currentOrigin.y(), currentOrigin.z());
+			}
+		}
+		m_dynamicsWorld->stepSimulation(deltaTime, kMaxSubstepsExperiment, kInternalTimeStepExperiment);
 
 		btDeformableMultiBodyDynamicsWorld* deformableWorld = getDeformableDynamicsWorld();
 		btSoftBody* psb = (btSoftBody*)deformableWorld->getSoftBodyArray()[0];
-		//fprintf(stdout, "free node coords %f %f %f\n", psb->m_nodes[3].m_x.x(), psb->m_nodes[3].m_x.y(), psb->m_nodes[3].m_x.z());
+		if (m_tipLoad)
+		{
+			const btVector3 bodyOrigin = m_tipLoad->getWorldTransform().getOrigin();
+			fprintf(stderr, "collide frame t=%f tipLoadOrigin=(%f,%f,%f) tipLoadLinVel=(%f,%f,%f) freeNode3=(%f,%f,%f)\n",
+					m_elapsedTime,
+					bodyOrigin.x(), bodyOrigin.y(), bodyOrigin.z(),
+					m_tipLoad->getLinearVelocity().x(), m_tipLoad->getLinearVelocity().y(), m_tipLoad->getLinearVelocity().z(),
+					psb->m_nodes[3].m_x.x(), psb->m_nodes[3].m_x.y(), psb->m_nodes[3].m_x.z());
+		}
 	}
 
 	virtual void renderScene()
@@ -188,9 +258,19 @@ void Collide::initPhysics()
 		getDeformableDynamicsWorld()->addForce(psb, gravity_force);
 		m_forces.push_back(gravity_force);*/
 	}
-	//getDeformableDynamicsWorld()->setImplicit(true);
-	//getDeformableDynamicsWorld()->setLineSearch(false);
-	//getDeformableDynamicsWorld()->setUseProjection(true);
+	getDeformableDynamicsWorld()->setImplicit(kUseImplicitExperiment);
+	getDeformableDynamicsWorld()->setLineSearch(kUseLineSearchExperiment);
+	getDeformableDynamicsWorld()->setUseProjection(kUseProjectionExperiment);
+	getDeformableDynamicsWorld()->setMaxNewtonIterations(kImplicitNewtonIterationsExperiment);
+	getDeformableDynamicsWorld()->setNewtonTolerance(kImplicitNewtonToleranceExperiment);
+	fprintf(stderr, "Collide config: implicit=%d projection=%d lineSearch=%d internalTimeStep=%f maxSubsteps=%d newtonIterations=%d newtonTolerance=%g\n",
+		kUseImplicitExperiment ? 1 : 0,
+		kUseProjectionExperiment ? 1 : 0,
+		kUseLineSearchExperiment ? 1 : 0,
+		kInternalTimeStepExperiment,
+		kMaxSubstepsExperiment,
+		kImplicitNewtonIterationsExperiment,
+		(double)kImplicitNewtonToleranceExperiment);
 	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_erp = 0.3;
 	//getDeformableDynamicsWorld()->getSolverInfo().m_deformable_maxErrorReduction = btScalar(200);
 	getDeformableDynamicsWorld()->getSolverInfo().m_leastSquaresResidualThreshold = 1e-3;
@@ -198,6 +278,14 @@ void Collide::initPhysics()
 	getDeformableDynamicsWorld()->getSolverInfo().m_numIterations = 500;
 	// add a few rigid bodies
 	auto rb = Ctor_RbUpStack();
+	m_tipLoad = rb;
+	fprintf(stderr, "Collide picking config: softElastic=%f softDamping=%f softMaxForce=%f rigidClamp=%f rigidTau=%f scriptedGrab=%d\n",
+		m_pickingForceElasticStiffness,
+		m_pickingForceDampingStiffness,
+		m_maxPickingForce,
+		m_rigidPickingImpulseClamp,
+		m_rigidPickingTau,
+		kEnableProgrammaticGrabExperiment ? 1 : 0);
 
 	psb->setIgnoreCollisionCheck(rb, true);
 	psb->appendDeformableAnchor(0, rb);
@@ -282,6 +370,13 @@ void Collide::initPhysics()
 void Collide::exitPhysics()
 {
 	//cleanup in the reverse order of creation/initialization
+	if (m_scriptedRigidPickConstraint)
+	{
+		m_dynamicsWorld->removeConstraint(m_scriptedRigidPickConstraint);
+		delete m_scriptedRigidPickConstraint;
+		m_scriptedRigidPickConstraint = 0;
+		m_scriptedRigidPickActive = false;
+	}
 	removePickingConstraint();
 	//remove the rigidbodies from the dynamics world and delete them
 	int i;

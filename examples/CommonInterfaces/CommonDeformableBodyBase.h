@@ -22,13 +22,18 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 	btSoftBody* m_pickedSoftBody;
 	btDeformableMousePickingForce* m_mouseForce;
 	btScalar m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, m_maxPickingForce;
+	btScalar m_rigidPickingImpulseClamp, m_rigidPickingTau;
+	bool m_logPicking;
 	CommonDeformableBodyBase(GUIHelperInterface* helper)
 		: CommonMultiBodyBase(helper),
 		  m_pickedSoftBody(0),
 		  m_mouseForce(0),
 		  m_pickingForceElasticStiffness(100),
 		  m_pickingForceDampingStiffness(0.0),
-		  m_maxPickingForce(0.3)
+		  m_maxPickingForce(0.3),
+		  m_rigidPickingImpulseClamp(30.f),
+		  m_rigidPickingTau(0.001f),
+		  m_logPicking(false)
 	{
 	}
 
@@ -99,14 +104,25 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 				{
 					m_pickedBody = body;
 					m_pickedBody->setActivationState(DISABLE_DEACTIVATION);
-					btVector3 localPivot = body->getCenterOfMassTransform().inverse() * pickPos;
+					// Soft-anchor carrier bodies feel much better if the mouse pulls near the
+					// center of mass instead of injecting mostly torque through an off-center pivot.
+					const bool anchoredCarrier = body->hasAnchorRef();
+					btVector3 localPivot = anchoredCarrier ? btVector3(0, 0, 0) : (body->getCenterOfMassTransform().inverse() * pickPos);
 					btPoint2PointConstraint* p2p = new btPoint2PointConstraint(*body, localPivot);
 					m_dynamicsWorld->addConstraint(p2p, true);
 					m_pickedConstraint = p2p;
-					btScalar mousePickClamping = 30.f;
-					p2p->m_setting.m_impulseClamp = mousePickClamping;
-					//very weak constraint for picking
-					p2p->m_setting.m_tau = 0.001f;
+					p2p->m_setting.m_impulseClamp = m_rigidPickingImpulseClamp;
+					p2p->m_setting.m_tau = m_rigidPickingTau;
+					if (m_logPicking)
+					{
+						fprintf(stderr, "pick rigid body=%p mass=%f anchoredCarrier=%d localPivot=(%f,%f,%f) worldHit=(%f,%f,%f) clamp=%f tau=%f\n",
+								body,
+								body->getInvMass() > 0 ? btScalar(1.0) / body->getInvMass() : btScalar(0.0),
+								anchoredCarrier ? 1 : 0,
+								localPivot.x(), localPivot.y(), localPivot.z(),
+								pickPos.x(), pickPos.y(), pickPos.z(),
+								m_rigidPickingImpulseClamp, m_rigidPickingTau);
+					}
 				}
 			}
 			else if (psb)
@@ -120,6 +136,12 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 					btDeformableMousePickingForce* mouse_force = new btDeformableMousePickingForce(m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, &f, nullptr, nullptr, btTransform(btTransform::getIdentity().getBasis(), m_hitPos), m_maxPickingForce);
 					m_mouseForce = mouse_force;
 					getDeformableDynamicsWorld()->addForce(psb, mouse_force);
+					if (m_logPicking)
+					{
+						fprintf(stderr, "pick soft body=%p face=%d hit=(%f,%f,%f) elastic=%f damping=%f maxForce=%f\n",
+								psb, face_id, m_hitPos.x(), m_hitPos.y(), m_hitPos.z(),
+								m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, m_maxPickingForce);
+					}
 				}
 			}
 			else
@@ -162,6 +184,14 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 				dir *= m_oldPickingDist;
 				newPivotB = rayFromWorld + dir;
 				pickCon->setPivotB(newPivotB);
+				if (m_logPicking)
+				{
+					fprintf(stderr, "move rigid pick target=(%f,%f,%f) bodyOrigin=(%f,%f,%f)\n",
+							newPivotB.x(), newPivotB.y(), newPivotB.z(),
+							m_pickedBody->getWorldTransform().getOrigin().x(),
+							m_pickedBody->getWorldTransform().getOrigin().y(),
+							m_pickedBody->getWorldTransform().getOrigin().z());
+				}
 				return true;
 			}
 		}
@@ -182,6 +212,10 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 			dir *= m_oldPickingDist;
 			newPivot = rayFromWorld + dir;
 			m_mouseForce->setMousePos(newPivot);
+			if (m_logPicking)
+			{
+				fprintf(stderr, "move soft pick target=(%f,%f,%f)\n", newPivot.x(), newPivot.y(), newPivot.z());
+			}
 		}
 		return false;
 	}
@@ -212,6 +246,10 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 		if (m_pickedSoftBody)
 		{
 			getDeformableDynamicsWorld()->removeForce(m_pickedSoftBody, m_mouseForce);
+			if (m_logPicking)
+			{
+				fprintf(stderr, "remove soft pick body=%p\n", m_pickedSoftBody);
+			}
 			delete m_mouseForce;
 			m_mouseForce = 0;
 			m_pickedSoftBody = 0;

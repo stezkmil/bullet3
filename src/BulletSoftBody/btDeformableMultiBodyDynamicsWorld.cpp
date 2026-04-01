@@ -93,6 +93,22 @@ void btDeformableMultiBodyDynamicsWorld::performDiscreteCollisionDetection()
 	}
 }
 
+void btDeformableMultiBodyDynamicsWorld::setMaxNewtonIterations(int iterations)
+{
+	if (m_deformableBodySolver)
+	{
+		m_deformableBodySolver->setMaxNewtonIterations(iterations);
+	}
+}
+
+void btDeformableMultiBodyDynamicsWorld::setNewtonTolerance(btScalar tolerance)
+{
+	if (m_deformableBodySolver)
+	{
+		m_deformableBodySolver->setNewtonTolerance(tolerance);
+	}
+}
+
 void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlappingPairs()
 {
 	btBroadphaseInterface* broadphase = getBroadphase();
@@ -117,6 +133,8 @@ void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlap
 void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 {
 	BT_PROFILE("internalSingleStepSimulation");
+
+	fprintf(stderr, "framestart()\n");
 
 	if (0 != m_internalPreTickCallback)
 	{
@@ -186,6 +204,8 @@ void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar t
 
 	++m_executed_step_counter;
 	m_dispatchInfo.m_stepCounter = m_executed_step_counter;
+
+	fprintf(stderr, "frameend()\n");
 }
 
 void btDeformableMultiBodyDynamicsWorld::performDeformableCollisionDetection()

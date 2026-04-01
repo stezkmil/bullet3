@@ -15,14 +15,25 @@
 
 #include "btDeformableContactConstraint.h"
 /* ================   Deformable Node Anchor   =================== */
-btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& a, const btContactSolverInfo& infoGlobal)
+btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(btSoftBody::DeformableNodeRigidAnchor& a, const btContactSolverInfo& infoGlobal)
 	: m_anchor(&a), btDeformableContactConstraint(a.m_cti.m_normal, infoGlobal)
 {
+	m_previous_residual_velocity_match = a.m_previous_residual_velocity_match;
+	m_convergence_based_relaxation_velocity_match = a.m_convergence_based_relaxation_velocity_match;
+	m_previous_residual_position_drift = a.m_previous_residual_position_drift;
+	m_convergence_based_relaxation_position_drift = a.m_convergence_based_relaxation_position_drift;
 }
 
 btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other)
 	: m_anchor(other.m_anchor), btDeformableContactConstraint(other)
 {
+}
+
+void btDeformableNodeAnchorConstraint::resetSplitDiagnostics()
+{
+	m_split_iterations = 0;
+	m_split_last_residual_square = 0.0;
+	m_split_max_residual_square = 0.0;
 }
 
 btVector3 btDeformableNodeAnchorConstraint::getVa() const
@@ -101,6 +112,8 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			else
 				m_convergence_based_relaxation_velocity_match = std::min(1.0, m_convergence_based_relaxation_velocity_match * convergenceRelaxationFactor);
 		m_previous_residual_velocity_match = residualSquare;
+		m_anchor->m_previous_residual_velocity_match = m_previous_residual_velocity_match;
+		m_anchor->m_convergence_based_relaxation_velocity_match = m_convergence_based_relaxation_velocity_match;
 
 		// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
 		btVector3 impulse = (m_anchor->m_c0 * vr) * m_convergence_based_relaxation_velocity_match;
@@ -118,6 +131,8 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
 			if (rigidCol)
 			{
+				// Full rigid-side reaction is required for stiff anchored assemblies.
+				// Dividing by the number of anchors makes the attachment look artificially soft.
 				rigidCol->applyImpulse(impulse, m_anchor->m_c1);
 			}
 		}
@@ -138,8 +153,8 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 			}
 		}
 
-		//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
-		//		residualSquare);
+		fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation_velocity_match, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
+				residualSquare);
 	}
 	// If the rigid is static, we freeze the soft node.
 
@@ -148,7 +163,23 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 
 btVector3 btDeformableNodeAnchorConstraint::getVb() const
 {
-	return m_anchor->m_node->m_v;
+	btVector3 vb = m_anchor->m_node->m_v;
+	if (m_max_node_speed < SIMD_INFINITY)
+	{
+		const btScalar speed = vb.length();
+		if (speed > m_max_node_speed && speed > SIMD_EPSILON)
+		{
+			const btScalar scale = m_max_node_speed / speed;
+			fprintf(stderr,
+				"anchor velocity clamp node=%d rawSpeed=%f clampedSpeed=%f rawV=%f %f %f\n",
+				m_anchor->m_node ? m_anchor->m_node->index : -1,
+				speed,
+				m_max_node_speed,
+				vb.x(), vb.y(), vb.z());
+			vb *= scale;
+		}
+	}
+	return vb;
 }
 
 void btDeformableNodeAnchorConstraint::applyImpulse(const btVector3& impulse)
@@ -194,18 +225,18 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 	btScalar residualSquare = 0.0;
 	if (!m_anchor->m_body->isStaticOrKinematicObject() && m_anchor->m_body->isActive())
 	{
+		++m_split_iterations;
 		const btSoftBody::sCti& cti = m_anchor->m_cti;
 		auto va = getSplitVa() + getVa();
-		// Why is m_vn (previous velocity) here? m_v could not be used, because at this stage it contains only the explicit forces (like mouse drag) applied but not the implicit forces like the linear elasticity.
-		// To predict the the position of the deformable node, we use vn as an approximation of the velocity at the end of the time step, which includes the effect of both explicit and implicit forces. It is not perfectly
-		// accurate, but it works reasonably well due to time coherence. To get perfect velocity, this solve would have to be moved after the implicit forces are calculated. This could be a future TODO - not sure if easy.
-		const auto vb = m_anchor->m_node->m_vn + m_anchor->m_node->m_splitv;
+		const auto vb = m_anchor->m_node->m_v + m_anchor->m_node->m_splitv;
 
 		//auto rigid_pt = (cti.m_colObj->getWorldTransform() * m_anchor->m_local);
 		//fprintf(stderr, "m_anchor->m_node->m_x %f %f %f cti.m_colObj->getWorldTransform() * m_anchor->m_local %f %f %f diff %f %f %f\n", m_anchor->m_node->m_x.x(), m_anchor->m_node->m_x.y(), m_anchor->m_node->m_x.z(), rigid_pt.x(), rigid_pt.y(), rigid_pt.z(), trigger.x(), trigger.y(), trigger.z());
 
-		// Predicted anchor poisitions for both the rigid and soft are calculated in this part.
-		auto anchor_soft_predicted = (m_anchor->m_node->m_x + vb * infoGlobal.m_timeStep);
+		// Dynamic anchors now carry an explicit rigid target velocity through the
+		// momentum solve, so predicting from x + dt * v is more reliable than using
+		// whatever temporary value m_q currently holds after the solver pipeline.
+		auto anchor_soft_predicted = m_anchor->m_node->m_x + vb * infoGlobal.m_timeStep;
 
 		btTransform rigid_tr = cti.m_colObj->getWorldTransform();
 		btTransform tr_predicted;
@@ -220,21 +251,23 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 		btVector3 pos_diff = anchor_soft_predicted - anchor_rigid_predicted;
 
 		residualSquare = btDot(pos_diff, pos_diff);
+		m_split_last_residual_square = residualSquare;
+		m_split_max_residual_square = btMax(m_split_max_residual_square, residualSquare);
 
 		// Maybe this early return would prevent some slight overshoot?
 		//if (residualSquare < infoGlobal.m_leastSquaresResidualThreshold)
 		//	return residualSquare;
 
-		/*fprintf(stderr, "anchor_rigid_predicted %f %f %f anchor_soft_predicted %f %f %f pos_diff %f %f %f va %f %f %f vb %f %f %f residual %f\n",
+		fprintf(stderr, "anchor_rigid_predicted %f %f %f anchor_soft_predicted %f %f %f pos_diff %f %f %f va %f %f %f vb %f %f %f residual %f\n",
 			anchor_rigid_predicted.x(), anchor_rigid_predicted.y(), anchor_rigid_predicted.z(),
 			anchor_soft_predicted.x(), anchor_soft_predicted.y(), anchor_soft_predicted.z(),
 			pos_diff.x(), pos_diff.y(), pos_diff.z(),
 			va.x(), va.y(), va.z(),
 			vb.x(), vb.y(), vb.z(),
-			residualSquare);*/
+			residualSquare);
 
-		auto rigid_impulse_fraction = 0.5;
-		auto soft_impulse_fraction = 0.5;
+		btScalar rigid_impulse_fraction = btScalar(0.5);
+		btScalar soft_impulse_fraction = btScalar(0.5);
 		// About this heuristic. When there are penetrations, there is this fight between the solver body push velocity and the regular body push velocity (same applies for turn velocities naturally).
 		// This results in bad penetration resolve when the anchored rigid is penetrating. One solution is to make this method be solver body based too. It was actually implemented on commit c619f118e060011efd3892b41f09851253a98f04
 		// but there were problems. There was still a fight between solver body push velocities for unstuck and for anchor solve when they were acting against each other. For example the unstuck added positive X direction to the
@@ -259,9 +292,24 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 			else
 				m_convergence_based_relaxation_position_drift = std::min(1.0, m_convergence_based_relaxation_position_drift * convergenceRelaxationFactor);
 		m_previous_residual_position_drift = residualSquare;
+		m_anchor->m_previous_residual_position_drift = m_previous_residual_position_drift;
+		m_anchor->m_convergence_based_relaxation_position_drift = m_convergence_based_relaxation_position_drift;
 
 		btVector3 rigid_impulse = (pos_diff * rigid_impulse_fraction * m_convergence_based_relaxation_position_drift) / infoGlobal.m_timeStep;
 		btVector3 soft_impulse = (pos_diff * soft_impulse_fraction * m_convergence_based_relaxation_position_drift) / infoGlobal.m_timeStep;
+
+		const btScalar maxCorrectionDisplacementPerIteration = btScalar(0.1);
+		const btScalar maxCorrectionSpeed = maxCorrectionDisplacementPerIteration / infoGlobal.m_timeStep;
+		const btScalar rigid_impulse_norm = rigid_impulse.safeNorm();
+		if (rigid_impulse_norm > maxCorrectionSpeed)
+		{
+			rigid_impulse *= maxCorrectionSpeed / rigid_impulse_norm;
+		}
+		const btScalar soft_impulse_norm = soft_impulse.safeNorm();
+		if (soft_impulse_norm > maxCorrectionSpeed)
+		{
+			soft_impulse *= maxCorrectionSpeed / soft_impulse_norm;
+		}
 
 		// Applies velocity to the rigid body, to minimize the gap between rigid and soft anchor positions.
 		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
@@ -278,7 +326,10 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 				// To counter that, the soft must also contribute by being pushed.
 				applySplitImpulse(soft_impulse / m_anchor->m_c2);
 
-				//fprintf(stderr, "regular m_anchor->m_node->m_v %f %f %f m_convergence_based_relaxation_position_drift %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z(), m_convergence_based_relaxation_position_drift);
+				fprintf(stderr, "regular m_anchor->m_node->m_v %f %f %f m_q %f %f %f m_convergence_based_relaxation_position_drift %f\n",
+					m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z(),
+					m_anchor->m_node->m_q.x(), m_anchor->m_node->m_q.y(), m_anchor->m_node->m_q.z(),
+					m_convergence_based_relaxation_position_drift);
 			}
 		}
 	}

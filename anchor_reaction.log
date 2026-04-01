@@ -1,0 +1,395 @@
+Collide config: implicit=1 projection=1 lineSearch=0 internalTimeStep=0.001000 maxSubsteps=1 newtonIterations=3 newtonTolerance=1e-05
+Collide picking config: softElastic=50000.000000 softDamping=100.000000 softMaxForce=10000000000.000000 rigidClamp=20000.000000 rigidTau=0.200000 scriptedGrab=0
+framestart()
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 -6.580921 v=0.000000 0.000000 -10.000000 q=-1010.000977 -16.580921 -6.590921
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 -6.580921 v=0.000000 0.000000 -10.000000 q=-1010.000977 -3.159842 -6.590921
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 6.840158 v=0.000000 0.000000 -10.000000 q=-1010.000977 -16.580921 6.830158
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 6.840158 v=0.000000 0.000000 -10.000000 q=-1010.000977 -3.159842 6.830158
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 20.261236 v=0.000000 0.000000 -10.000000 q=-1010.000977 -16.580921 20.251236
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 20.261236 v=0.000000 0.000000 -10.000000 q=-1010.000977 -3.159842 20.251236
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 -6.580921 v=0.000000 0.000000 -10.000000 q=-1010.000977 10.261237 -6.590921
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 6.840158 v=0.000000 0.000000 -10.000000 q=-1010.000977 10.261237 6.830158
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 20.261236 v=0.000000 0.000000 -10.000000 q=-1010.000977 10.261237 20.251236
+anchor_rigid_predicted -1010.000977 -16.580921 -6.590921 anchor_soft_predicted -1010.000977 -16.580921 -6.590921 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 -16.580921 -6.580921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 -3.159842 -6.590921 anchor_soft_predicted -1010.000977 -3.159842 -6.590921 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 -3.159842 -6.580921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 -16.580921 6.830158 anchor_soft_predicted -1010.000977 -16.580921 6.830158 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 -16.580921 6.840158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 -3.159842 6.830158 anchor_soft_predicted -1010.000977 -3.159842 6.830158 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 -3.159842 6.840158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 -16.580921 20.251236 anchor_soft_predicted -1010.000977 -16.580921 20.251236 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 -16.580921 20.261236 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 -3.159842 20.251236 anchor_soft_predicted -1010.000977 -3.159842 20.251236 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 -3.159842 20.261236 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 10.261237 -6.590921 anchor_soft_predicted -1010.000977 10.261237 -6.590921 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 10.261237 -6.580921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 10.261237 6.830158 anchor_soft_predicted -1010.000977 10.261237 6.830158 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 10.261237 6.840158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000977 10.261237 20.251236 anchor_soft_predicted -1010.000977 10.261237 20.251236 pos_diff 0.000000 0.000000 0.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+regular m_anchor->m_node->m_v 0.000000 0.000000 -10.000000 m_q -1010.000977 10.261237 20.261236 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 -10.000000 residual 0.000000
+setupDeformableSolve dynamic anchor node=0 x=-1010.000977 -16.580921 -6.580921 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 -16.580921 -6.590921
+setupDeformableSolve dynamic anchor node=2 x=-1010.000977 -3.159842 -6.580921 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 -3.159842 -6.590921
+setupDeformableSolve dynamic anchor node=3 x=-1010.000977 -16.580921 6.840158 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 -16.580921 6.830158
+setupDeformableSolve dynamic anchor node=6 x=-1010.000977 -3.159842 6.840158 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 -3.159842 6.830158
+setupDeformableSolve dynamic anchor node=8 x=-1010.000977 -16.580921 20.261236 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 -16.580921 20.251236
+setupDeformableSolve dynamic anchor node=10 x=-1010.000977 -3.159842 20.261236 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 -3.159842 20.251236
+setupDeformableSolve dynamic anchor node=12 x=-1010.000977 10.261237 -6.580921 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 10.261237 -6.590921
+setupDeformableSolve dynamic anchor node=14 x=-1010.000977 10.261237 6.840158 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 10.261237 6.830158
+setupDeformableSolve dynamic anchor node=16 x=-1010.000977 10.261237 20.261236 vTarget=0.000000 0.000000 -10.000000 qTarget=-1010.000977 10.261237 20.251236
+applyTransforms rigid anchor project node=0 x=-1010.000977 -16.580921 -6.590921 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=2 x=-1010.000977 -3.159842 -6.590921 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=3 x=-1010.000977 -16.580921 6.830158 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=6 x=-1010.000977 -3.159842 6.830158 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=8 x=-1010.000977 -16.580921 20.251236 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=10 x=-1010.000977 -3.159842 20.251236 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=12 x=-1010.000977 10.261237 -6.590921 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=14 x=-1010.000977 10.261237 6.830158 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+applyTransforms rigid anchor project node=16 x=-1010.000977 10.261237 20.251236 solvedV=0.000000 0.000000 -10.000000 rigidV=0.000000 0.000000 -10.000000
+frameend()
+collide frame t=0.010893 tipLoadOrigin=(-1020.000000,0.000000,-0.010000) tipLoadLinVel=(0.000000,0.000000,-10.000000) freeNode3=(-1010.000977,-16.580921,6.830158)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=-0.210454 -0.088833 -0.099527 clampedNorm=0.249174 body=0000026EF2FF11E0
+anchor reaction transfer node=2 scale=0.002222 impulse=-0.467091 -0.016573 -0.141338 clampedNorm=0.488288 body=0000026EF2FF11E0
+anchor reaction transfer node=3 scale=0.002222 impulse=-0.068296 -0.015141 0.065185 clampedNorm=0.095617 body=0000026EF2FF11E0
+anchor reaction transfer node=6 scale=0.002222 impulse=-0.002245 -0.002714 0.158842 clampedNorm=0.158881 body=0000026EF2FF11E0
+anchor reaction transfer node=8 scale=0.002222 impulse=0.288061 0.126269 0.026622 clampedNorm=0.315645 body=0000026EF2FF11E0
+anchor reaction transfer node=10 scale=0.002222 impulse=0.465002 -0.016771 -0.139979 clampedNorm=0.485904 body=0000026EF2FF11E0
+anchor reaction transfer node=12 scale=0.002222 impulse=-0.290831 0.126914 0.026071 clampedNorm=0.318386 body=0000026EF2FF11E0
+anchor reaction transfer node=14 scale=0.002222 impulse=0.065712 -0.013702 0.064969 clampedNorm=0.093417 body=0000026EF2FF11E0
+anchor reaction transfer node=16 scale=0.002222 impulse=0.209266 -0.088261 -0.099046 clampedNorm=0.247775 body=0000026EF2FF11E0
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 -6.590921 v=-0.025946 0.001090 -20.043104 q=-1010.001003 -16.580920 -6.610964
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 -6.590921 v=-0.026781 0.001090 -20.042379 q=-1010.001003 -3.159841 -6.610964
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 6.830158 v=0.028852 0.000365 -20.043104 q=-1010.000948 -16.580921 6.810115
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 6.830158 v=0.028016 0.000365 -20.042379 q=-1010.000949 -3.159842 6.810116
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 20.251236 v=0.083650 -0.000359 -20.043104 q=-1010.000893 -16.580922 20.231193
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 20.251236 v=0.082814 -0.000359 -20.042379 q=-1010.000894 -3.159842 20.231194
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 -6.590921 v=-0.027617 0.001090 -20.041654 q=-1010.001004 10.261238 -6.610963
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 6.830158 v=0.027180 0.000365 -20.041654 q=-1010.000949 10.261238 6.810116
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 20.251236 v=0.081978 -0.000359 -20.041654 q=-1010.000895 10.261237 20.231195
+anchor_rigid_predicted -1010.001003 -16.580920 -6.610964 anchor_soft_predicted -1010.001003 -16.580920 -6.610964 pos_diff 0.000000 -0.000000 -0.000000 va -0.025946 0.001090 -20.043104 vb -0.025946 0.001090 -20.043104 residual 0.000000
+regular m_anchor->m_node->m_v -0.025946 0.001090 -20.043104 m_q -1010.000977 -16.580921 -6.590921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001003 -3.159841 -6.610964 anchor_soft_predicted -1010.001003 -3.159841 -6.610964 pos_diff 0.000000 -0.000000 -0.000000 va -0.026781 0.001090 -20.042379 vb -0.026781 0.001090 -20.042379 residual 0.000000
+regular m_anchor->m_node->m_v -0.026781 0.001090 -20.042379 m_q -1010.000977 -3.159842 -6.590921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000948 -16.580921 6.810115 anchor_soft_predicted -1010.000948 -16.580921 6.810115 pos_diff 0.000000 -0.000000 0.000000 va 0.028852 0.000365 -20.043104 vb 0.028852 0.000365 -20.043104 residual 0.000000
+regular m_anchor->m_node->m_v 0.028852 0.000365 -20.043104 m_q -1010.000977 -16.580921 6.830158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000949 -3.159842 6.810116 anchor_soft_predicted -1010.000949 -3.159842 6.810116 pos_diff 0.000000 -0.000000 0.000000 va 0.028016 0.000366 -20.042379 vb 0.028016 0.000365 -20.042379 residual 0.000000
+regular m_anchor->m_node->m_v 0.028016 0.000365 -20.042379 m_q -1010.000977 -3.159842 6.830158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000893 -16.580922 20.231193 anchor_soft_predicted -1010.000893 -16.580922 20.231193 pos_diff 0.000000 -0.000000 0.000000 va 0.083650 -0.000359 -20.043103 vb 0.083650 -0.000359 -20.043104 residual 0.000000
+regular m_anchor->m_node->m_v 0.083650 -0.000359 -20.043104 m_q -1010.000977 -16.580921 20.251236 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000894 -3.159842 20.231194 anchor_soft_predicted -1010.000894 -3.159842 20.231194 pos_diff 0.000000 -0.000000 0.000000 va 0.082813 -0.000359 -20.042379 vb 0.082814 -0.000359 -20.042379 residual 0.000000
+regular m_anchor->m_node->m_v 0.082814 -0.000359 -20.042379 m_q -1010.000977 -3.159842 20.251236 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001004 10.261238 -6.610963 anchor_soft_predicted -1010.001004 10.261238 -6.610963 pos_diff -0.000000 0.000000 -0.000000 va -0.027617 0.001090 -20.041654 vb -0.027617 0.001090 -20.041654 residual 0.000000
+regular m_anchor->m_node->m_v -0.027617 0.001090 -20.041654 m_q -1010.000977 10.261237 -6.590921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000949 10.261238 6.810116 anchor_soft_predicted -1010.000949 10.261238 6.810116 pos_diff 0.000000 -0.000000 0.000000 va 0.027180 0.000366 -20.041655 vb 0.027180 0.000365 -20.041654 residual 0.000000
+regular m_anchor->m_node->m_v 0.027180 0.000365 -20.041654 m_q -1010.000977 10.261237 6.830158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000895 10.261237 20.231195 anchor_soft_predicted -1010.000895 10.261237 20.231195 pos_diff 0.000000 -0.000000 0.000000 va 0.081978 -0.000359 -20.041655 vb 0.081978 -0.000359 -20.041654 residual 0.000000
+regular m_anchor->m_node->m_v 0.081978 -0.000359 -20.041654 m_q -1010.000977 10.261237 20.251236 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.025946 0.001090 -20.043104 vb -0.025946 0.001090 -20.043104 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.026781 0.001090 -20.042379 vb -0.026781 0.001090 -20.042379 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.028852 0.000365 -20.043104 vb 0.028852 0.000365 -20.043104 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.028016 0.000365 -20.042379 vb 0.028016 0.000365 -20.042379 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.083650 -0.000359 -20.043104 vb 0.083650 -0.000359 -20.043104 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.082814 -0.000359 -20.042379 vb 0.082814 -0.000359 -20.042379 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.027617 0.001090 -20.041654 vb -0.027617 0.001090 -20.041654 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.027180 0.000365 -20.041654 vb 0.027180 0.000365 -20.041654 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.081978 -0.000359 -20.041654 vb 0.081978 -0.000359 -20.041654 residual 0.000000
+setupDeformableSolve dynamic anchor node=0 x=-1010.000977 -16.580921 -6.590921 vTarget=-0.025946 0.001090 -20.043104 qTarget=-1010.001003 -16.580920 -6.610964
+setupDeformableSolve dynamic anchor node=2 x=-1010.000977 -3.159842 -6.590921 vTarget=-0.026781 0.001090 -20.042379 qTarget=-1010.001003 -3.159841 -6.610964
+setupDeformableSolve dynamic anchor node=3 x=-1010.000977 -16.580921 6.830158 vTarget=0.028852 0.000365 -20.043104 qTarget=-1010.000948 -16.580921 6.810115
+setupDeformableSolve dynamic anchor node=6 x=-1010.000977 -3.159842 6.830158 vTarget=0.028016 0.000365 -20.042379 qTarget=-1010.000949 -3.159842 6.810116
+setupDeformableSolve dynamic anchor node=8 x=-1010.000977 -16.580921 20.251236 vTarget=0.083650 -0.000359 -20.043104 qTarget=-1010.000893 -16.580922 20.231193
+setupDeformableSolve dynamic anchor node=10 x=-1010.000977 -3.159842 20.251236 vTarget=0.082814 -0.000359 -20.042379 qTarget=-1010.000894 -3.159842 20.231194
+setupDeformableSolve dynamic anchor node=12 x=-1010.000977 10.261237 -6.590921 vTarget=-0.027617 0.001090 -20.041654 qTarget=-1010.001004 10.261238 -6.610963
+setupDeformableSolve dynamic anchor node=14 x=-1010.000977 10.261237 6.830158 vTarget=0.027180 0.000365 -20.041654 qTarget=-1010.000949 10.261238 6.810116
+setupDeformableSolve dynamic anchor node=16 x=-1010.000977 10.261237 20.251236 vTarget=0.081978 -0.000359 -20.041654 qTarget=-1010.000895 10.261237 20.231195
+applyTransforms rigid anchor project node=0 x=-1010.001003 -16.580920 -6.610964 solvedV=-0.025946 0.001090 -20.043104 rigidV=-0.025946 0.001090 -20.043104
+applyTransforms rigid anchor project node=2 x=-1010.001003 -3.159841 -6.610964 solvedV=-0.026781 0.001090 -20.042379 rigidV=-0.026782 0.001090 -20.042379
+applyTransforms rigid anchor project node=3 x=-1010.000948 -16.580921 6.810115 solvedV=0.028852 0.000365 -20.043104 rigidV=0.028852 0.000365 -20.043104
+applyTransforms rigid anchor project node=6 x=-1010.000949 -3.159842 6.810116 solvedV=0.028016 0.000365 -20.042379 rigidV=0.028016 0.000365 -20.042379
+applyTransforms rigid anchor project node=8 x=-1010.000893 -16.580922 20.231193 solvedV=0.083650 -0.000359 -20.043104 rigidV=0.083649 -0.000359 -20.043104
+applyTransforms rigid anchor project node=10 x=-1010.000894 -3.159842 20.231194 solvedV=0.082814 -0.000359 -20.042379 rigidV=0.082813 -0.000359 -20.042379
+applyTransforms rigid anchor project node=12 x=-1010.001004 10.261238 -6.610963 solvedV=-0.027617 0.001090 -20.041654 rigidV=-0.027618 0.001090 -20.041654
+applyTransforms rigid anchor project node=14 x=-1010.000949 10.261238 6.810116 solvedV=0.027180 0.000365 -20.041654 rigidV=0.027180 0.000365 -20.041655
+applyTransforms rigid anchor project node=16 x=-1010.000895 10.261237 20.231195 solvedV=0.081978 -0.000359 -20.041654 rigidV=0.081977 -0.000359 -20.041655
+frameend()
+collide frame t=0.110893 tipLoadOrigin=(-1020.000000,0.000000,-0.030001) tipLoadLinVel=(-0.000109,0.000112,-20.001383) freeNode3=(-1010.000948,-16.580921,6.810115)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=-0.293745 -0.133924 -0.128480 clampedNorm=0.347460 body=0000026EF2FF11E0
+anchor reaction transfer node=2 scale=0.002222 impulse=-0.640814 -0.054788 -0.184963 clampedNorm=0.669220 body=0000026EF2FF11E0
+anchor reaction transfer node=3 scale=0.002222 impulse=-0.113424 -0.017854 0.135278 clampedNorm=0.177437 body=0000026EF2FF11E0
+anchor reaction transfer node=6 scale=0.002222 impulse=-0.011854 -0.003612 0.264918 clampedNorm=0.265207 body=0000026EF2FF11E0
+anchor reaction transfer node=8 scale=0.002222 impulse=0.392772 0.199570 0.079210 clampedNorm=0.447630 body=0000026EF2FF11E0
+anchor reaction transfer node=10 scale=0.002222 impulse=0.629313 0.002335 -0.170373 clampedNorm=0.651972 body=0000026EF2FF11E0
+anchor reaction transfer node=12 scale=0.002222 impulse=-0.399871 0.160087 0.030508 clampedNorm=0.431804 body=0000026EF2FF11E0
+anchor reaction transfer node=14 scale=0.002222 impulse=0.088033 -0.024012 0.082741 clampedNorm=0.123176 body=0000026EF2FF11E0
+anchor reaction transfer node=16 scale=0.002222 impulse=0.289508 -0.118094 -0.140637 clampedNorm=0.342840 body=0000026EF2FF11E0
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.001003 -16.580920 -6.610964 v=-0.061477 -0.001751 -30.089092 q=-1010.001064 -16.580922 -6.641053
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.001003 -3.159841 -6.610964 v=-0.062340 -0.001751 -30.094401 q=-1010.001066 -3.159843 -6.641058
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000948 -16.580921 6.810115 v=0.064626 0.003558 -30.089093 q=-1010.000883 -16.580917 6.780026
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000949 -3.159842 6.810116 v=0.063763 0.003558 -30.094401 q=-1010.000885 -3.159838 6.780021
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000893 -16.580922 20.231193 v=0.190729 0.008866 -30.089093 q=-1010.000702 -16.580913 20.201104
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000894 -3.159842 20.231194 v=0.189865 0.008866 -30.094402 q=-1010.000704 -3.159834 20.201099
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.001004 10.261238 -6.610963 v=-0.063204 -0.001751 -30.099709 q=-1010.001067 10.261236 -6.641063
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000949 10.261238 6.810116 v=0.062899 0.003558 -30.099710 q=-1010.000886 10.261241 6.780017
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.000895 10.261237 20.231195 v=0.189002 0.008866 -30.099710 q=-1010.000706 10.261246 20.201095
+anchor_rigid_predicted -1010.001064 -16.580922 -6.641053 anchor_soft_predicted -1010.001064 -16.580922 -6.641053 pos_diff 0.000000 0.000000 -0.000000 va -0.061477 -0.001751 -30.089092 vb -0.061477 -0.001751 -30.089092 residual 0.000000
+regular m_anchor->m_node->m_v -0.061477 -0.001751 -30.089092 m_q -1010.001003 -16.580920 -6.610964 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001066 -3.159843 -6.641058 anchor_soft_predicted -1010.001066 -3.159843 -6.641058 pos_diff 0.000000 -0.000000 -0.000000 va -0.062340 -0.001750 -30.094401 vb -0.062340 -0.001751 -30.094401 residual 0.000000
+regular m_anchor->m_node->m_v -0.062340 -0.001751 -30.094401 m_q -1010.001003 -3.159841 -6.610964 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000883 -16.580917 6.780026 anchor_soft_predicted -1010.000883 -16.580917 6.780026 pos_diff 0.000000 0.000000 0.000000 va 0.064627 0.003558 -30.089094 vb 0.064626 0.003558 -30.089093 residual 0.000000
+regular m_anchor->m_node->m_v 0.064626 0.003558 -30.089093 m_q -1010.000948 -16.580921 6.810115 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000885 -3.159838 6.780021 anchor_soft_predicted -1010.000885 -3.159838 6.780021 pos_diff 0.000000 -0.000000 0.000000 va 0.063763 0.003559 -30.094401 vb 0.063763 0.003558 -30.094401 residual 0.000000
+regular m_anchor->m_node->m_v 0.063763 0.003558 -30.094401 m_q -1010.000949 -3.159842 6.810116 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000702 -16.580913 20.201104 anchor_soft_predicted -1010.000702 -16.580913 20.201104 pos_diff 0.000000 -0.000000 0.000000 va 0.190729 0.008868 -30.089092 vb 0.190729 0.008866 -30.089093 residual 0.000000
+regular m_anchor->m_node->m_v 0.190729 0.008866 -30.089093 m_q -1010.000893 -16.580922 20.231193 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000704 -3.159834 20.201099 anchor_soft_predicted -1010.000704 -3.159834 20.201099 pos_diff 0.000000 -0.000000 0.000000 va 0.189864 0.008869 -30.094400 vb 0.189865 0.008866 -30.094402 residual 0.000000
+regular m_anchor->m_node->m_v 0.189865 0.008866 -30.094402 m_q -1010.000894 -3.159842 20.231194 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001067 10.261236 -6.641063 anchor_soft_predicted -1010.001067 10.261236 -6.641063 pos_diff -0.000000 0.000000 -0.000000 va -0.063203 -0.001751 -30.099709 vb -0.063204 -0.001751 -30.099709 residual 0.000000
+regular m_anchor->m_node->m_v -0.063204 -0.001751 -30.099709 m_q -1010.001004 10.261238 -6.610963 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000886 10.261241 6.780017 anchor_soft_predicted -1010.000886 10.261241 6.780017 pos_diff 0.000000 -0.000000 0.000000 va 0.062899 0.003559 -30.099711 vb 0.062899 0.003558 -30.099710 residual 0.000000
+regular m_anchor->m_node->m_v 0.062899 0.003558 -30.099710 m_q -1010.000949 10.261238 6.810116 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000706 10.261246 20.201095 anchor_soft_predicted -1010.000706 10.261246 20.201095 pos_diff 0.000000 -0.000000 0.000000 va 0.189001 0.008869 -30.099711 vb 0.189002 0.008866 -30.099710 residual 0.000000
+regular m_anchor->m_node->m_v 0.189002 0.008866 -30.099710 m_q -1010.000895 10.261237 20.231195 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.061477 -0.001751 -30.089092 vb -0.061477 -0.001751 -30.089092 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.062340 -0.001751 -30.094401 vb -0.062340 -0.001751 -30.094401 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.064626 0.003558 -30.089093 vb 0.064626 0.003558 -30.089093 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.063763 0.003558 -30.094401 vb 0.063763 0.003558 -30.094401 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.190729 0.008866 -30.089093 vb 0.190729 0.008866 -30.089093 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.189865 0.008866 -30.094402 vb 0.189865 0.008866 -30.094402 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.063204 -0.001751 -30.099709 vb -0.063204 -0.001751 -30.099709 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.062899 0.003558 -30.099710 vb 0.062899 0.003558 -30.099710 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.189002 0.008866 -30.099710 vb 0.189002 0.008866 -30.099710 residual 0.000000
+setupDeformableSolve dynamic anchor node=0 x=-1010.001003 -16.580920 -6.610964 vTarget=-0.061477 -0.001751 -30.089092 qTarget=-1010.001064 -16.580922 -6.641053
+setupDeformableSolve dynamic anchor node=2 x=-1010.001003 -3.159841 -6.610964 vTarget=-0.062340 -0.001751 -30.094401 qTarget=-1010.001066 -3.159843 -6.641058
+setupDeformableSolve dynamic anchor node=3 x=-1010.000948 -16.580921 6.810115 vTarget=0.064626 0.003558 -30.089093 qTarget=-1010.000883 -16.580917 6.780026
+setupDeformableSolve dynamic anchor node=6 x=-1010.000949 -3.159842 6.810116 vTarget=0.063763 0.003558 -30.094401 qTarget=-1010.000885 -3.159838 6.780021
+setupDeformableSolve dynamic anchor node=8 x=-1010.000893 -16.580922 20.231193 vTarget=0.190729 0.008866 -30.089093 qTarget=-1010.000702 -16.580913 20.201104
+setupDeformableSolve dynamic anchor node=10 x=-1010.000894 -3.159842 20.231194 vTarget=0.189865 0.008866 -30.094402 qTarget=-1010.000704 -3.159834 20.201099
+setupDeformableSolve dynamic anchor node=12 x=-1010.001004 10.261238 -6.610963 vTarget=-0.063204 -0.001751 -30.099709 qTarget=-1010.001067 10.261236 -6.641063
+setupDeformableSolve dynamic anchor node=14 x=-1010.000949 10.261238 6.810116 vTarget=0.062899 0.003558 -30.099710 qTarget=-1010.000886 10.261241 6.780017
+setupDeformableSolve dynamic anchor node=16 x=-1010.000895 10.261237 20.231195 vTarget=0.189002 0.008866 -30.099710 qTarget=-1010.000706 10.261246 20.201095
+applyTransforms rigid anchor project node=0 x=-1010.001064 -16.580922 -6.641053 solvedV=-0.061477 -0.001751 -30.089092 rigidV=-0.061477 -0.001751 -30.089092
+applyTransforms rigid anchor project node=2 x=-1010.001066 -3.159843 -6.641058 solvedV=-0.062340 -0.001751 -30.094401 rigidV=-0.062341 -0.001751 -30.094400
+applyTransforms rigid anchor project node=3 x=-1010.000883 -16.580917 6.780026 solvedV=0.064626 0.003558 -30.089093 rigidV=0.064625 0.003558 -30.089093
+applyTransforms rigid anchor project node=6 x=-1010.000885 -3.159838 6.780021 solvedV=0.063763 0.003558 -30.094401 rigidV=0.063762 0.003558 -30.094402
+applyTransforms rigid anchor project node=8 x=-1010.000702 -16.580913 20.201104 solvedV=0.190729 0.008866 -30.089093 rigidV=0.190728 0.008866 -30.089095
+applyTransforms rigid anchor project node=10 x=-1010.000704 -3.159834 20.201099 solvedV=0.189865 0.008866 -30.094402 rigidV=0.189864 0.008866 -30.094404
+applyTransforms rigid anchor project node=12 x=-1010.001067 10.261236 -6.641063 solvedV=-0.063204 -0.001751 -30.099709 rigidV=-0.063205 -0.001751 -30.099709
+applyTransforms rigid anchor project node=14 x=-1010.000886 10.261241 6.780017 solvedV=0.062899 0.003558 -30.099710 rigidV=0.062898 0.003558 -30.099710
+applyTransforms rigid anchor project node=16 x=-1010.000706 10.261246 20.201095 solvedV=0.189002 0.008866 -30.099710 rigidV=0.189001 0.008866 -30.099712
+frameend()
+collide frame t=0.210893 tipLoadOrigin=(-1020.000001,0.000000,-0.060003) tipLoadLinVel=(-0.000710,0.000209,-30.001701) freeNode3=(-1010.000883,-16.580917,6.780026)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=-0.583469 -0.248771 -0.273690 clampedNorm=0.690818 body=0000026EF2FF11E0
+anchor reaction transfer node=2 scale=0.002222 impulse=-1.289909 -0.057732 -0.394817 clampedNorm=1.350214 body=0000026EF2FF11E0
+anchor reaction transfer node=3 scale=0.002222 impulse=-0.198512 -0.046336 0.183483 clampedNorm=0.274263 body=0000026EF2FF11E0
+anchor reaction transfer node=6 scale=0.002222 impulse=-0.011967 -0.010755 0.432642 clampedNorm=0.432941 body=0000026EF2FF11E0
+anchor reaction transfer node=8 scale=0.002222 impulse=0.788431 0.351826 0.079145 clampedNorm=0.866988 body=0000026EF2FF11E0
+anchor reaction transfer node=10 scale=0.002222 impulse=1.282456 -0.041060 -0.384495 clampedNorm=1.339483 body=0000026EF2FF11E0
+anchor reaction transfer node=12 scale=0.002222 impulse=-0.799126 0.341014 0.063113 clampedNorm=0.871135 body=0000026EF2FF11E0
+anchor reaction transfer node=14 scale=0.002222 impulse=0.186738 -0.042731 0.163335 clampedNorm=0.251744 body=0000026EF2FF11E0
+anchor reaction transfer node=16 scale=0.002222 impulse=0.578906 -0.241969 -0.276486 clampedNorm=0.685657 body=0000026EF2FF11E0
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.001064 -16.580922 -6.641053 v=-0.135112 -0.000802 -40.206644 q=-1010.001199 -16.580923 -6.681260
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.001066 -3.159843 -6.641058 v=-0.136830 -0.000802 -40.211386 q=-1010.001203 -3.159843 -6.681269
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000883 -16.580917 6.780026 v=0.142361 0.003940 -40.206647 q=-1010.000741 -16.580913 6.739819
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000885 -3.159838 6.780021 v=0.140644 0.003940 -40.211389 q=-1010.000744 -3.159834 6.739810
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000702 -16.580913 20.201104 v=0.419834 0.008682 -40.206651 q=-1010.000282 -16.580904 20.160897
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000704 -3.159834 20.201099 v=0.418117 0.008682 -40.211393 q=-1010.000286 -3.159825 20.160888
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.001067 10.261236 -6.641063 v=-0.138547 -0.000802 -40.216128 q=-1010.001206 10.261236 -6.681279
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000886 10.261241 6.780017 v=0.138927 0.003940 -40.216131 q=-1010.000748 10.261245 6.739800
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.000706 10.261246 20.201095 v=0.416400 0.008682 -40.216135 q=-1010.000289 10.261254 20.160879
+anchor_rigid_predicted -1010.001199 -16.580923 -6.681260 anchor_soft_predicted -1010.001199 -16.580923 -6.681260 pos_diff 0.000000 0.000000 -0.000000 va -0.135112 -0.000802 -40.206644 vb -0.135112 -0.000802 -40.206644 residual 0.000000
+regular m_anchor->m_node->m_v -0.135112 -0.000802 -40.206644 m_q -1010.001064 -16.580922 -6.641053 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001203 -3.159843 -6.681269 anchor_soft_predicted -1010.001203 -3.159843 -6.681269 pos_diff 0.000000 -0.000000 -0.000000 va -0.136828 -0.000798 -40.211387 vb -0.136830 -0.000802 -40.211386 residual 0.000000
+regular m_anchor->m_node->m_v -0.136830 -0.000802 -40.211386 m_q -1010.001066 -3.159843 -6.641058 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000741 -16.580913 6.739819 anchor_soft_predicted -1010.000741 -16.580913 6.739819 pos_diff 0.000000 0.000000 0.000000 va 0.142367 0.003941 -40.206651 vb 0.142361 0.003940 -40.206647 residual 0.000000
+regular m_anchor->m_node->m_v 0.142361 0.003940 -40.206647 m_q -1010.000883 -16.580917 6.780026 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000744 -3.159834 6.739810 anchor_soft_predicted -1010.000744 -3.159834 6.739810 pos_diff 0.000000 -0.000000 0.000000 va 0.140645 0.003944 -40.211386 vb 0.140644 0.003940 -40.211389 residual 0.000000
+regular m_anchor->m_node->m_v 0.140644 0.003940 -40.211389 m_q -1010.000885 -3.159838 6.780021 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000282 -16.580904 20.160897 anchor_soft_predicted -1010.000282 -16.580904 20.160897 pos_diff 0.000000 -0.000000 0.000000 va 0.419836 0.008688 -40.206645 vb 0.419834 0.008682 -40.206651 residual 0.000000
+regular m_anchor->m_node->m_v 0.419834 0.008682 -40.206651 m_q -1010.000702 -16.580913 20.201104 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000286 -3.159825 20.160888 anchor_soft_predicted -1010.000286 -3.159825 20.160888 pos_diff 0.000000 -0.000000 0.000000 va 0.418111 0.008694 -40.211385 vb 0.418117 0.008682 -40.211393 residual 0.000000
+regular m_anchor->m_node->m_v 0.418117 0.008682 -40.211393 m_q -1010.000704 -3.159834 20.201099 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001206 10.261236 -6.681279 anchor_soft_predicted -1010.001206 10.261236 -6.681279 pos_diff -0.000000 0.000000 -0.000000 va -0.138544 -0.000803 -40.216125 vb -0.138547 -0.000802 -40.216128 residual 0.000000
+regular m_anchor->m_node->m_v -0.138547 -0.000802 -40.216128 m_q -1010.001067 10.261236 -6.641063 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000748 10.261245 6.739800 anchor_soft_predicted -1010.000748 10.261245 6.739800 pos_diff 0.000000 -0.000000 0.000000 va 0.138925 0.003948 -40.216137 vb 0.138927 0.003940 -40.216131 residual 0.000000
+regular m_anchor->m_node->m_v 0.138927 0.003940 -40.216131 m_q -1010.000886 10.261241 6.780017 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000289 10.261254 20.160879 anchor_soft_predicted -1010.000289 10.261254 20.160879 pos_diff 0.000000 -0.000000 0.000000 va 0.416397 0.008696 -40.216138 vb 0.416400 0.008682 -40.216135 residual 0.000000
+regular m_anchor->m_node->m_v 0.416400 0.008682 -40.216135 m_q -1010.000706 10.261246 20.201095 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.135112 -0.000802 -40.206644 vb -0.135112 -0.000802 -40.206644 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.136830 -0.000802 -40.211386 vb -0.136830 -0.000802 -40.211386 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.142361 0.003940 -40.206647 vb 0.142361 0.003940 -40.206647 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.140644 0.003940 -40.211389 vb 0.140644 0.003940 -40.211389 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.419834 0.008682 -40.206651 vb 0.419834 0.008682 -40.206651 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.418117 0.008682 -40.211393 vb 0.418117 0.008682 -40.211393 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.138547 -0.000802 -40.216128 vb -0.138547 -0.000802 -40.216128 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.138927 0.003940 -40.216131 vb 0.138927 0.003940 -40.216131 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.416400 0.008682 -40.216135 vb 0.416400 0.008682 -40.216135 residual 0.000000
+setupDeformableSolve dynamic anchor node=0 x=-1010.001064 -16.580922 -6.641053 vTarget=-0.135112 -0.000802 -40.206644 qTarget=-1010.001199 -16.580923 -6.681260
+setupDeformableSolve dynamic anchor node=2 x=-1010.001066 -3.159843 -6.641058 vTarget=-0.136830 -0.000802 -40.211386 qTarget=-1010.001203 -3.159843 -6.681269
+setupDeformableSolve dynamic anchor node=3 x=-1010.000883 -16.580917 6.780026 vTarget=0.142361 0.003940 -40.206647 qTarget=-1010.000741 -16.580913 6.739819
+setupDeformableSolve dynamic anchor node=6 x=-1010.000885 -3.159838 6.780021 vTarget=0.140644 0.003940 -40.211389 qTarget=-1010.000744 -3.159834 6.739810
+setupDeformableSolve dynamic anchor node=8 x=-1010.000702 -16.580913 20.201104 vTarget=0.419834 0.008682 -40.206651 qTarget=-1010.000282 -16.580904 20.160897
+setupDeformableSolve dynamic anchor node=10 x=-1010.000704 -3.159834 20.201099 vTarget=0.418117 0.008682 -40.211393 qTarget=-1010.000286 -3.159825 20.160888
+setupDeformableSolve dynamic anchor node=12 x=-1010.001067 10.261236 -6.641063 vTarget=-0.138547 -0.000802 -40.216128 qTarget=-1010.001206 10.261236 -6.681279
+setupDeformableSolve dynamic anchor node=14 x=-1010.000886 10.261241 6.780017 vTarget=0.138927 0.003940 -40.216131 qTarget=-1010.000748 10.261245 6.739800
+setupDeformableSolve dynamic anchor node=16 x=-1010.000706 10.261246 20.201095 vTarget=0.416400 0.008682 -40.216135 qTarget=-1010.000289 10.261254 20.160879
+applyTransforms rigid anchor project node=0 x=-1010.001199 -16.580923 -6.681260 solvedV=-0.135112 -0.000802 -40.206644 rigidV=-0.135116 -0.000802 -40.206641
+applyTransforms rigid anchor project node=2 x=-1010.001203 -3.159843 -6.681269 solvedV=-0.136830 -0.000802 -40.211386 rigidV=-0.136834 -0.000802 -40.211383
+applyTransforms rigid anchor project node=3 x=-1010.000741 -16.580913 6.739819 solvedV=0.142361 0.003940 -40.206647 rigidV=0.142357 0.003940 -40.206650
+applyTransforms rigid anchor project node=6 x=-1010.000744 -3.159834 6.739810 solvedV=0.140644 0.003940 -40.211389 rigidV=0.140640 0.003940 -40.211392
+applyTransforms rigid anchor project node=8 x=-1010.000282 -16.580904 20.160897 solvedV=0.419834 0.008682 -40.206651 rigidV=0.419830 0.008682 -40.206660
+applyTransforms rigid anchor project node=10 x=-1010.000286 -3.159825 20.160888 solvedV=0.418117 0.008682 -40.211393 rigidV=0.418113 0.008682 -40.211402
+applyTransforms rigid anchor project node=12 x=-1010.001206 10.261236 -6.681279 solvedV=-0.138547 -0.000802 -40.216128 rigidV=-0.138551 -0.000802 -40.216125
+applyTransforms rigid anchor project node=14 x=-1010.000748 10.261245 6.739800 solvedV=0.138927 0.003940 -40.216131 rigidV=0.138922 0.003940 -40.216134
+applyTransforms rigid anchor project node=16 x=-1010.000289 10.261254 20.160879 solvedV=0.416400 0.008682 -40.216135 rigidV=0.416396 0.008682 -40.216144
+frameend()
+collide frame t=0.310893 tipLoadOrigin=(-1020.000002,0.000001,-0.100009) tipLoadLinVel=(-0.001174,0.000244,-40.005780) freeNode3=(-1010.000741,-16.580913,6.739819)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=-0.772500 -0.333517 -0.357896 clampedNorm=0.914374 body=0000026EF2FF11E0
+anchor reaction transfer node=2 scale=0.002222 impulse=-1.707167 -0.088584 -0.518973 clampedNorm=1.786505 body=0000026EF2FF11E0
+anchor reaction transfer node=3 scale=0.002222 impulse=-0.272229 -0.062776 0.263508 clampedNorm=0.384039 body=0000026EF2FF11E0
+anchor reaction transfer node=6 scale=0.002222 impulse=-0.031516 -0.016237 0.594618 clampedNorm=0.595674 body=0000026EF2FF11E0
+anchor reaction transfer node=8 scale=0.002222 impulse=1.036496 0.471625 0.123294 clampedNorm=1.145406 body=0000026EF2FF11E0
+anchor reaction transfer node=10 scale=0.002222 impulse=1.685743 -0.048044 -0.495760 clampedNorm=1.757787 body=0000026EF2FF11E0
+anchor reaction transfer node=12 scale=0.002222 impulse=-1.059684 0.447271 0.084590 clampedNorm=1.153315 body=0000026EF2FF11E0
+anchor reaction transfer node=14 scale=0.002222 impulse=0.241070 -0.054938 0.221315 clampedNorm=0.331833 body=0000026EF2FF11E0
+anchor reaction transfer node=16 scale=0.002222 impulse=0.761975 -0.318197 -0.363906 clampedNorm=0.902377 body=0000026EF2FF11E0
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.001199 -16.580923 -6.681260 v=-0.232384 -0.001261 -50.356050 q=-1010.001431 -16.580924 -6.731616
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.001203 -3.159843 -6.681269 v=-0.234591 -0.001261 -50.362403 q=-1010.001437 -3.159845 -6.731632
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000741 -16.580913 6.739819 v=0.242278 0.005092 -50.356066 q=-1010.000498 -16.580908 6.689463
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000744 -3.159834 6.739810 v=0.240071 0.005092 -50.362419 q=-1010.000504 -3.159829 6.689447
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000282 -16.580904 20.160897 v=0.716940 0.011445 -50.356082 q=-1009.999565 -16.580893 20.110541
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000286 -3.159825 20.160888 v=0.714733 0.011445 -50.362435 q=-1009.999571 -3.159813 20.110526
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.001206 10.261236 -6.681279 v=-0.236799 -0.001261 -50.368756 q=-1010.001443 10.261234 -6.731647
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000748 10.261245 6.739800 v=0.237863 0.005092 -50.368772 q=-1010.000510 10.261250 6.689432
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.000289 10.261254 20.160879 v=0.712525 0.011445 -50.368788 q=-1009.999577 10.261266 20.110510
+anchor_rigid_predicted -1010.001431 -16.580924 -6.731616 anchor_soft_predicted -1010.001431 -16.580924 -6.731616 pos_diff 0.000000 0.000000 -0.000000 va -0.232384 -0.001261 -50.356050 vb -0.232384 -0.001261 -50.356050 residual 0.000000
+regular m_anchor->m_node->m_v -0.232384 -0.001261 -50.356050 m_q -1010.001199 -16.580923 -6.681260 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001437 -3.159845 -6.731632 anchor_soft_predicted -1010.001437 -3.159845 -6.731632 pos_diff 0.000000 -0.000000 -0.000000 va -0.234586 -0.001250 -50.362407 vb -0.234591 -0.001261 -50.362403 residual 0.000000
+regular m_anchor->m_node->m_v -0.234591 -0.001261 -50.362403 m_q -1010.001203 -3.159843 -6.681269 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000498 -16.580908 6.689463 anchor_soft_predicted -1010.000498 -16.580908 6.689463 pos_diff 0.000000 0.000000 0.000000 va 0.242295 0.005096 -50.356078 vb 0.242278 0.005092 -50.356066 residual 0.000000
+regular m_anchor->m_node->m_v 0.242278 0.005092 -50.356066 m_q -1010.000741 -16.580913 6.739819 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000504 -3.159829 6.689447 anchor_soft_predicted -1010.000504 -3.159829 6.689447 pos_diff 0.000000 -0.000000 0.000000 va 0.240074 0.005103 -50.362411 vb 0.240071 0.005092 -50.362419 residual 0.000000
+regular m_anchor->m_node->m_v 0.240071 0.005092 -50.362419 m_q -1010.000744 -3.159834 6.739810 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999565 -16.580893 20.110541 anchor_soft_predicted -1009.999565 -16.580893 20.110541 pos_diff 0.000000 -0.000000 0.000000 va 0.716945 0.011463 -50.356064 vb 0.716940 0.011445 -50.356082 residual 0.000000
+regular m_anchor->m_node->m_v 0.716940 0.011445 -50.356082 m_q -1010.000282 -16.580904 20.160897 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999571 -3.159813 20.110526 anchor_soft_predicted -1009.999571 -3.159813 20.110526 pos_diff 0.000000 -0.000000 0.000000 va 0.714716 0.011482 -50.362412 vb 0.714733 0.011445 -50.362435 residual 0.000000
+regular m_anchor->m_node->m_v 0.714733 0.011445 -50.362435 m_q -1010.000286 -3.159825 20.160888 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001443 10.261234 -6.731647 anchor_soft_predicted -1010.001443 10.261234 -6.731647 pos_diff -0.000000 0.000000 -0.000000 va -0.236791 -0.001265 -50.368748 vb -0.236799 -0.001261 -50.368756 residual 0.000000
+regular m_anchor->m_node->m_v -0.236799 -0.001261 -50.368756 m_q -1010.001206 10.261236 -6.681279 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000510 10.261250 6.689432 anchor_soft_predicted -1010.000510 10.261250 6.689432 pos_diff 0.000000 -0.000000 0.000000 va 0.237859 0.005114 -50.368789 vb 0.237863 0.005092 -50.368772 residual 0.000000
+regular m_anchor->m_node->m_v 0.237863 0.005092 -50.368772 m_q -1010.000748 10.261245 6.739800 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999577 10.261266 20.110510 anchor_soft_predicted -1009.999577 10.261266 20.110510 pos_diff 0.000000 -0.000000 0.000000 va 0.712516 0.011486 -50.368798 vb 0.712525 0.011445 -50.368788 residual 0.000000
+regular m_anchor->m_node->m_v 0.712525 0.011445 -50.368788 m_q -1010.000289 10.261254 20.160879 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.232384 -0.001261 -50.356050 vb -0.232384 -0.001261 -50.356050 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.234591 -0.001261 -50.362403 vb -0.234591 -0.001261 -50.362403 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.242278 0.005092 -50.356066 vb 0.242278 0.005092 -50.356066 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.240071 0.005092 -50.362419 vb 0.240071 0.005092 -50.362419 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.716940 0.011445 -50.356082 vb 0.716940 0.011445 -50.356082 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.714733 0.011445 -50.362435 vb 0.714733 0.011445 -50.362435 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.236799 -0.001261 -50.368756 vb -0.236799 -0.001261 -50.368756 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.237863 0.005092 -50.368772 vb 0.237863 0.005092 -50.368772 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.712525 0.011445 -50.368788 vb 0.712525 0.011445 -50.368788 residual 0.000000
+setupDeformableSolve dynamic anchor node=0 x=-1010.001199 -16.580923 -6.681260 vTarget=-0.232384 -0.001261 -50.356050 qTarget=-1010.001431 -16.580924 -6.731616
+setupDeformableSolve dynamic anchor node=2 x=-1010.001203 -3.159843 -6.681269 vTarget=-0.234591 -0.001261 -50.362403 qTarget=-1010.001437 -3.159845 -6.731632
+setupDeformableSolve dynamic anchor node=3 x=-1010.000741 -16.580913 6.739819 vTarget=0.242278 0.005092 -50.356066 qTarget=-1010.000498 -16.580908 6.689463
+setupDeformableSolve dynamic anchor node=6 x=-1010.000744 -3.159834 6.739810 vTarget=0.240071 0.005092 -50.362419 qTarget=-1010.000504 -3.159829 6.689447
+setupDeformableSolve dynamic anchor node=8 x=-1010.000282 -16.580904 20.160897 vTarget=0.716940 0.011445 -50.356082 qTarget=-1009.999565 -16.580893 20.110541
+setupDeformableSolve dynamic anchor node=10 x=-1010.000286 -3.159825 20.160888 vTarget=0.714733 0.011445 -50.362435 qTarget=-1009.999571 -3.159813 20.110526
+setupDeformableSolve dynamic anchor node=12 x=-1010.001206 10.261236 -6.681279 vTarget=-0.236799 -0.001261 -50.368756 qTarget=-1010.001443 10.261234 -6.731647
+setupDeformableSolve dynamic anchor node=14 x=-1010.000748 10.261245 6.739800 vTarget=0.237863 0.005092 -50.368772 qTarget=-1010.000510 10.261250 6.689432
+setupDeformableSolve dynamic anchor node=16 x=-1010.000289 10.261254 20.160879 vTarget=0.712525 0.011445 -50.368788 qTarget=-1009.999577 10.261266 20.110510
+applyTransforms rigid anchor project node=0 x=-1010.001431 -16.580924 -6.731616 solvedV=-0.232384 -0.001261 -50.356050 rigidV=-0.232396 -0.001261 -50.356042
+applyTransforms rigid anchor project node=2 x=-1010.001437 -3.159845 -6.731632 solvedV=-0.234591 -0.001261 -50.362403 rigidV=-0.234604 -0.001261 -50.362395
+applyTransforms rigid anchor project node=3 x=-1010.000498 -16.580908 6.689463 solvedV=0.242278 0.005092 -50.356066 rigidV=0.242266 0.005092 -50.356075
+applyTransforms rigid anchor project node=6 x=-1010.000504 -3.159829 6.689447 solvedV=0.240071 0.005092 -50.362419 rigidV=0.240058 0.005092 -50.362428
+applyTransforms rigid anchor project node=8 x=-1009.999565 -16.580893 20.110541 solvedV=0.716940 0.011445 -50.356082 rigidV=0.716928 0.011445 -50.356108
+applyTransforms rigid anchor project node=10 x=-1009.999571 -3.159813 20.110526 solvedV=0.714733 0.011445 -50.362435 rigidV=0.714720 0.011445 -50.362461
+applyTransforms rigid anchor project node=12 x=-1010.001443 10.261234 -6.731647 solvedV=-0.236799 -0.001261 -50.368756 rigidV=-0.236812 -0.001261 -50.368748
+applyTransforms rigid anchor project node=14 x=-1010.000510 10.261250 6.689432 solvedV=0.237863 0.005092 -50.368772 rigidV=0.237851 0.005092 -50.368781
+applyTransforms rigid anchor project node=16 x=-1009.999577 10.261266 20.110510 solvedV=0.712525 0.011445 -50.368788 rigidV=0.712513 0.011445 -50.368814
+frameend()
+collide frame t=0.410893 tipLoadOrigin=(-1020.000004,0.000001,-0.150019) tipLoadLinVel=(-0.002352,0.000210,-50.010272) freeNode3=(-1010.000498,-16.580908,6.689463)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=-0.969111 -0.410995 -0.456610 clampedNorm=1.147426 body=0000026EF2FF11E0
+anchor reaction transfer node=2 scale=0.002222 impulse=-2.136626 -0.085004 -0.641010 clampedNorm=2.232329 body=0000026EF2FF11E0
+anchor reaction transfer node=3 scale=0.002222 impulse=-0.317413 -0.069469 0.302067 clampedNorm=0.443646 body=0000026EF2FF11E0
+anchor reaction transfer node=6 scale=0.002222 impulse=0.005494 -0.018909 0.739078 clampedNorm=0.739340 body=0000026EF2FF11E0
+anchor reaction transfer node=8 scale=0.002222 impulse=1.327674 0.579694 0.125235 clampedNorm=1.454114 body=0000026EF2FF11E0
+anchor reaction transfer node=10 scale=0.002222 impulse=2.141765 -0.082282 -0.645047 clampedNorm=2.238305 body=0000026EF2FF11E0
+anchor reaction transfer node=12 scale=0.002222 impulse=-1.319204 0.576128 0.123203 clampedNorm=1.444784 body=0000026EF2FF11E0
+anchor reaction transfer node=14 scale=0.002222 impulse=0.321990 -0.075031 0.296789 clampedNorm=0.444288 body=0000026EF2FF11E0
+anchor reaction transfer node=16 scale=0.002222 impulse=0.972071 -0.411322 -0.458978 clampedNorm=1.150986 body=0000026EF2FF11E0
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.001431 -16.580924 -6.731616 v=-0.353371 0.001962 -60.554432 q=-1010.001785 -16.580922 -6.792170
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.001437 -3.159845 -6.731632 v=-0.357596 0.001962 -60.557332 q=-1010.001795 -3.159843 -6.792189
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000498 -16.580908 6.689463 v=0.373605 0.004863 -60.554482 q=-1010.000125 -16.580903 6.628909
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000504 -3.159829 6.689447 v=0.369380 0.004863 -60.557382 q=-1010.000135 -3.159824 6.628890
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1009.999565 -16.580893 20.110541 v=1.100580 0.007764 -60.554533 q=-1009.998465 -16.580885 20.049987
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1009.999571 -3.159813 20.110526 v=1.096356 0.007764 -60.557433 q=-1009.998475 -3.159806 20.049968
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.001443 10.261234 -6.731647 v=-0.361820 0.001962 -60.560232 q=-1010.001805 10.261236 -6.792208
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000510 10.261250 6.689432 v=0.365155 0.004863 -60.560283 q=-1010.000145 10.261255 6.628871
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1009.999577 10.261266 20.110510 v=1.092131 0.007764 -60.560333 q=-1009.998485 10.261274 20.049950
+anchor_rigid_predicted -1010.001785 -16.580922 -6.792170 anchor_soft_predicted -1010.001785 -16.580922 -6.792170 pos_diff 0.000000 0.000000 -0.000000 va -0.353371 0.001962 -60.554432 vb -0.353371 0.001962 -60.554432 residual 0.000000
+regular m_anchor->m_node->m_v -0.353371 0.001962 -60.554432 m_q -1010.001431 -16.580924 -6.731616 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001795 -3.159843 -6.792189 anchor_soft_predicted -1010.001795 -3.159843 -6.792189 pos_diff 0.000000 -0.000000 -0.000000 va -0.357583 0.001989 -60.557340 vb -0.357596 0.001962 -60.557332 residual 0.000000
+regular m_anchor->m_node->m_v -0.357596 0.001962 -60.557332 m_q -1010.001437 -3.159845 -6.731632 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000125 -16.580903 6.628909 anchor_soft_predicted -1010.000125 -16.580903 6.628909 pos_diff 0.000000 0.000000 0.000000 va 0.373645 0.004872 -60.554509 vb 0.373605 0.004863 -60.554482 residual 0.000000
+regular m_anchor->m_node->m_v 0.373605 0.004863 -60.554482 m_q -1010.000498 -16.580908 6.689463 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000135 -3.159824 6.628890 anchor_soft_predicted -1010.000135 -3.159824 6.628890 pos_diff 0.000000 -0.000000 0.000000 va 0.369388 0.004890 -60.557362 vb 0.369380 0.004863 -60.557382 residual 0.000000
+regular m_anchor->m_node->m_v 0.369380 0.004863 -60.557382 m_q -1010.000504 -3.159829 6.689447 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998465 -16.580885 20.049987 anchor_soft_predicted -1009.998465 -16.580885 20.049987 pos_diff 0.000000 -0.000000 0.000000 va 1.100592 0.007807 -60.554490 vb 1.100580 0.007764 -60.554533 residual 0.000000
+regular m_anchor->m_node->m_v 1.100580 0.007764 -60.554533 m_q -1009.999565 -16.580893 20.110541 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998475 -3.159806 20.049968 anchor_soft_predicted -1009.998475 -3.159806 20.049968 pos_diff 0.000000 -0.000000 0.000000 va 1.096316 0.007849 -60.557377 vb 1.096356 0.007764 -60.557433 residual 0.000000
+regular m_anchor->m_node->m_v 1.096356 0.007764 -60.557433 m_q -1009.999571 -3.159813 20.110526 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001805 10.261236 -6.792208 anchor_soft_predicted -1010.001805 10.261236 -6.792208 pos_diff -0.000000 0.000000 -0.000000 va -0.361802 0.001954 -60.560213 vb -0.361820 0.001962 -60.560232 residual 0.000000
+regular m_anchor->m_node->m_v -0.361820 0.001962 -60.560232 m_q -1010.001443 10.261234 -6.731647 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000145 10.261255 6.628871 anchor_soft_predicted -1010.000145 10.261255 6.628871 pos_diff 0.000000 -0.000000 0.000000 va 0.365145 0.004916 -60.560323 vb 0.365155 0.004863 -60.560283 residual 0.000000
+regular m_anchor->m_node->m_v 0.365155 0.004863 -60.560283 m_q -1010.000510 10.261250 6.689432 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998485 10.261274 20.049950 anchor_soft_predicted -1009.998485 10.261274 20.049950 pos_diff 0.000000 -0.000000 0.000000 va 1.092108 0.007860 -60.560355 vb 1.092131 0.007764 -60.560333 residual 0.000000
+regular m_anchor->m_node->m_v 1.092131 0.007764 -60.560333 m_q -1009.999577 10.261266 20.110510 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.353371 0.001962 -60.554432 vb -0.353371 0.001962 -60.554432 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.357596 0.001962 -60.557332 vb -0.357596 0.001962 -60.557332 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.373605 0.004863 -60.554482 vb 0.373605 0.004863 -60.554482 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.369380 0.004863 -60.557382 vb 0.369380 0.004863 -60.557382 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.100580 0.007764 -60.554533 vb 1.100580 0.007764 -60.554533 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.096356 0.007764 -60.557433 vb 1.096356 0.007764 -60.557433 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.361820 0.001962 -60.560232 vb -0.361820 0.001962 -60.560232 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.365155 0.004863 -60.560283 vb 0.365155 0.004863 -60.560283 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.092131 0.007764 -60.560333 vb 1.092131 0.007764 -60.560333 residual 0.000000
+setupDeformableSolve dynamic anchor node=0 x=-1010.001431 -16.580924 -6.731616 vTarget=-0.353371 0.001962 -60.554432 qTarget=-1010.001785 -16.580922 -6.792170
+setupDeformableSolve dynamic anchor node=2 x=-1010.001437 -3.159845 -6.731632 vTarget=-0.357596 0.001962 -60.557332 qTarget=-1010.001795 -3.159843 -6.792189
+setupDeformableSolve dynamic anchor node=3 x=-1010.000498 -16.580908 6.689463 vTarget=0.373605 0.004863 -60.554482 qTarget=-1010.000125 -16.580903 6.628909
+setupDeformableSolve dynamic anchor node=6 x=-1010.000504 -3.159829 6.689447 vTarget=0.369380 0.004863 -60.557382 qTarget=-1010.000135 -3.159824 6.628890
+setupDeformableSolve dynamic anchor node=8 x=-1009.999565 -16.580893 20.110541 vTarget=1.100580 0.007764 -60.554533 qTarget=-1009.998465 -16.580885 20.049987
+setupDeformableSolve dynamic anchor node=10 x=-1009.999571 -3.159813 20.110526 vTarget=1.096356 0.007764 -60.557433 qTarget=-1009.998475 -3.159806 20.049968
+setupDeformableSolve dynamic anchor node=12 x=-1010.001443 10.261234 -6.731647 vTarget=-0.361820 0.001962 -60.560232 qTarget=-1010.001805 10.261236 -6.792208
+setupDeformableSolve dynamic anchor node=14 x=-1010.000510 10.261250 6.689432 vTarget=0.365155 0.004863 -60.560283 qTarget=-1010.000145 10.261255 6.628871
+setupDeformableSolve dynamic anchor node=16 x=-1009.999577 10.261266 20.110510 vTarget=1.092131 0.007764 -60.560333 qTarget=-1009.998485 10.261274 20.049950
+applyTransforms rigid anchor project node=0 x=-1010.001785 -16.580922 -6.792170 solvedV=-0.353371 0.001962 -60.554432 rigidV=-0.353400 0.001962 -60.554413
+applyTransforms rigid anchor project node=2 x=-1010.001795 -3.159843 -6.792189 solvedV=-0.357596 0.001962 -60.557332 rigidV=-0.357625 0.001962 -60.557313
+applyTransforms rigid anchor project node=3 x=-1010.000125 -16.580903 6.628909 solvedV=0.373605 0.004863 -60.554482 rigidV=0.373576 0.004863 -60.554503
+applyTransforms rigid anchor project node=6 x=-1010.000135 -3.159824 6.628890 solvedV=0.369380 0.004863 -60.557382 rigidV=0.369351 0.004863 -60.557403
+applyTransforms rigid anchor project node=8 x=-1009.998465 -16.580885 20.049987 solvedV=1.100580 0.007764 -60.554533 rigidV=1.100551 0.007764 -60.554593
+applyTransforms rigid anchor project node=10 x=-1009.998475 -3.159806 20.049968 solvedV=1.096356 0.007764 -60.557433 rigidV=1.096326 0.007764 -60.557493
+applyTransforms rigid anchor project node=12 x=-1010.001805 10.261236 -6.792208 solvedV=-0.361820 0.001962 -60.560232 rigidV=-0.361850 0.001962 -60.560213
+applyTransforms rigid anchor project node=14 x=-1010.000145 10.261255 6.628871 solvedV=0.365155 0.004863 -60.560283 rigidV=0.365126 0.004863 -60.560303
+applyTransforms rigid anchor project node=16 x=-1009.998485 10.261274 20.049950 solvedV=1.092131 0.007764 -60.560333 rigidV=1.092101 0.007764 -60.560392
+frameend()
+collide frame t=0.510893 tipLoadOrigin=(-1020.000006,0.000001,-0.210036) tipLoadLinVel=(-0.002086,0.000238,-60.016425) freeNode3=(-1010.000125,-16.580903,6.628909)

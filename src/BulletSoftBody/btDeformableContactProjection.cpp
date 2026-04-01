@@ -17,6 +17,7 @@
 #include "btDeformableMultiBodyDynamicsWorld.h"
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 btScalar btDeformableContactProjection::update(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
 {
 	btScalar residualSquare = 0;
@@ -100,6 +101,77 @@ btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** de
 	return residualSquare;
 }
 
+void btDeformableContactProjection::resetAnchorSplitDiagnostics()
+{
+	for (int i = 0; i < m_nodeAnchorConstraints.size(); ++i)
+	{
+		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
+		{
+			m_nodeAnchorConstraints[i][j].resetSplitDiagnostics();
+		}
+	}
+}
+
+void btDeformableContactProjection::reportAnchorSplitDiagnostics(int iterationsUsed, int iterationLimit, btScalar residualThreshold) const
+{
+	int totalAnchors = 0;
+	int activeAnchors = 0;
+	int unconvergedAnchors = 0;
+	btScalar worstResidualSquare = 0.0;
+	const btDeformableNodeAnchorConstraint* worstConstraint = 0;
+
+	for (int i = 0; i < m_nodeAnchorConstraints.size(); ++i)
+	{
+		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
+		{
+			const btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[i][j];
+			++totalAnchors;
+			if (constraint.m_split_iterations == 0)
+			{
+				continue;
+			}
+			++activeAnchors;
+			if (constraint.m_split_last_residual_square > residualThreshold)
+			{
+				++unconvergedAnchors;
+			}
+			if (constraint.m_split_max_residual_square > worstResidualSquare)
+			{
+				worstResidualSquare = constraint.m_split_max_residual_square;
+				worstConstraint = &constraint;
+			}
+		}
+	}
+
+	if (!activeAnchors)
+	{
+		return;
+	}
+
+	const bool hitLimit = iterationsUsed >= iterationLimit;
+	fprintf(stderr,
+		"anchor split summary: iterations=%d/%d active=%d total=%d unconverged=%d worstResidual=%f%s\n",
+		iterationsUsed,
+		iterationLimit,
+		activeAnchors,
+		totalAnchors,
+		unconvergedAnchors,
+		worstResidualSquare,
+		hitLimit ? " HIT_LIMIT" : "");
+
+	if (hitLimit && unconvergedAnchors > 0 && worstConstraint)
+	{
+		fprintf(stderr,
+			"anchor split warning: node=%d body=%p lastResidual=%f maxResidual=%f penetration=%f relaxation=%f\n",
+			worstConstraint->m_anchor->m_node ? worstConstraint->m_anchor->m_node->index : -1,
+			(const void*)worstConstraint->m_anchor->m_body,
+			worstConstraint->m_split_last_residual_square,
+			worstConstraint->m_split_max_residual_square,
+			worstConstraint->m_anchor_rigid_penetration,
+			worstConstraint->m_convergence_based_relaxation_position_drift);
+	}
+}
+
 void btDeformableContactProjection::setConstraints(const btContactSolverInfo& infoGlobal)
 {
 	BT_PROFILE("setConstraints");
@@ -154,6 +226,16 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		}
 
 		// set up deformable anchors
+		std::unordered_map<const btRigidBody*, int> anchorCountsByBody;
+		for (int j = 0; j < psb->m_deformableAnchors.size(); ++j)
+		{
+			const btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[j];
+			if (anchor.m_body)
+			{
+				anchorCountsByBody[anchor.m_body] += 1;
+			}
+		}
+
 		for (int j = 0; j < psb->m_deformableAnchors.size(); ++j)
 		{
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[j];
@@ -164,6 +246,18 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			}
 			anchor.m_c1 = anchor.m_cti.m_colObj->getWorldTransform().getBasis() * anchor.m_local;
 			btDeformableNodeAnchorConstraint constraint(anchor, infoGlobal);
+			if (infoGlobal.m_timeStep > SIMD_EPSILON)
+			{
+				constraint.m_max_node_speed = psb->getWorldInfo()->m_maxDisplacement / infoGlobal.m_timeStep;
+			}
+			if (anchor.m_body)
+			{
+				auto it = anchorCountsByBody.find(anchor.m_body);
+				if (it != anchorCountsByBody.end())
+				{
+					constraint.m_anchor_body_coupling_count = btMax(1, it->second);
+				}
+			}
 			m_nodeAnchorConstraints[i].push_back(constraint);
 		}
 

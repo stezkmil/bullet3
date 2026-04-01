@@ -17,6 +17,90 @@
 #include "btPreconditioner.h"
 #include "LinearMath/btQuickprof.h"
 
+namespace
+{
+bool isDynamicRigidAnchorNode(const btSoftBody* psb, const btSoftBody::Node* node)
+{
+	for (int anchorIndex = 0; anchorIndex < psb->m_deformableAnchors.size(); ++anchorIndex)
+	{
+		const btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[anchorIndex];
+		if (anchor.m_node != node || !anchor.m_body || !anchor.m_cti.m_colObj)
+		{
+			continue;
+		}
+		if (!anchor.m_body->isStaticOrKinematicObject() && anchor.m_body->isActive())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void transferDynamicAnchorReactionImpulses(btSoftBody* psb, btDeformableBackwardEulerObjective::TVStack& force, btScalar dt)
+{
+	if (dt <= SIMD_EPSILON)
+	{
+		return;
+	}
+
+	for (int anchorIndex = 0; anchorIndex < psb->m_deformableAnchors.size(); ++anchorIndex)
+	{
+		btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[anchorIndex];
+		btSoftBody::Node* node = anchor.m_node;
+		btRigidBody* body = anchor.m_body;
+		if (!node || !body || !anchor.m_cti.m_colObj)
+		{
+			continue;
+		}
+		if (body->isStaticOrKinematicObject() || !body->isActive())
+		{
+			continue;
+		}
+
+		btVector3 reactionImpulse = -force[node->index];
+		btScalar reactionNorm = reactionImpulse.safeNorm();
+		if (reactionNorm <= SIMD_EPSILON)
+		{
+			continue;
+		}
+
+		int anchorCountForBody = 0;
+		for (int otherAnchorIndex = 0; otherAnchorIndex < psb->m_deformableAnchors.size(); ++otherAnchorIndex)
+		{
+			const btSoftBody::DeformableNodeRigidAnchor& otherAnchor = psb->m_deformableAnchors[otherAnchorIndex];
+			if (otherAnchor.m_body == body)
+			{
+				++anchorCountForBody;
+			}
+		}
+		anchorCountForBody = btMax(1, anchorCountForBody);
+
+		const btScalar reactionTransferScale = btScalar(0.02) / btScalar(anchorCountForBody);
+		reactionImpulse *= reactionTransferScale;
+		reactionNorm = reactionImpulse.safeNorm();
+
+		const btScalar bodyMass = body->getInvMass() > SIMD_EPSILON ? btScalar(1.0) / body->getInvMass() : btScalar(0.0);
+		const btScalar maxReactionImpulse = btMax(btScalar(50.0), bodyMass * btScalar(5.0));
+		if (reactionNorm > maxReactionImpulse)
+		{
+			reactionImpulse *= maxReactionImpulse / reactionNorm;
+		}
+
+		const btTransform& worldTransform = body->getWorldTransform();
+		const btVector3 localPoint = worldTransform.getBasis() * anchor.m_local;
+		body->applyImpulse(reactionImpulse, localPoint);
+
+		fprintf(stderr,
+			"anchor reaction transfer node=%d scale=%f impulse=%f %f %f clampedNorm=%f body=%p\n",
+			node->index,
+			reactionTransferScale,
+			reactionImpulse.x(), reactionImpulse.y(), reactionImpulse.z(),
+			reactionImpulse.safeNorm(),
+			(void*)body);
+	}
+}
+}
+
 btDeformableBackwardEulerObjective::btDeformableBackwardEulerObjective(btAlignedObjectArray<btSoftBody*>& softBodies, const TVStack& backup_v)
 	: m_softBodies(softBodies), m_projection(softBodies), m_backupVelocity(backup_v), m_implicit(false)
 {
@@ -54,7 +138,13 @@ void btDeformableBackwardEulerObjective::reinitialize(bool nodeUpdated, btScalar
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
 			if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im > 0)
+			{
 				psb->m_nodes[j].m_effectiveMass = I * (1.0 / psb->m_nodes[j].m_im);
+				if (isDynamicRigidAnchorNode(psb, &psb->m_nodes[j]))
+				{
+					psb->m_nodes[j].m_effectiveMass_inv.setZero();
+				}
+			}
 		}
 	}
 	m_projection.reinitialize(nodeUpdated);
@@ -149,9 +239,13 @@ void btDeformableBackwardEulerObjective::applyForce(TVStack& force, bool setZero
 		{
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
-				if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im != 0)
+				if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im != 0 && !isDynamicRigidAnchorNode(psb, &psb->m_nodes[j]))
 				{
 					psb->m_nodes[j].m_v += psb->m_nodes[j].m_effectiveMass_inv * force[counter++];
+				}
+				else
+				{
+					++counter;
 				}
 			}
 		}
@@ -261,11 +355,23 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 		btSoftBody* psb = m_softBodies[i];
 		if (psb->isActive() && !psb->isStaticObject())
 		{
+			if (m_implicit)
+			{
+				transferDynamicAnchorReactionImpulses(psb, force, m_dt);
+			}
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
 				if (psb->m_nodes[j].m_frozen <= 0 && psb->m_nodes[j].m_im > 0)
 				{
-					psb->m_nodes[j].m_effectiveMass_inv = psb->m_nodes[j].m_effectiveMass.inverse();
+					if (isDynamicRigidAnchorNode(psb, &psb->m_nodes[j]))
+					{
+						psb->m_nodes[j].m_effectiveMass_inv.setZero();
+						force[psb->m_nodes[j].index].setZero();
+					}
+					else
+					{
+						psb->m_nodes[j].m_effectiveMass_inv = psb->m_nodes[j].m_effectiveMass.inverse();
+					}
 				}
 			}
 		}

@@ -92,6 +92,8 @@ public:
 	virtual void reinitialize(bool nodeUpdated);
 
 	btScalar solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal, const std::unordered_map<const btRigidBody*, btScalar>& penetrations);
+	void resetAnchorSplitDiagnostics();
+	void reportAnchorSplitDiagnostics(int iterationsUsed, int iterationLimit, btScalar residualThreshold) const;
 
 	virtual void setLagrangeMultiplier();
 

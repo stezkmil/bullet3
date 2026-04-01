@@ -1,0 +1,384 @@
+Collide config: implicit=1 projection=1 lineSearch=0 internalTimeStep=0.001000 maxSubsteps=1 newtonIterations=3 newtonTolerance=1e-05
+Collide picking config: softElastic=50000.000000 softDamping=100.000000 softMaxForce=10000000000.000000 rigidClamp=20000.000000 rigidTau=0.200000 scriptedGrab=0
+framestart()
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 -6.580921 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 -16.580921 -6.590921
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 -6.580921 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 -3.159842 -6.590921
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 6.840158 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 -16.580921 6.830158
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 6.840158 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 -3.159842 6.830158
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000977 -16.580921 20.261236 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 -16.580921 20.251236
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000977 -3.159842 20.261236 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 -3.159842 20.251236
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 -6.580921 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 10.261237 -6.590921
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 6.840158 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 10.261237 6.830158
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.000977 10.261237 20.261236 nodeV=0.000000 0.000000 0.000000 targetV=0.000000 0.000000 -10.000000 q=-1010.000977 10.261237 20.251236
+anchor_rigid_predicted -1010.000977 -16.580921 -6.590921 anchor_soft_predicted -1010.000977 -16.580921 -6.580921 pos_diff 0.000000 0.000000 0.010000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 0.000000 residual 0.000100
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 -16.580921 -6.580921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000483 -3.160660 -6.584778 anchor_soft_predicted -1010.000977 -3.159842 -6.580921 pos_diff -0.000493 0.000818 0.003857 va 4.935209 -8.183831 6.428017 vb 0.000000 0.000000 0.000000 residual 0.000016
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 -3.159842 -6.580921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001835 -16.579577 6.840248 anchor_soft_predicted -1010.000977 -16.580921 6.840158 pos_diff 0.000859 -0.001345 -0.000090 va -6.364697 9.761028 28.541321 vb 0.000000 0.000000 0.000000 residual 0.000003
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 -16.580921 6.840158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001436 -3.159219 6.838389 anchor_soft_predicted -1010.000977 -3.159842 6.840158 pos_diff 0.000459 -0.000623 0.001769 va -6.235833 8.600133 10.360664 vb 0.000000 0.000000 0.000000 residual 0.000004
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 -3.159842 6.840158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.002706 -16.578995 20.262107 anchor_soft_predicted -1010.000977 -16.580921 20.261236 pos_diff 0.001729 -0.001926 -0.000871 va -21.002696 24.430611 28.799747 vb 0.000000 0.000000 0.000000 residual 0.000007
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 -16.580921 20.261236 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001181 -3.159621 20.259574 anchor_soft_predicted -1010.000977 -3.159842 20.261236 pos_diff 0.000204 -0.000221 0.001662 va -13.532160 16.049598 7.383780 vb 0.000000 0.000000 0.000000 residual 0.000003
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 -3.159842 20.261236 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999126 10.259122 -6.582770 anchor_soft_predicted -1010.000977 10.261237 -6.580921 pos_diff -0.001850 0.002115 0.001848 va 6.091108 -6.318827 -1.959139 vb 0.000000 0.000000 0.000000 residual 0.000011
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 10.261237 -6.580921 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001518 10.261425 6.839534 anchor_soft_predicted -1010.000977 10.261237 6.840158 pos_diff 0.000542 -0.000188 0.000624 va -9.502366 7.190667 1.969128 vb 0.000000 0.000000 0.000000 residual 0.000001
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 10.261237 6.840158 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.002418 10.261940 20.261002 anchor_soft_predicted -1010.000977 10.261237 20.261236 pos_diff 0.001441 -0.000703 0.000234 va -20.935061 13.190241 3.062476 vb 0.000000 0.000000 0.000000 residual 0.000003
+regular m_anchor->m_node->m_v 0.000000 0.000000 0.000000 m_q -1010.000977 10.261237 20.261236 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000100
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000000 0.000000 -10.000000 vb 0.000000 0.000000 0.000000 residual 100.000009
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000057 -0.000094 -9.999811 vb 0.000000 0.000000 0.000000 residual 99.996217
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000118 0.000117 -9.999429 vb 0.000000 0.000000 0.000000 residual 99.988571
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000178 0.000215 -9.999468 vb 0.000000 0.000000 0.000000 residual 99.989366
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000702 0.000693 -9.998857 vb 0.000000 0.000000 0.000000 residual 99.977135
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000877 0.000983 -9.999126 vb 0.000000 0.000000 0.000000 residual 99.982518
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000342 -0.000337 -9.999661 vb 0.000000 0.000000 0.000000 residual 99.993219
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000414 0.000290 -9.999426 vb 0.000000 0.000000 0.000000 residual 99.988511
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.001403 0.000679 -9.999190 vb 0.000000 0.000000 0.000000 residual 99.983805
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000513 -0.000162 -9.998294 vb 0.000057 -0.000094 -9.999618 residual 0.000002
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000513 -0.000162 -9.998624 vb 0.000114 -0.000112 -9.999658 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000533 0.000168 -9.998294 vb -0.000178 0.000215 -9.999046 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000533 0.000168 -9.998624 vb -0.000237 0.000234 -9.999315 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.001578 0.000499 -9.998294 vb -0.000877 0.000983 -9.998474 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.001578 0.000499 -9.998624 vb -0.001052 0.001039 -9.998973 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.000513 -0.000162 -9.998955 vb 0.000399 -0.000279 -9.999426 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.000533 0.000168 -9.998955 vb -0.000474 0.000229 -9.999190 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.001578 0.000499 -9.998955 vb -0.001578 0.000499 -9.998955 residual 0.000000
+applyTransforms rigid anchor project node=0 x=-1009.998802 -16.582060 -6.580036 solvedV=0.000513 -0.000162 -9.998294 rigidV=0.000513 -0.000162 -9.998294
+applyTransforms rigid anchor project node=2 x=-1009.999017 -3.160981 -6.580573 solvedV=0.000513 -0.000162 -9.998624 rigidV=0.000513 -0.000162 -9.998624
+applyTransforms rigid anchor project node=3 x=-1009.999747 -16.581523 6.841043 solvedV=-0.000533 0.000168 -9.998294 rigidV=-0.000533 0.000168 -9.998294
+applyTransforms rigid anchor project node=6 x=-1009.999962 -3.160444 6.840506 solvedV=-0.000533 0.000168 -9.998624 rigidV=-0.000533 0.000168 -9.998624
+applyTransforms rigid anchor project node=8 x=-1010.000692 -16.580986 20.262122 solvedV=-0.001578 0.000499 -9.998294 rigidV=-0.001578 0.000499 -9.998294
+applyTransforms rigid anchor project node=10 x=-1010.000908 -3.159907 20.261584 solvedV=-0.001578 0.000499 -9.998624 rigidV=-0.001578 0.000499 -9.998625
+applyTransforms rigid anchor project node=12 x=-1009.999232 10.260098 -6.581110 solvedV=0.000513 -0.000162 -9.998955 rigidV=0.000513 -0.000162 -9.998955
+applyTransforms rigid anchor project node=14 x=-1010.000177 10.260635 6.839969 solvedV=-0.000533 0.000168 -9.998955 rigidV=-0.000533 0.000168 -9.998955
+applyTransforms rigid anchor project node=16 x=-1010.001123 10.261173 20.261047 solvedV=-0.001578 0.000499 -9.998955 rigidV=-0.001578 0.000499 -9.998955
+frameend()
+collide frame t=0.002185 tipLoadOrigin=(-1019.998555,-0.001036,-0.000483) tipLoadLinVel=(0.000000,-0.000000,-9.999481) freeNode3=(-1009.999747,-16.581523,6.841043)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=2.748449 0.464755 2.105571 clampedNorm=3.493336 body=0000018F9C8B4420
+anchor reaction transfer node=2 scale=0.002222 impulse=6.936775 -1.059828 5.395342 clampedNorm=8.851655 body=0000018F9C8B4420
+anchor reaction transfer node=3 scale=0.002222 impulse=0.921870 0.722531 3.954097 clampedNorm=4.123928 body=0000018F9C8B4420
+anchor reaction transfer node=6 scale=0.002222 impulse=3.418232 -0.800545 8.957499 clampedNorm=9.620913 body=0000018F9C8B4420
+anchor reaction transfer node=8 scale=0.002222 impulse=-1.791024 0.240934 2.314976 clampedNorm=2.936823 body=0000018F9C8B4420
+anchor reaction transfer node=10 scale=0.002222 impulse=-3.590328 -0.009979 3.930701 clampedNorm=5.323623 body=0000018F9C8B4420
+anchor reaction transfer node=12 scale=0.002222 impulse=3.893598 -0.641161 3.257498 clampedNorm=5.116883 body=0000018F9C8B4420
+anchor reaction transfer node=14 scale=0.002222 impulse=2.724657 -0.810114 4.333796 clampedNorm=5.182840 body=0000018F9C8B4420
+anchor reaction transfer node=16 scale=0.002222 impulse=-1.223300 -0.110883 1.365095 clampedNorm=1.836366 body=0000018F9C8B4420
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1009.998802 -16.582060 -6.580036 nodeV=0.000513 -0.000162 -9.998294 targetV=0.608054 -0.162274 -18.574134 q=-1009.998194 -16.582223 -6.598610
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1009.999017 -3.160981 -6.580573 nodeV=0.000513 -0.000162 -9.998624 targetV=0.654116 -0.162282 -18.794336 q=-1009.998363 -3.161143 -6.599367
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1009.999747 -16.581523 6.841043 nodeV=-0.000533 0.000168 -9.998294 targetV=-0.461866 0.057914 -18.574218 q=-1010.000209 -16.581465 6.822469
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1009.999962 -3.160444 6.840506 nodeV=-0.000533 0.000168 -9.998624 targetV=-0.415804 0.057906 -18.794420 q=-1010.000378 -3.160386 6.821712
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000692 -16.580986 20.262122 nodeV=-0.001578 0.000499 -9.998294 targetV=-1.531786 0.278101 -18.574302 q=-1010.002224 -16.580708 20.243547
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000908 -3.159907 20.261584 nodeV=-0.001578 0.000499 -9.998624 targetV=-1.485724 0.278093 -18.794504 q=-1010.002393 -3.159628 20.242790
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1009.999232 10.260098 -6.581110 nodeV=0.000513 -0.000162 -9.998955 targetV=0.700178 -0.162290 -19.014537 q=-1009.998532 10.259936 -6.600125
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1010.000177 10.260635 6.839969 nodeV=-0.000533 0.000168 -9.998955 targetV=-0.369742 0.057898 -19.014622 q=-1010.000547 10.260693 6.820954
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.001123 10.261173 20.261047 nodeV=-0.001578 0.000499 -9.998955 targetV=-1.439662 0.278085 -19.014706 q=-1010.002562 10.261451 20.242032
+anchor_rigid_predicted -1009.998194 -16.582222 -6.598610 anchor_soft_predicted -1009.998801 -16.582060 -6.590034 pos_diff -0.000607 0.000162 0.008576 va 0.608054 -0.162274 -18.574134 vb 0.000513 -0.000162 -9.998294 residual 0.000074
+regular m_anchor->m_node->m_v 0.000513 -0.000162 -9.998294 m_q -1009.998802 -16.582060 -6.580036 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998283 -3.161822 -6.594132 anchor_soft_predicted -1009.999017 -3.160981 -6.590572 pos_diff -0.000733 0.000841 0.003560 va 4.184922 -7.679924 -5.030077 vb 0.000513 -0.000162 -9.998624 residual 0.000014
+regular m_anchor->m_node->m_v 0.000513 -0.000162 -9.998624 m_q -1009.999017 -3.160981 -6.580573 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001487 -16.580228 6.831207 anchor_soft_predicted -1009.999748 -16.581523 6.831045 pos_diff 0.001739 -0.001295 -0.000162 va -7.200036 7.917228 14.193570 vb -0.000533 0.000168 -9.998294 residual 0.000005
+regular m_anchor->m_node->m_v -0.000533 0.000168 -9.998294 m_q -1009.999747 -16.581523 6.841043 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000655 -3.159736 6.828762 anchor_soft_predicted -1009.999963 -3.160444 6.830508 pos_diff 0.000692 -0.000707 0.001746 va -4.976882 7.867407 -2.175957 vb -0.000533 0.000168 -9.998624 residual 0.000004
+regular m_anchor->m_node->m_v -0.000533 0.000168 -9.998624 m_q -1009.999962 -3.160444 6.840506 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.003270 -16.579076 20.252936 anchor_soft_predicted -1010.000694 -16.580985 20.252123 pos_diff 0.002576 -0.001909 -0.000812 va -16.893720 21.090301 13.573029 vb -0.001578 0.000499 -9.998294 residual 0.000011
+regular m_anchor->m_node->m_v -0.001578 0.000499 -9.998294 m_q -1010.000692 -16.580986 20.262122 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.001265 -3.159567 20.249828 anchor_soft_predicted -1010.000909 -3.159906 20.251586 pos_diff 0.000356 -0.000339 0.001758 va -6.702594 13.980932 -6.499056 vb -0.001578 0.000499 -9.998624 residual 0.000003
+regular m_anchor->m_node->m_v -0.001578 0.000499 -9.998624 m_q -1010.000908 -3.159907 20.261584 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.996447 10.258130 -6.592964 anchor_soft_predicted -1009.999232 10.260098 -6.591109 pos_diff -0.002785 0.001968 0.001854 va 3.452714 -3.609322 -13.398124 vb 0.000513 -0.000162 -9.998955 residual 0.000015
+regular m_anchor->m_node->m_v 0.000513 -0.000162 -9.998955 m_q -1009.999232 10.260098 -6.581110 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000849 10.260900 6.829290 anchor_soft_predicted -1010.000178 10.260636 6.829970 pos_diff 0.000671 -0.000264 0.000680 va -8.954121 7.878431 -9.994448 vb -0.000533 0.000168 -9.998955 residual 0.000001
+regular m_anchor->m_node->m_v -0.000533 0.000168 -9.998955 m_q -1010.000177 10.260635 6.839969 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.003113 10.261829 20.250792 anchor_soft_predicted -1010.001124 10.261173 20.251048 pos_diff 0.001989 -0.000656 0.000256 va -15.532127 11.003968 -8.813912 vb -0.001578 0.000499 -9.998955 residual 0.000004
+regular m_anchor->m_node->m_v -0.001578 0.000499 -9.998955 m_q -1010.001123 10.261173 20.261047 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000074
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.608054 -0.162274 -18.574134 vb 0.000513 -0.000162 -9.998294 residual 73.940421
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.654157 -0.162369 -18.794177 vb 0.000513 -0.000162 -9.998624 residual 77.815306
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.461984 0.058007 -18.573734 vb -0.000533 0.000168 -9.998294 residual 73.754451
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.415956 0.058089 -18.793971 vb -0.000533 0.000168 -9.998624 residual 77.534050
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.532374 0.278693 -18.573330 vb -0.001578 0.000499 -9.998294 residual 75.951967
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.486392 0.278942 -18.793789 vb -0.001578 0.000499 -9.998624 residual 79.637122
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.700426 -0.162554 -19.014291 vb 0.000513 -0.000162 -9.998955 residual 81.792542
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.370074 0.058163 -19.014166 vb -0.000533 0.000168 -9.998955 residual 81.413962
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.440759 0.278650 -19.014040 vb -0.001578 0.000499 -9.998955 residual 83.420374
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.608478 -0.162388 -18.572786 vb 0.608085 -0.162361 -18.573811 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.654528 -0.162396 -18.793233 vb 0.654200 -0.162384 -18.794046 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.462232 0.058045 -18.572870 vb -0.462020 0.058097 -18.573409 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.416182 0.058037 -18.793317 vb -0.416004 0.058105 -18.793839 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.532942 0.278478 -18.572954 vb -1.532429 0.278950 -18.573037 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.486892 0.278470 -18.793401 vb -1.486484 0.278981 -18.793682 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 0.700578 -0.162405 -19.013680 vb 0.700463 -0.162492 -19.014082 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.370132 0.058028 -19.013764 vb -0.370120 0.058103 -19.013956 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.440842 0.278461 -19.013848 vb -1.440842 0.278461 -19.013848 residual 0.000000
+applyTransforms rigid anchor project node=0 x=-1009.995595 -16.583136 -6.589361 solvedV=0.608478 -0.162388 -18.572786 rigidV=0.608351 -0.162366 -18.572697
+applyTransforms rigid anchor project node=2 x=-1009.996184 -3.162057 -6.590379 solvedV=0.654528 -0.162396 -18.793233 rigidV=0.654439 -0.162381 -18.793174
+applyTransforms rigid anchor project node=3 x=-1009.997878 -16.582119 6.831718 solvedV=-0.462232 0.058045 -18.572870 rigidV=-0.462357 0.058072 -18.572896
+applyTransforms rigid anchor project node=6 x=-1009.998467 -3.161039 6.830700 solvedV=-0.416182 0.058037 -18.793317 rigidV=-0.416269 0.058057 -18.793373
+applyTransforms rigid anchor project node=8 x=-1010.000160 -16.581101 20.252796 solvedV=-1.532942 0.278478 -18.572954 rigidV=-1.533066 0.278509 -18.573095
+applyTransforms rigid anchor project node=10 x=-1010.000749 -3.160022 20.251778 solvedV=-1.486892 0.278470 -18.793401 rigidV=-1.486977 0.278494 -18.793572
+applyTransforms rigid anchor project node=12 x=-1009.996774 10.259022 -6.591396 solvedV=0.700578 -0.162405 -19.013680 rigidV=0.700528 -0.162395 -19.013651
+applyTransforms rigid anchor project node=14 x=-1009.999056 10.260040 6.829683 solvedV=-0.370132 0.058028 -19.013764 rigidV=-0.370181 0.058042 -19.013850
+applyTransforms rigid anchor project node=16 x=-1010.001339 10.261057 20.250760 solvedV=-1.440842 0.278461 -19.013848 rigidV=-1.440889 0.278480 -19.014049
+frameend()
+collide frame t=0.102185 tipLoadOrigin=(-1019.996466,-0.002155,-0.011398) tipLoadLinVel=(0.140411,-0.020046,-19.642879) freeNode3=(-1009.997878,-16.582119,6.831718)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=2.809111 0.751518 1.831431 clampedNorm=3.436571 body=0000018F9C8B4420
+anchor reaction transfer node=2 scale=0.002222 impulse=6.634857 -0.856831 4.827752 clampedNorm=8.250011 body=0000018F9C8B4420
+anchor reaction transfer node=3 scale=0.002222 impulse=3.008096 1.340779 2.628655 clampedNorm=4.213805 body=0000018F9C8B4420
+anchor reaction transfer node=6 scale=0.002222 impulse=5.772269 -0.930079 6.934920 clampedNorm=9.070681 body=0000018F9C8B4420
+anchor reaction transfer node=8 scale=0.002222 impulse=0.158056 0.575605 0.896381 clampedNorm=1.076941 body=0000018F9C8B4420
+anchor reaction transfer node=10 scale=0.002222 impulse=-1.176789 0.200623 2.321737 clampedNorm=2.610660 body=0000018F9C8B4420
+anchor reaction transfer node=12 scale=0.002222 impulse=3.431348 -0.747626 2.759438 clampedNorm=4.466273 body=0000018F9C8B4420
+anchor reaction transfer node=14 scale=0.002222 impulse=3.158412 -1.142256 3.622262 clampedNorm=4.939747 body=0000018F9C8B4420
+anchor reaction transfer node=16 scale=0.002222 impulse=-0.581278 -0.227618 0.888545 clampedNorm=1.085913 body=0000018F9C8B4420
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1009.995595 -16.583136 -6.589361 nodeV=0.608478 -0.162388 -18.572786 targetV=1.294529 -0.148392 -27.676624 q=-1009.994301 -16.583285 -6.617037
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1009.996184 -3.162057 -6.590379 nodeV=0.654528 -0.162396 -18.793233 targetV=1.214756 -0.148422 -28.038905 q=-1009.994970 -3.162206 -6.618417
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1009.997878 -16.582119 6.831718 nodeV=-0.462232 0.058045 -18.572870 targetV=-0.385191 0.213802 -27.676937 q=-1009.998263 -16.581905 6.804041
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1009.998467 -3.161039 6.830700 nodeV=-0.416182 0.058037 -18.793317 targetV=-0.464964 0.213771 -28.039218 q=-1009.998932 -3.160826 6.802661
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.000160 -16.581101 20.252796 nodeV=-1.532942 0.278478 -18.572954 targetV=-2.064911 0.575996 -27.677250 q=-1010.002225 -16.580525 20.225119
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.000749 -3.160022 20.251778 nodeV=-1.486892 0.278470 -18.793401 targetV=-2.144684 0.575965 -28.039531 q=-1010.002894 -3.159446 20.223739
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1009.996774 10.259022 -6.591396 nodeV=0.700578 -0.162405 -19.013680 targetV=1.134982 -0.148453 -28.401186 q=-1009.995639 10.258873 -6.619798
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1009.999056 10.260040 6.829683 nodeV=-0.370132 0.058028 -19.013764 targetV=-0.544738 0.213740 -28.401499 q=-1009.999601 10.260253 6.801281
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.001339 10.261057 20.250760 nodeV=-1.440842 0.278461 -19.013848 targetV=-2.224458 0.575934 -28.401812 q=-1010.003563 10.261633 20.222359
+anchor_rigid_predicted -1009.994301 -16.583285 -6.617037 anchor_soft_predicted -1009.994987 -16.583299 -6.607933 pos_diff -0.000686 -0.000014 0.009104 va 1.294529 -0.148392 -27.676624 vb 0.608478 -0.162388 -18.572786 residual 0.000083
+regular m_anchor->m_node->m_v 0.608478 -0.162388 -18.572786 m_q -1009.995595 -16.583136 -6.589361 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.994913 -3.163044 -6.612858 anchor_soft_predicted -1009.995530 -3.162220 -6.609172 pos_diff -0.000617 0.000825 0.003687 va 4.868684 -8.471759 -13.417234 vb 0.654528 -0.162396 -18.793233 residual 0.000015
+regular m_anchor->m_node->m_v 0.654528 -0.162396 -18.793233 m_q -1009.996184 -3.162057 -6.590379 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999592 -16.580731 6.813287 anchor_soft_predicted -1009.998340 -16.582061 6.813145 pos_diff 0.001252 -0.001329 -0.000141 va -7.810408 8.299257 7.223834 vb -0.462232 0.058045 -18.572870 residual 0.000003
+regular m_anchor->m_node->m_v -0.462232 0.058045 -18.572870 m_q -1009.997878 -16.582119 6.831718 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999513 -3.160320 6.810151 anchor_soft_predicted -1009.998883 -3.160981 6.811907 pos_diff 0.000630 -0.000662 0.001756 va -6.048763 7.606289 -10.059553 vb -0.416182 0.058037 -18.793317 residual 0.000004
+regular m_anchor->m_node->m_v -0.416182 0.058037 -18.793317 m_q -1009.998467 -3.161039 6.830700 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.003828 -16.578901 20.235066 anchor_soft_predicted -1010.001693 -16.580822 20.234223 pos_diff 0.002136 -0.001922 -0.000843 va -20.704032 22.125505 6.976342 vb -1.532942 0.278478 -18.572954 residual 0.000009
+regular m_anchor->m_node->m_v -1.532942 0.278478 -18.572954 m_q -1010.000160 -16.581101 20.252796 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.002582 -3.159465 20.231274 anchor_soft_predicted -1010.002236 -3.159743 20.232985 pos_diff 0.000345 -0.000278 0.001711 va -11.235866 14.337052 -13.717736 vb -1.486892 0.278470 -18.793401 residual 0.000003
+regular m_anchor->m_node->m_v -1.486892 0.278470 -18.793401 m_q -1010.000749 -3.160022 20.251778 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.993802 10.256812 -6.612274 anchor_soft_predicted -1009.996073 10.258859 -6.610410 pos_diff -0.002271 0.002047 0.001864 va 5.729298 -5.552717 -21.900181 vb 0.700578 -0.162405 -19.013680 residual 0.000013
+regular m_anchor->m_node->m_v 0.700578 -0.162405 -19.013680 m_q -1009.996774 10.259022 -6.591396 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.000071 10.260320 6.810015 anchor_soft_predicted -1009.999426 10.260098 6.810669 pos_diff 0.000645 -0.000222 0.000654 va -8.800007 6.875467 -18.184201 vb -0.370132 0.058028 -19.013764 residual 0.000001
+regular m_anchor->m_node->m_v -0.370132 0.058028 -19.013764 m_q -1009.999056 10.260040 6.829683 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.004528 10.262012 20.231498 anchor_soft_predicted -1010.002780 10.261336 20.231747 pos_diff 0.001749 -0.000676 0.000248 va -18.327715 11.362926 -17.066015 vb -1.440842 0.278461 -19.013848 residual 0.000004
+regular m_anchor->m_node->m_v -1.440842 0.278461 -19.013848 m_q -1010.001339 10.261057 20.250760 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000083
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.294529 -0.148392 -27.676624 vb 0.608478 -0.162388 -18.572786 residual 83.350725
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.214798 -0.148519 -28.038736 vb 0.654528 -0.162396 -18.793233 residual 85.793424
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.385321 0.213897 -27.676420 vb -0.462232 0.058045 -18.572870 residual 82.904830
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.465135 0.213952 -28.038738 vb -0.416182 0.058037 -18.793317 residual 85.504516
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -2.065573 0.576607 -27.676213 vb -1.532942 0.278478 -18.572954 residual 83.241896
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -2.145462 0.576834 -28.038749 vb -1.486892 0.278470 -18.793401 residual 85.999190
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.135288 -0.148770 -28.400887 vb 0.700578 -0.162405 -19.013680 residual 88.308820
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.545094 0.213982 -28.400982 vb -0.370132 0.058028 -19.013764 residual 88.174793
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -2.225680 0.576501 -28.401074 vb -1.440842 0.278461 -19.013848 residual 88.824811
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.294943 -0.148551 -27.675137 vb 1.294558 -0.148488 -27.676279 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.215196 -0.148582 -28.037686 vb 1.214845 -0.148537 -28.038598 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.385683 0.213911 -27.675451 vb -0.385380 0.213983 -27.676073 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.465430 0.213880 -28.038000 vb -0.465189 0.213966 -28.038597 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -2.066309 0.576372 -27.675764 vb -2.065703 0.576865 -27.675883 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -2.146056 0.576341 -28.038313 vb -2.145597 0.576872 -28.038621 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.135449 -0.148612 -28.400235 vb 1.135334 -0.148711 -28.400669 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.545177 0.213849 -28.400548 vb -0.545145 0.213921 -28.400761 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -2.225803 0.576310 -28.400862 vb -2.225803 0.576310 -28.400862 residual 0.000000
+applyTransforms rigid anchor project node=0 x=-1009.992165 -16.584413 -6.607156 solvedV=1.294943 -0.148551 -27.675137 rigidV=1.294623 -0.148473 -27.674950
+applyTransforms rigid anchor project node=2 x=-1009.993059 -3.163334 -6.608905 solvedV=1.215196 -0.148582 -28.037686 rigidV=1.214968 -0.148525 -28.037537
+applyTransforms rigid anchor project node=3 x=-1009.996670 -16.582665 6.813923 solvedV=-0.385683 0.213911 -27.675451 rigidV=-0.386007 0.213976 -27.675562
+applyTransforms rigid anchor project node=6 x=-1009.997565 -3.161586 6.812173 solvedV=-0.465430 0.213880 -28.038000 rigidV=-0.465662 0.213923 -28.038149
+applyTransforms rigid anchor project node=8 x=-1010.001176 -16.580916 20.235000 solvedV=-2.066309 0.576372 -27.675764 rigidV=-2.066637 0.576424 -27.676173
+applyTransforms rigid anchor project node=10 x=-1010.002070 -3.159837 20.233251 solvedV=-2.146056 0.576341 -28.038313 rigidV=-2.146293 0.576371 -28.038760
+applyTransforms rigid anchor project node=12 x=-1009.993953 10.257745 -6.610654 solvedV=1.135449 -0.148612 -28.400235 rigidV=1.135313 -0.148578 -28.400124
+applyTransforms rigid anchor project node=14 x=-1009.998459 10.259493 6.810424 solvedV=-0.545177 0.213849 -28.400548 rigidV=-0.545318 0.213870 -28.400736
+applyTransforms rigid anchor project node=16 x=-1010.002964 10.261242 20.231502 solvedV=-2.225803 0.576310 -28.400862 rigidV=-2.225948 0.576318 -28.401347
+frameend()
+collide frame t=0.202185 tipLoadOrigin=(-1019.994502,-0.003301,-0.031753) tipLoadLinVel=(0.372554,-0.030413,-29.375288) freeNode3=(-1009.996670,-16.582665,6.813923)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=2.697885 0.649119 1.847893 clampedNorm=3.333864 body=0000018F9C8B4420
+anchor reaction transfer node=2 scale=0.002222 impulse=6.437451 -0.845820 4.571448 clampedNorm=7.940675 body=0000018F9C8B4420
+anchor reaction transfer node=3 scale=0.002222 impulse=1.723553 0.823266 2.733381 clampedNorm=3.334633 body=0000018F9C8B4420
+anchor reaction transfer node=6 scale=0.002222 impulse=3.749148 -0.941250 6.560870 clampedNorm=7.614925 body=0000018F9C8B4420
+anchor reaction transfer node=8 scale=0.002222 impulse=-1.191228 0.048169 1.279802 clampedNorm=1.749068 body=0000018F9C8B4420
+anchor reaction transfer node=10 scale=0.002222 impulse=-2.912329 0.045063 2.928614 clampedNorm=4.130432 body=0000018F9C8B4420
+anchor reaction transfer node=12 scale=0.002222 impulse=3.463718 -0.808142 2.465608 clampedNorm=4.327778 body=0000018F9C8B4420
+anchor reaction transfer node=14 scale=0.002222 impulse=2.314752 -0.819753 3.308588 clampedNorm=4.120294 body=0000018F9C8B4420
+anchor reaction transfer node=16 scale=0.002222 impulse=-1.148350 0.003232 1.145091 clampedNorm=1.621713 body=0000018F9C8B4420
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1009.992165 -16.584413 -6.607156 nodeV=1.294943 -0.148551 -27.675137 targetV=1.871107 -0.222785 -36.618989 q=-1009.990294 -16.584636 -6.643775
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1009.993059 -3.163334 -6.608905 nodeV=1.215196 -0.148582 -28.037686 targetV=1.770249 -0.222858 -37.128043 q=-1009.991289 -3.163557 -6.646033
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1009.996670 -16.582665 6.813923 nodeV=-0.385683 0.213911 -27.675451 targetV=-0.623543 0.286069 -36.619893 q=-1009.997294 -16.582379 6.777303
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1009.997565 -3.161586 6.812173 nodeV=-0.465430 0.213880 -28.038000 targetV=-0.724400 0.285995 -37.128947 q=-1009.998289 -3.161300 6.775044
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.001176 -16.580916 20.235000 nodeV=-2.066309 0.576372 -27.675764 targetV=-3.118192 0.794922 -36.620797 q=-1010.004294 -16.580121 20.198379
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.002070 -3.159837 20.233251 nodeV=-2.146056 0.576341 -28.038313 targetV=-3.219050 0.794849 -37.129851 q=-1010.005289 -3.159042 20.196121
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1009.993953 10.257745 -6.610654 nodeV=1.135449 -0.148612 -28.400235 targetV=1.669391 -0.222931 -37.637097 q=-1009.992284 10.257522 -6.648291
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1009.998459 10.259493 6.810424 nodeV=-0.545177 0.213849 -28.400548 targetV=-0.825258 0.285922 -37.638001 q=-1009.999284 10.259779 6.772786
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.002964 10.261242 20.231502 nodeV=-2.225803 0.576310 -28.400862 targetV=-3.319907 0.794776 -37.638905 q=-1010.006284 10.262037 20.193863
+anchor_rigid_predicted -1009.990294 -16.584636 -6.643775 anchor_soft_predicted -1009.990870 -16.584562 -6.634831 pos_diff -0.000576 0.000074 0.008944 va 1.871107 -0.222785 -36.618989 vb 1.294943 -0.148551 -27.675137 residual 0.000080
+regular m_anchor->m_node->m_v 1.294943 -0.148551 -27.675137 m_q -1009.992165 -16.584413 -6.607156 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.991175 -3.164315 -6.640568 anchor_soft_predicted -1009.991844 -3.163483 -6.636943 pos_diff -0.000668 0.000832 0.003625 va 5.499581 -8.137655 -22.726807 vb 1.215196 -0.148582 -28.037686 residual 0.000014
+regular m_anchor->m_node->m_v 1.215196 -0.148582 -28.037686 m_q -1009.993059 -3.163334 -6.608905 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998553 -16.581155 6.786380 anchor_soft_predicted -1009.997056 -16.582451 6.786247 pos_diff 0.001497 -0.001296 -0.000133 va -7.603111 8.440559 -2.399062 vb -0.385683 0.213911 -27.675451 residual 0.000004
+regular m_anchor->m_node->m_v -0.385683 0.213911 -27.675451 m_q -1009.996670 -16.582665 6.813923 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998685 -3.160692 6.782394 anchor_soft_predicted -1009.998030 -3.161372 6.784135 pos_diff 0.000655 -0.000680 0.001741 va -5.817628 8.110608 -19.586572 vb -0.465430 0.213880 -28.038000 residual 0.000004
+regular m_anchor->m_node->m_v -0.465430 0.213880 -28.038000 m_q -1009.997565 -3.161586 6.812173 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.005592 -16.578439 20.208142 anchor_soft_predicted -1010.003242 -16.580339 20.207324 pos_diff 0.002349 -0.001900 -0.000818 va -20.169720 22.421180 -2.773973 vb -2.066309 0.576372 -27.675764 residual 0.000010
+regular m_anchor->m_node->m_v -2.066309 0.576372 -27.675764 m_q -1010.001176 -16.580916 20.235000 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.004562 -3.158953 20.203489 anchor_soft_predicted -1010.004216 -3.159260 20.205212 pos_diff 0.000346 -0.000308 0.001724 va -10.598679 15.049117 -23.557309 vb -2.146056 0.576341 -28.038313 residual 0.000003
+regular m_anchor->m_node->m_v -2.146056 0.576341 -28.038313 m_q -1010.002070 -3.159837 20.233251 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.990294 10.255605 -6.640898 anchor_soft_predicted -1009.992818 10.257596 -6.639054 pos_diff -0.002524 0.001991 0.001844 va 5.355338 -4.647867 -31.576960 vb 1.135449 -0.148612 -28.400235 residual 0.000014
+regular m_anchor->m_node->m_v 1.135449 -0.148612 -28.400235 m_q -1009.993953 10.257745 -6.610654 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999656 10.259950 6.781361 anchor_soft_predicted -1009.999004 10.259707 6.782024 pos_diff 0.000652 -0.000242 0.000663 va -9.399905 7.775142 -28.057393 vb -0.545177 0.213849 -28.400548 residual 0.000001
+regular m_anchor->m_node->m_v -0.545177 0.213849 -28.400548 m_q -1009.998459 10.259493 6.810424 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.007049 10.262479 20.202849 anchor_soft_predicted -1010.005190 10.261819 20.203101 pos_diff 0.001859 -0.000661 0.000252 va -18.759739 12.095894 -26.916190 vb -2.225803 0.576310 -28.400862 residual 0.000004
+regular m_anchor->m_node->m_v -2.225803 0.576310 -28.400862 m_q -1010.002964 10.261242 20.231502 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000080
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.871107 -0.222785 -36.618989 vb 1.294943 -0.148551 -27.675137 residual 80.329958
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.770292 -0.222950 -37.127877 vb 1.215196 -0.148582 -28.037686 residual 82.945229
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.623666 0.286165 -36.619386 vb -0.385683 0.213911 -27.675451 residual 80.055841
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.724562 0.286182 -37.128477 vb -0.465430 0.213880 -28.038000 residual 82.709157
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.118819 0.795534 -36.619781 vb -2.066309 0.576372 -27.675764 residual 81.151239
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.219778 0.795726 -37.129094 vb -2.146056 0.576341 -28.038313 residual 83.843308
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.669668 -0.223222 -37.636825 vb 1.135449 -0.148612 -28.400235 residual 85.605557
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.825608 0.286186 -37.637515 vb -0.545177 0.213849 -28.400548 residual 85.405419
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.321080 0.795363 -37.638202 vb -2.225803 0.576310 -28.400862 residual 86.576081
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.871538 -0.222921 -36.617549 vb 1.871140 -0.222877 -36.618651 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.770681 -0.222994 -37.126870 vb 1.770338 -0.222966 -37.127741 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.623967 0.286200 -36.618453 vb -0.623712 0.286255 -36.619047 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.724823 0.286127 -37.127775 vb -0.724613 0.286198 -37.128340 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.119472 0.795322 -36.619357 vb -3.118910 0.795799 -36.619463 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.220328 0.795249 -37.128679 vb -3.219893 0.795768 -37.128975 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 1.669825 -0.223067 -37.636192 vb 1.669710 -0.223162 -37.636611 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.825680 0.286054 -37.637096 vb -0.825657 0.286126 -37.637298 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.321185 0.795176 -37.638000 vb -3.321185 0.795176 -37.638000 residual 0.000000
+applyTransforms rigid anchor project node=0 x=-1009.987874 -16.585648 -6.634111 solvedV=1.871538 -0.222921 -36.617549 rigidV=1.870938 -0.222783 -36.617179
+applyTransforms rigid anchor project node=2 x=-1009.989206 -3.164569 -6.636714 solvedV=1.770681 -0.222994 -37.126870 rigidV=1.770240 -0.222892 -37.126582
+applyTransforms rigid anchor project node=3 x=-1009.995299 -16.583046 6.786966 solvedV=-0.623967 0.286200 -36.618453 rigidV=-0.624573 0.286316 -36.618658
+applyTransforms rigid anchor project node=6 x=-1009.996631 -3.161967 6.784363 solvedV=-0.724823 0.286127 -37.127775 rigidV=-0.725271 0.286207 -37.128061
+applyTransforms rigid anchor project node=8 x=-1010.002724 -16.580443 20.208042 solvedV=-3.119472 0.795322 -36.619357 rigidV=-3.120084 0.795415 -36.620137
+applyTransforms rigid anchor project node=10 x=-1010.004057 -3.159365 20.205439 solvedV=-3.220328 0.795249 -37.128679 rigidV=-3.220782 0.795306 -37.129541
+applyTransforms rigid anchor project node=12 x=-1009.990538 10.256510 -6.639317 solvedV=1.669825 -0.223067 -37.636192 rigidV=1.669542 -0.223001 -37.635985
+applyTransforms rigid anchor project node=14 x=-1009.997963 10.259112 6.781760 solvedV=-0.825680 0.286054 -37.637096 rigidV=-0.825969 0.286098 -37.637464
+applyTransforms rigid anchor project node=16 x=-1010.005389 10.261714 20.202836 solvedV=-3.321185 0.795176 -37.638000 rigidV=-3.321480 0.795198 -37.638944
+frameend()
+collide frame t=0.302185 tipLoadOrigin=(-1019.992182,-0.004445,-0.061939) tipLoadLinVel=(0.523914,-0.048878,-39.106403) freeNode3=(-1009.995299,-16.583046,6.786966)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=2.964811 0.853599 1.873904 clampedNorm=3.609744 body=0000018F9C8B4420
+anchor reaction transfer node=2 scale=0.002222 impulse=6.673424 -0.785435 4.433285 clampedNorm=8.050187 body=0000018F9C8B4420
+anchor reaction transfer node=3 scale=0.002222 impulse=2.532399 1.097482 2.217565 clampedNorm=3.540495 body=0000018F9C8B4420
+anchor reaction transfer node=6 scale=0.002222 impulse=4.282832 -0.872136 5.642132 clampedNorm=7.137010 body=0000018F9C8B4420
+anchor reaction transfer node=8 scale=0.002222 impulse=-0.789397 0.078223 0.807596 clampedNorm=1.132024 body=0000018F9C8B4420
+anchor reaction transfer node=10 scale=0.002222 impulse=-2.643657 0.183953 2.536850 clampedNorm=3.668565 body=0000018F9C8B4420
+anchor reaction transfer node=12 scale=0.002222 impulse=3.398152 -0.928526 2.176971 clampedNorm=4.141110 body=0000018F9C8B4420
+anchor reaction transfer node=14 scale=0.002222 impulse=2.084944 -0.779716 2.895325 clampedNorm=3.652103 body=0000018F9C8B4420
+anchor reaction transfer node=16 scale=0.002222 impulse=-1.229135 0.118096 1.090086 clampedNorm=1.647121 body=0000018F9C8B4420
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1009.987874 -16.585648 -6.634111 nodeV=1.871538 -0.222921 -36.617549 targetV=2.519762 -0.224018 -45.678726 q=-1009.985354 -16.585872 -6.679790
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1009.989206 -3.164569 -6.636714 nodeV=1.770681 -0.222994 -37.126870 targetV=2.317866 -0.224164 -46.323854 q=-1009.986888 -3.164793 -6.683038
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1009.995299 -16.583046 6.786966 nodeV=-0.623967 0.286200 -36.618453 targetV=-0.692308 0.420679 -45.680628 q=-1009.995991 -16.582625 6.741285
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1009.996631 -3.161967 6.784363 nodeV=-0.724823 0.286127 -37.127775 targetV=-0.894204 0.420534 -46.325756 q=-1009.997526 -3.161546 6.738037
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.002724 -16.580443 20.208042 nodeV=-3.119472 0.795322 -36.619357 targetV=-3.904378 1.065376 -45.682530 q=-1010.006629 -16.579378 20.162359
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.004057 -3.159365 20.205439 nodeV=-3.220328 0.795249 -37.128679 targetV=-4.106274 1.065231 -46.327658 q=-1010.008163 -3.158299 20.159111
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1009.990538 10.256510 -6.639317 nodeV=1.669825 -0.223067 -37.636192 targetV=2.115970 -0.224309 -46.968982 q=-1009.988422 10.256285 -6.686286
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1009.997963 10.259112 6.781760 nodeV=-0.825680 0.286054 -37.637096 targetV=-1.096100 0.420389 -46.970885 q=-1009.999060 10.259532 6.734789
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.005389 10.261714 20.202836 nodeV=-3.321185 0.795176 -37.638000 targetV=-4.308169 1.065086 -46.972787 q=-1010.009697 10.262779 20.155863
+anchor_rigid_predicted -1009.985354 -16.585872 -6.679790 anchor_soft_predicted -1009.986002 -16.585871 -6.670729 pos_diff -0.000648 0.000001 0.009061 va 2.519762 -0.224018 -45.678726 vb 1.871538 -0.222921 -36.617549 residual 0.000083
+regular m_anchor->m_node->m_v 1.871538 -0.222921 -36.617549 m_q -1009.987874 -16.585648 -6.634111 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.986812 -3.165614 -6.677503 anchor_soft_predicted -1009.987435 -3.164792 -6.673841 pos_diff -0.000623 0.000822 0.003662 va 5.999591 -8.437001 -31.751426 vb 1.770681 -0.222994 -37.126870 residual 0.000014
+regular m_anchor->m_node->m_v 1.770681 -0.222994 -37.126870 m_q -1009.989206 -3.164569 -6.636714 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.997295 -16.581443 6.750483 anchor_soft_predicted -1009.995923 -16.582760 6.750347 pos_diff 0.001372 -0.001316 -0.000135 va -7.993869 8.529981 -10.955484 vb -0.623967 0.286200 -36.618453 residual 0.000004
+regular m_anchor->m_node->m_v -0.623967 0.286200 -36.618453 m_q -1009.995299 -16.583046 6.786966 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.998019 -3.161009 6.745485 anchor_soft_predicted -1009.997356 -3.161681 6.747235 pos_diff 0.000663 -0.000671 0.001750 va -6.277932 8.009064 -28.484821 vb -0.724823 0.286127 -37.127775 residual 0.000004
+regular m_anchor->m_node->m_v -0.724823 0.286127 -37.127775 m_q -1009.996631 -3.161967 6.784363 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.008084 -16.577736 20.172250 anchor_soft_predicted -1010.005844 -16.579648 20.171422 pos_diff 0.002240 -0.001912 -0.000828 va -21.877430 22.726292 -11.278362 vb -3.119472 0.795322 -36.619357 residual 0.000009
+regular m_anchor->m_node->m_v -3.119472 0.795322 -36.619357 m_q -1010.002724 -16.580443 20.208042 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.007644 -3.158277 20.166592 anchor_soft_predicted -1010.007277 -3.158569 20.168310 pos_diff 0.000367 -0.000293 0.001718 va -12.421562 15.138983 -32.304558 vb -3.220328 0.795249 -37.128679 residual 0.000003
+regular m_anchor->m_node->m_v -3.220328 0.795249 -37.128679 m_q -1010.004057 -3.159365 20.205439 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.986486 10.254267 -6.678809 anchor_soft_predicted -1009.988868 10.256287 -6.676953 pos_diff -0.002383 0.002020 0.001856 va 6.321135 -5.245743 -40.727567 vb 1.669825 -0.223067 -37.636192 residual 0.000013
+regular m_anchor->m_node->m_v 1.669825 -0.223067 -37.636192 m_q -1009.990538 10.256510 -6.639317 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999450 10.259629 6.743463 anchor_soft_predicted -1009.998789 10.259398 6.744123 pos_diff 0.000661 -0.000231 0.000660 va -9.438298 7.464806 -37.102834 vb -0.825680 0.286054 -37.637096 residual 0.000001
+regular m_anchor->m_node->m_v -0.825680 0.286054 -37.637096 m_q -1009.997963 10.259112 6.781760 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.010525 10.263177 20.164945 anchor_soft_predicted -1010.008710 10.262509 20.165198 pos_diff 0.001815 -0.000667 0.000252 va -19.996812 12.155178 -35.982214 vb -3.321185 0.795176 -37.638000 residual 0.000004
+regular m_anchor->m_node->m_v -3.321185 0.795176 -37.638000 m_q -1010.005389 10.261714 20.202836 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000083
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.519762 -0.224018 -45.678726 vb 1.871538 -0.222921 -36.617549 residual 82.525123
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.317909 -0.224258 -46.323686 vb 1.770681 -0.222994 -37.126870 residual 84.880873
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.692437 0.420775 -45.680114 vb -0.623967 0.286200 -36.618453 residual 82.136497
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.894371 0.420717 -46.325279 vb -0.724823 0.286127 -37.127775 residual 84.640956
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.905027 1.065989 -45.681500 vb -3.119472 0.795322 -36.619357 residual 82.812787
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -4.107031 1.066105 -46.326886 vb -3.220328 0.795249 -37.128679 residual 85.466625
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.116264 -0.224615 -46.968696 vb 1.669825 -0.223067 -37.636192 residual 87.294939
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.096452 0.420640 -46.970381 vb -0.825680 0.286054 -37.637096 residual 87.201642
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -4.309368 1.065662 -46.972065 vb -3.321185 0.795176 -37.638000 residual 88.174432
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.520180 -0.224170 -45.677258 vb 2.519792 -0.224113 -45.678383 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.318303 -0.224316 -46.322656 vb 2.317955 -0.224276 -46.323548 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.692772 0.420796 -45.679161 vb -0.692490 0.420862 -45.679769 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.894649 0.420650 -46.324558 vb -0.894424 0.420732 -46.325140 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -3.905724 1.065762 -45.681064 vb -3.905139 1.066250 -45.681175 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -4.107601 1.065616 -46.326461 vb -4.107155 1.066145 -46.326763 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.116425 -0.224461 -46.968053 vb 2.116309 -0.224556 -46.968479 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.096527 0.420505 -46.969955 vb -1.096501 0.420578 -46.970162 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -4.309479 1.065471 -46.971858 vb -4.309479 1.065471 -46.971858 residual 0.000000
+applyTransforms rigid anchor project node=0 x=-1009.983051 -16.586973 -6.669979 solvedV=2.520180 -0.224170 -45.677258 rigidV=2.519224 -0.223942 -45.676678
+applyTransforms rigid anchor project node=2 x=-1009.984857 -3.165894 -6.673593 solvedV=2.318303 -0.224316 -46.322656 rigidV=2.317589 -0.224143 -46.322189
+applyTransforms rigid anchor project node=3 x=-1009.994172 -16.583360 6.751095 solvedV=-0.692772 0.420796 -45.679161 rigidV=-0.693743 0.420968 -45.679514
+applyTransforms rigid anchor project node=6 x=-1009.995977 -3.162282 6.747481 solvedV=-0.894649 0.420650 -46.324558 rigidV=-0.895378 0.420767 -46.325025
+applyTransforms rigid anchor project node=8 x=-1010.005292 -16.579748 20.172168 solvedV=-3.905724 1.065762 -45.681064 rigidV=-3.906709 1.065878 -45.682350
+applyTransforms rigid anchor project node=10 x=-1010.007098 -3.158669 20.168554 solvedV=-4.107601 1.065616 -46.326461 rigidV=-4.108345 1.065678 -46.327860
+applyTransforms rigid anchor project node=12 x=-1009.986662 10.255184 -6.677207 solvedV=2.116425 -0.224461 -46.968053 rigidV=2.115953 -0.224344 -46.967699
+applyTransforms rigid anchor project node=14 x=-1009.997783 10.258797 6.743867 solvedV=-1.096527 0.420505 -46.969955 rigidV=-1.097014 0.420566 -46.970535
+applyTransforms rigid anchor project node=16 x=-1010.008903 10.262409 20.164940 solvedV=-4.309479 1.065471 -46.971858 rigidV=-4.309980 1.065477 -46.973371
+frameend()
+collide frame t=0.402185 tipLoadOrigin=(-1019.989755,-0.005628,-0.101810) tipLoadLinVel=(0.696666,-0.059229,-48.869189) freeNode3=(-1009.994172,-16.583360,6.751095)
+framestart()
+anchor reaction transfer node=0 scale=0.002222 impulse=3.029054 0.893864 1.895158 clampedNorm=3.683176 body=0000018F9C8B4420
+anchor reaction transfer node=2 scale=0.002222 impulse=6.751028 -0.757379 4.281196 clampedNorm=8.029859 body=0000018F9C8B4420
+anchor reaction transfer node=3 scale=0.002222 impulse=2.259115 0.947692 2.018070 clampedNorm=3.174008 body=0000018F9C8B4420
+anchor reaction transfer node=6 scale=0.002222 impulse=3.632289 -0.902729 5.036699 clampedNorm=6.275091 body=0000018F9C8B4420
+anchor reaction transfer node=8 scale=0.002222 impulse=-1.288073 -0.195637 0.754049 clampedNorm=1.505322 body=0000018F9C8B4420
+anchor reaction transfer node=10 scale=0.002222 impulse=-3.353107 0.140568 2.636274 clampedNorm=4.267673 body=0000018F9C8B4420
+anchor reaction transfer node=12 scale=0.002222 impulse=3.466423 -1.043474 1.933946 clampedNorm=4.104275 body=0000018F9C8B4420
+anchor reaction transfer node=14 scale=0.002222 impulse=1.675054 -0.661020 2.582918 clampedNorm=3.148685 body=0000018F9C8B4420
+anchor reaction transfer node=16 scale=0.002222 impulse=-1.516278 0.260446 1.187293 clampedNorm=1.943347 body=0000018F9C8B4420
+seedDynamicAnchorTargets node=0 dt=0.001000 updatePrevious=0 x=-1009.983051 -16.586973 -6.669979 nodeV=2.520180 -0.224170 -45.677258 targetV=3.138296 -0.241360 -54.722829 q=-1009.979913 -16.587214 -6.724702
+seedDynamicAnchorTargets node=2 dt=0.001000 updatePrevious=0 x=-1009.984857 -3.165894 -6.673593 nodeV=2.318303 -0.224316 -46.322656 targetV=2.859988 -0.241605 -55.494238 q=-1009.981997 -3.166136 -6.729087
+seedDynamicAnchorTargets node=3 dt=0.001000 updatePrevious=0 x=-1009.994172 -16.583360 6.751095 nodeV=-0.692772 0.420796 -45.679161 targetV=-0.846126 0.529281 -54.726338 q=-1009.995018 -16.582831 6.696368
+seedDynamicAnchorTargets node=6 dt=0.001000 updatePrevious=0 x=-1009.995977 -3.162282 6.747481 nodeV=-0.894649 0.420650 -46.324558 targetV=-1.124433 0.529036 -55.497747 q=-1009.997102 -3.161753 6.691983
+seedDynamicAnchorTargets node=8 dt=0.001000 updatePrevious=0 x=-1010.005292 -16.579748 20.172168 nodeV=-3.905724 1.065762 -45.681064 targetV=-4.830547 1.299922 -54.729847 q=-1010.010123 -16.578448 20.117438
+seedDynamicAnchorTargets node=10 dt=0.001000 updatePrevious=0 x=-1010.007098 -3.158669 20.168554 nodeV=-4.107601 1.065616 -46.326461 targetV=-5.108854 1.299677 -55.501255 q=-1010.012206 -3.157370 20.113053
+seedDynamicAnchorTargets node=12 dt=0.001000 updatePrevious=0 x=-1009.986662 10.255184 -6.677207 nodeV=2.116425 -0.224461 -46.968053 targetV=2.581680 -0.241850 -56.265647 q=-1009.984081 10.254943 -6.733473
+seedDynamicAnchorTargets node=14 dt=0.001000 updatePrevious=0 x=-1009.997783 10.258797 6.743867 nodeV=-1.096527 0.420505 -46.969955 targetV=-1.402741 0.528791 -56.269155 q=-1009.999185 10.259326 6.687598
+seedDynamicAnchorTargets node=16 dt=0.001000 updatePrevious=0 x=-1010.008903 10.262409 20.164940 nodeV=-4.309479 1.065471 -46.971858 targetV=-5.387162 1.299432 -56.272664 q=-1010.014290 10.263709 20.108667
+anchor_rigid_predicted -1009.979913 -16.587214 -6.724702 anchor_soft_predicted -1009.980531 -16.587197 -6.715657 pos_diff -0.000618 0.000017 0.009045 va 3.138296 -0.241360 -54.722829 vb 2.520180 -0.224170 -45.677258 residual 0.000082
+regular m_anchor->m_node->m_v 2.520180 -0.224170 -45.677258 m_q -1009.983051 -16.586973 -6.669979 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.981904 -3.166941 -6.723560 anchor_soft_predicted -1009.982538 -3.166118 -6.719916 pos_diff -0.000634 0.000823 0.003644 va 6.573883 -8.375465 -40.931971 vb 2.318303 -0.224316 -46.322656 residual 0.000014
+regular m_anchor->m_node->m_v 2.318303 -0.224316 -46.322656 m_q -1009.984857 -3.165894 -6.673593 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.996303 -16.581638 6.705542 anchor_soft_predicted -1009.994864 -16.582940 6.705416 pos_diff 0.001439 -0.001302 -0.000127 va -8.053367 8.677925 -20.085532 vb -0.692772 0.420796 -45.679161 residual 0.000004
+regular m_anchor->m_node->m_v -0.692772 0.420796 -45.679161 m_q -1009.994172 -16.583360 6.751095 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.997545 -3.161186 6.699414 anchor_soft_predicted -1009.996872 -3.161861 6.701156 pos_diff 0.000674 -0.000675 0.001742 va -6.393999 8.268926 -37.717564 vb -0.894649 0.420650 -46.324558 residual 0.000004
+regular m_anchor->m_node->m_v -0.894649 0.420650 -46.324558 m_q -1009.995977 -3.162282 6.747481 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.011495 -16.576781 20.127304 anchor_soft_predicted -1010.009198 -16.578682 20.126487 pos_diff 0.002298 -0.001902 -0.000817 va -22.415742 23.085090 -20.430779 vb -3.905724 1.065762 -45.681064 residual 0.000010
+regular m_anchor->m_node->m_v -3.905724 1.065762 -45.681064 m_q -1010.005292 -16.579748 20.172168 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.011576 -3.157303 20.120509 anchor_soft_predicted -1010.011205 -3.157604 20.122227 pos_diff 0.000371 -0.000301 0.001718 va -13.008652 15.640441 -41.621911 vb -4.107601 1.065616 -46.326461 residual 0.000003
+regular m_anchor->m_node->m_v -4.107601 1.065616 -46.326461 m_q -1010.007098 -3.158669 20.168554 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.982096 10.252961 -6.726020 anchor_soft_predicted -1009.984546 10.254960 -6.724175 pos_diff -0.002450 0.001999 0.001845 va 6.549482 -5.027873 -50.173109 vb 2.116425 -0.224461 -46.968053 residual 0.000013
+regular m_anchor->m_node->m_v 2.116425 -0.224461 -46.968053 m_q -1009.986662 10.255184 -6.677207 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1009.999544 10.259454 6.696236 anchor_soft_predicted -1009.998879 10.259217 6.696897 pos_diff 0.000664 -0.000236 0.000661 va -9.836672 7.843386 -46.618237 vb -1.096527 0.420505 -46.969955 residual 0.000001
+regular m_anchor->m_node->m_v -1.096527 0.420505 -46.969955 m_q -1009.997783 10.258797 6.743867 m_convergence_based_relaxation_position_drift 1.000000
+anchor_rigid_predicted -1010.015059 10.264135 20.117714 anchor_soft_predicted -1010.013213 10.263475 20.117968 pos_diff 0.001846 -0.000661 0.000254 va -20.914802 12.664795 -45.497485 vb -4.309479 1.065471 -46.971858 residual 0.000004
+regular m_anchor->m_node->m_v -4.309479 1.065471 -46.971858 m_q -1010.008903 10.262409 20.164940 m_convergence_based_relaxation_position_drift 1.000000
+anchor split summary: iterations=1/500 active=9 total=9 unconverged=0 worstResidual=0.000082
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 3.138296 -0.241360 -54.722829 vb 2.520180 -0.224170 -45.677258 residual 82.204708
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.860031 -0.241699 -55.494070 vb 2.318303 -0.224316 -46.322656 residual 84.408609
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.846252 0.529377 -54.725825 vb -0.692772 0.420796 -45.679161 residual 81.877472
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.124598 0.529221 -55.497271 vb -0.894649 0.420650 -46.324558 residual 84.203327
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -4.831188 1.300537 -54.728819 vb -3.905724 1.065762 -45.681064 residual 82.773479
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -5.109600 1.300557 -55.500488 vb -4.107601 1.065616 -46.326461 residual 85.221975
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.581967 -0.242150 -56.265368 vb 2.116425 -0.224461 -46.968053 residual 86.657106
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.403092 0.529049 -56.268661 vb -1.096527 0.420505 -46.969955 residual 86.571686
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -5.388349 1.300017 -56.271953 vb -4.309479 1.065471 -46.971858 residual 87.710733
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 3.138720 -0.241507 -54.721369 vb 3.138327 -0.241454 -54.722487 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.860423 -0.241752 -55.493049 vb 2.860078 -0.241717 -55.493933 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -0.846571 0.529406 -54.724878 vb -0.846302 0.529466 -54.725481 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.124868 0.529161 -55.496559 vb -1.124651 0.529237 -55.497132 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -4.831862 1.300318 -54.728388 vb -4.831290 1.300802 -54.728496 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -5.110159 1.300073 -55.500068 vb -5.109719 1.300598 -55.500367 residual 0.000001
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va 2.582127 -0.241997 -56.264729 vb 2.582011 -0.242092 -56.265151 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -1.403164 0.528915 -56.268239 vb -1.403141 0.528988 -56.268443 residual 0.000000
+btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation_velocity_match 1.000000 va -5.388455 1.299828 -56.271749 vb -5.388456 1.299828 -56.271748 residual 0.000000

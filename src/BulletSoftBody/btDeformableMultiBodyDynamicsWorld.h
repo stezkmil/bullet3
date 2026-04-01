@@ -181,6 +181,10 @@ public:
 		m_useProjection = useProjection;
 	}
 
+	void setMaxNewtonIterations(int iterations);
+
+	void setNewtonTolerance(btScalar tolerance);
+
 	void applyRepulsionForce(btScalar timeStep);
 
 	void performGeometricCollisions(btScalar timeStep);

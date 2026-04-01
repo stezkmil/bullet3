@@ -38,7 +38,15 @@ void btDeformableMousePickingForce::calculateNodeToMouse()
 		m_node_to_mouse_q[i] = getNode(i)->m_q - m_mouse_transform.getOrigin();
 		m_node_to_mouse_q_orig[i] = m_node_to_mouse_q[i];
 	}
-	m_mouse_bary = BaryCoord(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, getNode(3)->m_x, m_mouse_transform.getOrigin());
+	if (m_face)
+	{
+		const btVector3 bary = BaryCoord(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, m_mouse_transform.getOrigin());
+		m_mouse_bary = btVector4(bary.x(), bary.y(), bary.z(), btScalar(0));
+	}
+	else
+	{
+		m_mouse_bary = BaryCoord(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, getNode(3)->m_x, m_mouse_transform.getOrigin());
+	}
 }
 
 void btDeformableMousePickingForce::rotateNodeToMouse()
@@ -112,25 +120,40 @@ void btDeformableMousePickingForce::applyTorqueSpring(const btVector3& T, TVStac
 	//btVector3 picked = /*m_mouse_transform*/ m_mouse_transform_orig.getOrigin();
 	btScalar denom = btScalar(0);
 	btVector3 r[4];
-	btVector3 pickedFromBary = BaryEval(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, getNode(3)->m_x, m_mouse_bary);
+	btVector3 pickedFromBary;
+	if (m_face)
+	{
+		pickedFromBary = BaryEval(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x,
+								  btVector3(m_mouse_bary.x(), m_mouse_bary.y(), m_mouse_bary.z()));
+	}
+	else
+	{
+		pickedFromBary = BaryEval(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, getNode(3)->m_x, m_mouse_bary);
+	}
 
 	const auto a = getNode(0);
 	const auto b = getNode(1);
 	const auto c = getNode(2);
-	const auto d = getNode(3);
+	const auto d = (n > 3) ? getNode(3) : nullptr;
 	const btSoftBody::Node* nodeArr[4] = {a, b, c, d};
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
 			b->m_x.x(), b->m_x.y(), b->m_x.z());
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
 			c->m_x.x(), c->m_x.y(), c->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			d->m_x.x(), d->m_x.y(), d->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-			d->m_x.x(), d->m_x.y(), d->m_x.z());
+	if (d)
+	{
+		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
+				d->m_x.x(), d->m_x.y(), d->m_x.z());
+		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
+				d->m_x.x(), d->m_x.y(), d->m_x.z());
+	}
 	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
 			c->m_x.x(), c->m_x.y(), c->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
-			c->m_x.x(), c->m_x.y(), c->m_x.z());
+	if (d)
+	{
+		fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
+				c->m_x.x(), c->m_x.y(), c->m_x.z());
+	}
 
 	fprintf(stderr, "drawline \"axisX\" [%f,%f,%f][%f,%f,%f][1,0,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
 			a->m_x.x() + 10.0, a->m_x.y(), a->m_x.z());
@@ -194,6 +217,16 @@ btDeformableMousePickingForce::btDeformableMousePickingForce(
 	if (nodes) m_nodes = *nodes;
 	m_mouse_transform_orig_inv = m_mouse_transform_orig.inverse();
 	calculateNodeToMouse();
+	fprintf(stderr, "mouse pick init: kind=%s nodes=%d ids=%d,%d,%d,%d mousePos=(%f,%f,%f)\n",
+			m_face ? "face" : (m_tetra ? "tetra" : "node-set"),
+			getIndexCount(),
+			getNode(0) ? getNode(0)->index : -1,
+			(getIndexCount() > 1 && getNode(1)) ? getNode(1)->index : -1,
+			(getIndexCount() > 2 && getNode(2)) ? getNode(2)->index : -1,
+			(getIndexCount() > 3 && getNode(3)) ? getNode(3)->index : -1,
+			m_mouse_transform.getOrigin().x(),
+			m_mouse_transform.getOrigin().y(),
+			m_mouse_transform.getOrigin().z());
 }
 
 // ------------------------------------------------- Force interface

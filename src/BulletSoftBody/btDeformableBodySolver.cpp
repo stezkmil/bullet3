@@ -19,6 +19,65 @@
 #include "btSoftBodyInternals.h"
 #include "LinearMath/btQuickprof.h"
 static const int kMaxConjugateGradientIterations = 300;
+
+namespace
+{
+bool getDynamicAnchorKinematics(const btSoftBody::DeformableNodeRigidAnchor& anchor, btVector3& anchorWorld, btVector3& anchorVelocity)
+{
+	if (!anchor.m_node || !anchor.m_cti.m_colObj || !anchor.m_body)
+	{
+		return false;
+	}
+	if (anchor.m_body->isStaticOrKinematicObject() || !anchor.m_body->isActive())
+	{
+		return false;
+	}
+
+	const btRigidBody* rigidBody = btRigidBody::upcast(anchor.m_cti.m_colObj);
+	if (!rigidBody)
+	{
+		return false;
+	}
+
+	const btTransform& worldTransform = rigidBody->getWorldTransform();
+	const btVector3 localPoint = worldTransform.getBasis() * anchor.m_local;
+	anchorWorld = worldTransform * anchor.m_local;
+	anchorVelocity = rigidBody->getVelocityInLocalPoint(localPoint);
+	return true;
+}
+
+void seedDynamicAnchorTargets(btSoftBody* psb, btScalar dt, bool updatePreviousVelocity)
+{
+	for (int anchorIndex = 0; anchorIndex < psb->m_deformableAnchors.size(); ++anchorIndex)
+	{
+		btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[anchorIndex];
+		btVector3 anchorWorld;
+		btVector3 anchorVelocity;
+		if (!getDynamicAnchorKinematics(anchor, anchorWorld, anchorVelocity))
+		{
+			continue;
+		}
+
+		btSoftBody::Node* node = anchor.m_node;
+		node->m_q = anchorWorld + dt * anchorVelocity;
+		if (updatePreviousVelocity)
+		{
+			node->m_vn = anchorVelocity;
+		}
+
+		fprintf(stderr,
+			"seedDynamicAnchorTargets node=%d dt=%f updatePrevious=%d x=%f %f %f nodeV=%f %f %f targetV=%f %f %f q=%f %f %f\n",
+			node->index,
+			dt,
+			updatePreviousVelocity ? 1 : 0,
+			anchorWorld.x(), anchorWorld.y(), anchorWorld.z(),
+			node->m_v.x(), node->m_v.y(), node->m_v.z(),
+			anchorVelocity.x(), anchorVelocity.y(), anchorVelocity.z(),
+			node->m_q.x(), node->m_q.y(), node->m_q.z());
+	}
+}
+}
+
 btDeformableBodySolver::btDeformableBodySolver()
 	: m_numNodes(0), m_cg(kMaxConjugateGradientIterations), m_cr(kMaxConjugateGradientIterations), m_maxNewtonIterations(1), m_newtonTolerance(1e-4), m_lineSearch(false), m_useProjection(false)
 {
@@ -408,6 +467,12 @@ void btDeformableBodySolver::predictMotion(btScalar solverdt)
 		btSoftBody* psb = m_softBodies[i];
 		if (psb->isActive() && !psb->isStaticObject())
 		{
+			if (m_implicit)
+			{
+				// Dynamic anchors act like prescribed boundary conditions during the
+				// implicit solve, so carry the rigid target state directly.
+				seedDynamicAnchorTargets(psb, solverdt, false);
+			}
 			/* Clear contacts when softbody is active*/
 			psb->m_nodeRigidContacts.resize(0);
 			psb->m_faceRigidContacts.resize(0);
@@ -547,7 +612,29 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 			//fprintf(stderr, "a.m_local %d %f %f %f\n", j, a.m_local.x(), a.m_local.y(), a.m_local.z());
 			//fprintf(stderr, "n->m_x orig %d %f %f %f\n", j, n->m_x.x(), n->m_x.y(), n->m_x.z());
 			//fprintf(stderr, "getWorldTransform %d %f %f %f\n", j, a.m_cti.m_colObj->getWorldTransform().getOrigin().x(), a.m_cti.m_colObj->getWorldTransform().getOrigin().y(), a.m_cti.m_colObj->getWorldTransform().getOrigin().z());
-			//n->m_x = a.m_cti.m_colObj->getWorldTransform() * a.m_local;
+			if (a.m_cti.m_colObj && a.m_cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
+			{
+				const btRigidBody* rigidBody = btRigidBody::upcast(a.m_cti.m_colObj);
+				if (rigidBody)
+				{
+					const btTransform& worldTransform = rigidBody->getWorldTransform();
+					const btVector3 localPoint = worldTransform.getBasis() * a.m_local;
+					const btVector3 anchorWorld = worldTransform * a.m_local;
+					const btVector3 anchorVelocity = rigidBody->getVelocityInLocalPoint(localPoint);
+
+					// Keep the anchored node position coherent with the rigid attachment
+					// point without wiping out the solved velocity state.
+					n->m_x = anchorWorld;
+					n->m_q = anchorWorld;
+					n->m_splitv.setZero();
+
+					fprintf(stderr, "applyTransforms rigid anchor project node=%d x=%f %f %f solvedV=%f %f %f rigidV=%f %f %f\n",
+						n->index,
+						n->m_x.x(), n->m_x.y(), n->m_x.z(),
+						n->m_v.x(), n->m_v.y(), n->m_v.z(),
+						anchorVelocity.x(), anchorVelocity.y(), anchorVelocity.z());
+				}
+			}
 			//fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", j, n->m_x.x(), n->m_x.y(), n->m_x.z());
 
 			// update multibody anchor info
