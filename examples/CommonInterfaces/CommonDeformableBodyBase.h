@@ -24,6 +24,7 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 	btScalar m_pickingForceElasticStiffness, m_pickingForceDampingStiffness, m_maxPickingForce;
 	btScalar m_rigidPickingImpulseClamp, m_rigidPickingTau;
 	bool m_logPicking;
+	bool m_pickedRigidWasAnchoredCarrier;
 	CommonDeformableBodyBase(GUIHelperInterface* helper)
 		: CommonMultiBodyBase(helper),
 		  m_pickedSoftBody(0),
@@ -33,7 +34,8 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 		  m_maxPickingForce(0.3),
 		  m_rigidPickingImpulseClamp(30.f),
 		  m_rigidPickingTau(0.001f),
-		  m_logPicking(false)
+		  m_logPicking(false),
+		  m_pickedRigidWasAnchoredCarrier(false)
 	{
 	}
 
@@ -107,6 +109,7 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 					// Soft-anchor carrier bodies feel much better if the mouse pulls near the
 					// center of mass instead of injecting mostly torque through an off-center pivot.
 					const bool anchoredCarrier = body->hasAnchorRef();
+					m_pickedRigidWasAnchoredCarrier = anchoredCarrier;
 					btVector3 localPivot = anchoredCarrier ? btVector3(0, 0, 0) : (body->getCenterOfMassTransform().inverse() * pickPos);
 					btPoint2PointConstraint* p2p = new btPoint2PointConstraint(*body, localPivot);
 					m_dynamicsWorld->addConstraint(p2p, true);
@@ -228,12 +231,30 @@ struct CommonDeformableBodyBase : public CommonMultiBodyBase
 
 			if (m_pickedBody)
 			{
+				if (m_pickedRigidWasAnchoredCarrier)
+				{
+					const btVector3 linearVelocityBefore = m_pickedBody->getLinearVelocity();
+					const btVector3 angularVelocityBefore = m_pickedBody->getAngularVelocity();
+					m_pickedBody->setLinearVelocity(linearVelocityBefore * btScalar(0.1));
+					m_pickedBody->setAngularVelocity(angularVelocityBefore * btScalar(0.1));
+					if (m_logPicking)
+					{
+						fprintf(stderr,
+								"release anchored rigid damping body=%p linBefore=(%f,%f,%f) angBefore=(%f,%f,%f) linAfter=(%f,%f,%f) angAfter=(%f,%f,%f)\n",
+								m_pickedBody,
+								linearVelocityBefore.x(), linearVelocityBefore.y(), linearVelocityBefore.z(),
+								angularVelocityBefore.x(), angularVelocityBefore.y(), angularVelocityBefore.z(),
+								m_pickedBody->getLinearVelocity().x(), m_pickedBody->getLinearVelocity().y(), m_pickedBody->getLinearVelocity().z(),
+								m_pickedBody->getAngularVelocity().x(), m_pickedBody->getAngularVelocity().y(), m_pickedBody->getAngularVelocity().z());
+					}
+				}
 				m_pickedBody->forceActivationState(ACTIVE_TAG);
 				m_pickedBody->activate(true);
 			}
 			delete m_pickedConstraint;
 			m_pickedConstraint = 0;
 			m_pickedBody = 0;
+			m_pickedRigidWasAnchoredCarrier = false;
 		}
 		if (m_pickingMultiBodyPoint2Point)
 		{

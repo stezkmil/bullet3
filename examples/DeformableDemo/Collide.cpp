@@ -42,7 +42,7 @@ static const float kInternalTimeStepExperiment = 0.001f;
 static const int kMaxSubstepsExperiment = 1;
 static const int kImplicitNewtonIterationsExperiment = 3;
 static const float kImplicitNewtonToleranceExperiment = 1e-5f;
-static const bool kEnableProgrammaticGrabExperiment = true;
+static const bool kEnableProgrammaticGrabExperiment = false;
 static const float kProgrammaticGrabStartTime = 0.5f;
 static const float kProgrammaticGrabDuration = 0.5f;
 static const btVector3 kProgrammaticGrabOffset(0, 0, 150);
