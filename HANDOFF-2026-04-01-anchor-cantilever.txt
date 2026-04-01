@@ -1,0 +1,162 @@
+Anchor/cantilever handoff - 2026-04-01
+
+Context
+- Repo: d:\bullet3
+- Main demo under test: examples/DeformableDemo/Collide.cpp
+- Main symptom set:
+  - dynamic deformable anchors were unstable under very stiff cantilever loading
+  - mouse grabbing initially crashed in some soft-pick cases
+  - after stability fixes, release behavior still lacks convincing spring-back
+  - cantilever can bend into an S-shape under tip manipulation
+
+Build/run notes
+- Build command used successfully:
+  cmake --build . --config Release --target App_ExampleBrowser --parallel
+- Launch from repo root d:\bullet3 so 0_Bullet3Demo.txt is honored.
+
+What is fixed
+- Mouse-pick crash fix:
+  - src/BulletSoftBody/btDeformableMousePickingForce.cpp
+  - triangle face picks no longer read tetra-only node 3
+- Anchor velocity spikes:
+  - the catastrophic million-scale anchor-node velocity spikes seen earlier are no longer present
+- Split-impulse monitoring:
+  - anchor split iteration/residual diagnostics added
+  - useful stderr lines:
+    - anchor split summary: ...
+    - anchor split warning: ...
+- Rigid picking interaction:
+  - anchored rigid carriers are picked through center of mass now, so cube spinning under pick is much reduced
+
+Current important behavior
+- The build is stable enough to run and interact with.
+- The cube no longer spins freely during mouse grab.
+- Spring-back after release is still not convincingly correct.
+- The cantilever can still show a weird S-shape.
+- Direct soft-body grabbing still needs user-side evaluation after the latest changes.
+
+Current implementation state
+
+1. Anchor solver / deformable coupling
+- src/BulletSoftBody/btDeformableBackwardEulerObjective.cpp
+  - dynamic anchored nodes are detected with isDynamicRigidAnchorNode(...)
+  - explicit-force application for implicit solve skips dynamic anchored nodes
+  - their effectiveMass_inv row is zeroed for that explicit application path
+  - a very small anchor reaction transfer was added:
+    - transferDynamicAnchorReactionImpulses(...)
+    - this feeds a tiny body-averaged fraction of assembled anchor-node force back to the rigid body
+    - currently scaled by 0.02 / anchorCountForBody and additionally clamped
+  - this was introduced because full-force transfer exploded badly in an earlier experiment
+
+2. Anchor state seeding / solver staging
+- src/BulletSoftBody/btDeformableBodySolver.cpp
+  - seedDynamicAnchorTargets(...) now only seeds target q from rigid target position/velocity
+  - it no longer overwrites node velocity before solveConstraint()
+  - this change was important because pre-forcing node velocity made solveConstraint residual almost zero, so the anchor solver had no real work to do
+  - applyTransforms(...) still projects anchor position to rigid anchorWorld at end of step, but does not overwrite solved velocity anymore
+
+3. Anchor constraint solve
+- src/BulletSoftBody/btDeformableContactConstraint.cpp
+  - solveConstraint():
+    - still applies full rigid-side impulse via rigidCol->applyImpulse(impulse, m_anchor->m_c1)
+    - stores convergence-based relaxation state back into the anchor struct
+  - solveSplitImpulse():
+    - uses vb = node->m_v + node->m_splitv
+    - predicts soft anchor position with x + dt * vb
+    - split diagnostics still active
+
+4. World/solver tuning exposed for demo use
+- src/BulletSoftBody/btDeformableBodySolver.h
+  - added setMaxNewtonIterations(...)
+  - added setNewtonTolerance(...)
+- src/BulletSoftBody/btDeformableMultiBodyDynamicsWorld.h/.cpp
+  - added forwarding setters for the above
+
+5. Demo interaction tuning
+- examples/CommonInterfaces/CommonDeformableBodyBase.h
+  - rigid pick settings are configurable
+  - anchored carriers use COM pick pivot
+  - on mouse release, anchored rigid carriers now get strong velocity damping:
+    - linear and angular velocity multiplied by 0.1
+  - logs remain available for pick events
+- examples/DeformableDemo/Collide.cpp
+  - current experiment settings:
+    - implicit = true
+    - projection = true
+    - lineSearch = false
+    - internal timestep = 0.001
+    - maxSubsteps = 1
+    - Newton iterations = 3
+    - Newton tolerance = 1e-5
+  - picking settings currently:
+    - soft elastic = 50000
+    - soft damping = 100
+    - soft max force = 1e10
+    - rigid impulse clamp = 20000
+    - rigid tau = 0.2
+  - scripted grab experiment is currently OFF again
+
+Important experiments tried today
+
+1. Hard kinematic resync of dynamic anchors
+- Stabilized spikes very well
+- But made the anchored end too prescribed and killed believable spring-back
+
+2. Full explicit-force transfer from anchor nodes to rigid body
+- Exploded immediately
+- Produced absurd rigid motion and giant impulses
+- Replaced with the much smaller transfer currently in tree
+
+3. Implicit timestep comparison
+- 0.002 implicit + projection was still pathological
+- 0.001 implicit + projection was much better
+- This strongly suggests timestep matters, but it is not the whole problem
+
+4. COM-based rigid picking
+- Helped a lot with “cube only rotates under mouse”
+
+5. Scripted grab trace
+- Showed that mouse release can leave the cube with very large upward momentum
+- This is why anchored rigid release damping was added in CommonDeformableBodyBase.h
+
+Most recent user-observed status
+- “Still the same more or less”
+- Image still shows a broad S-shaped cantilever after manipulation
+- This means the latest solver-side changes did not materially fix the macroscopic release shape
+
+Best current hypothesis
+- We fixed the anchor spike bug and improved interaction tooling, but the main physical issue remains:
+  dynamic anchors are still not modeled as true constrained DOFs with consistent two-way coupling inside the implicit solve.
+- The remaining S-shape / weak spring-back likely comes from the anchored boundary still being handled by a hybrid of:
+  - partial boundary-condition behavior
+  - separate velocity matching
+  - end-of-step positional projection
+  rather than a single coherent constrained solve.
+
+Recommended next steps
+1. Measure net anchor reaction on the cube over a full grab/release window.
+   - Either aggregate anchor impulses inside btDeformableNodeAnchorConstraint::solveConstraint()
+   - Or accumulate per-body anchor impulse totals each frame and print one summary line
+2. Compare that net reaction against mouse-pick release momentum.
+   - We already saw pick release can dominate observed motion
+3. Consider a more principled anchor formulation:
+   - dynamic anchored nodes as constrained DOFs / boundary conditions inside the implicit solve
+   - rigid reaction from the same constraint system, not from a side transfer term
+4. If continuing with today’s formulation, likely focus points are:
+   - btDeformableBackwardEulerObjective.cpp
+   - btDeformableBodySolver.cpp
+   - btDeformableContactConstraint.cpp
+
+Files touched most
+- src/BulletSoftBody/btDeformableBackwardEulerObjective.cpp
+- src/BulletSoftBody/btDeformableBodySolver.cpp
+- src/BulletSoftBody/btDeformableContactConstraint.cpp
+- src/BulletSoftBody/btDeformableBodySolver.h
+- src/BulletSoftBody/btDeformableMultiBodyDynamicsWorld.h
+- src/BulletSoftBody/btDeformableMultiBodyDynamicsWorld.cpp
+- examples/CommonInterfaces/CommonDeformableBodyBase.h
+- examples/DeformableDemo/Collide.cpp
+
+Practical reminder
+- If reopening tomorrow, inspect current git diff first.
+- The tree contains many useful debug prints; do not assume logs are clean.
