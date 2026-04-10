@@ -24,6 +24,7 @@ bool useShadowMap = true;  // true;//false;//true;
 
 
 #include <stdio.h>
+#include <cmath>
 
 struct caster2
 {
@@ -2140,11 +2141,29 @@ B3_ATTRIBUTE_ALIGNED16(struct)
 TransparentDistanceSortPredicate{
 
 	inline bool operator()(const SortableTransparentInstance& a, const SortableTransparentInstance& b) const {
-
-		return (a.m_projection > b.m_projection);
+		const bool aFinite = std::isfinite(static_cast<double>(a.m_projection));
+		const bool bFinite = std::isfinite(static_cast<double>(b.m_projection));
+		if (aFinite != bFinite)
+		{
+			return aFinite;
+		}
+		if (a.m_projection != b.m_projection)
+		{
+			return (a.m_projection > b.m_projection);
+		}
+		if (a.m_shapeIndex != b.m_shapeIndex)
+		{
+			return a.m_shapeIndex < b.m_shapeIndex;
+		}
+		return a.m_instanceId < b.m_instanceId;
 }
 }
 ;
+
+static b3Scalar sanitizeTransparentProjection(b3Scalar projection)
+{
+	return std::isfinite(static_cast<double>(projection)) ? projection : b3Scalar(-B3_LARGE_FLOAT);
+}
 
 void GLInstancingRenderer::renderSceneInternal(int orgRenderMode)
 {
@@ -2386,7 +2405,7 @@ void GLInstancingRenderer::renderSceneInternal(int orgRenderMode)
 											m_data->m_instance_positions_ptr[inst.m_instanceId * 4 + 1],
 											m_data->m_instance_positions_ptr[inst.m_instanceId * 4 + 2]);
 					centerPosition *= -1;  //reverse sort opaque instances
-					inst.m_projection = centerPosition.dot(camForwardVec);
+					inst.m_projection = sanitizeTransparentProjection(centerPosition.dot(camForwardVec));
 					transparentInstances.push_back(inst);
 				}
 				else
@@ -2399,7 +2418,7 @@ void GLInstancingRenderer::renderSceneInternal(int orgRenderMode)
 						centerPosition.setValue(m_data->m_instance_positions_ptr[inst.m_instanceId * 4 + 0],
 												m_data->m_instance_positions_ptr[inst.m_instanceId * 4 + 1],
 												m_data->m_instance_positions_ptr[inst.m_instanceId * 4 + 2]);
-						inst.m_projection = centerPosition.dot(camForwardVec);
+						inst.m_projection = sanitizeTransparentProjection(centerPosition.dot(camForwardVec));
 						transparentInstances.push_back(inst);
 					}
 				}
