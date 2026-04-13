@@ -97,8 +97,6 @@ public:
 			return;
 		btScalar mu_damp = m_damping_beta * m_mu;
 		btScalar lambda_damp = m_damping_beta * m_lambda;
-		int numNodes = getNumNodes();
-		btAssert(numNodes <= force.size());
 		btVector3 grad_N_hat_1st_col = btVector3(-1, -1, -1);
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
@@ -198,6 +196,10 @@ public:
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
 			btSoftBody* psb = m_softBodies[i];
+			if (!psb->isActive() || psb->isStaticObject())
+			{
+				continue;
+			}
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
 				const btSoftBody::Node& node = psb->m_nodes[j];
@@ -219,8 +221,6 @@ public:
 
 	virtual void addScaledElasticForce(btScalar scale, TVStack& force)
 	{
-		int numNodes = getNumNodes();
-		btAssert(numNodes <= force.size());
 		btVector3 grad_N_hat_1st_col = btVector3(-1, -1, -1);
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
