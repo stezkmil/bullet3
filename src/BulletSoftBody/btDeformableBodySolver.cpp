@@ -19,6 +19,7 @@
 #include "btSoftBodyInternals.h"
 #include "LinearMath/btQuickprof.h"
 static const int kMaxConjugateGradientIterations = 300;
+
 btDeformableBodySolver::btDeformableBodySolver()
 	: m_numNodes(0), m_cg(kMaxConjugateGradientIterations), m_cr(kMaxConjugateGradientIterations), m_maxNewtonIterations(1), m_newtonTolerance(1e-4), m_lineSearch(false), m_useProjection(false)
 {
@@ -342,11 +343,9 @@ void btDeformableBodySolver::setupDeformableSolve(bool implicit)
 		{
 			if (implicit)
 			{
-				// setting the initial guess for newton, need m_dv = v_{n+1} - v_n for dofs that are in constraint.
-				if (psb->m_nodes[j].m_v == m_backupVelocity[counter])
-					m_dv[counter].setZero();
-				else
-					m_dv[counter] = psb->m_nodes[j].m_v - psb->m_nodes[j].m_vn;
+				// Use the current post-explicit/post-contact velocity as the initial guess for the implicit solve.
+				// Zeroing unconstrained nodes here throws away the explicit gravity update in free flight.
+				m_dv[counter] = psb->m_nodes[j].m_v - psb->m_nodes[j].m_vn;
 				m_backupVelocity[counter] = psb->m_nodes[j].m_vn;
 			}
 			else
