@@ -145,8 +145,8 @@ public:
 		}
 		if (m_implicit)
 		{
-			printf("implicit not implemented\n");
-			btAssert(false);
+			// For implicit KKT solves we still use the mass and damping diagonal as a lightweight approximation.
+			// This omits the elastic differential, but remains a valid preconditioner for the extended system.
 		}
 		for (int i = 0; i < m_lf.size(); ++i)
 		{

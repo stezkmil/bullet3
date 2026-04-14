@@ -49,7 +49,7 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			m_objective->addLagrangeMultiplierRHS(m_residual, m_dv, rhs);
 			m_objective->addLagrangeMultiplier(m_dv, x);
 			m_objective->m_preconditioner->reinitialize(true);
-			computeStep(x, rhs);
+			m_cr.solve(*m_objective, x, rhs, false);
 			for (int i = 0; i < m_dv.size(); ++i)
 			{
 				m_dv[i] = x[i];
@@ -166,8 +166,25 @@ void btDeformableBodySolver::updateEnergy(btScalar scale)
 
 btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose)
 {
-	m_cg.solve(*m_objective, ddv, residual, false);
-	btScalar inner_product = m_cg.dot(residual, m_ddv);
+	btScalar inner_product = 0;
+	if (m_useProjection)
+	{
+		m_cg.solve(*m_objective, ddv, residual, false);
+		inner_product = m_cg.dot(residual, m_ddv);
+	}
+	else
+	{
+		TVStack rhs, x;
+		m_objective->addLagrangeMultiplierRHS(residual, m_dv, rhs);
+		m_objective->addLagrangeMultiplier(ddv, x);
+		m_objective->m_preconditioner->reinitialize(true);
+		m_cr.solve(*m_objective, x, rhs, false);
+		for (int i = 0; i < ddv.size(); ++i)
+		{
+			ddv[i] = x[i];
+		}
+		inner_product = m_cg.dot(residual, ddv);
+	}
 	btScalar res_norm = m_objective->computeNorm(residual);
 	btScalar tol = 1e-5 * res_norm * m_objective->computeNorm(m_ddv);
 	if (inner_product < -tol)
@@ -215,9 +232,21 @@ void btDeformableBodySolver::updateDv(btScalar scale)
 void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
 {
 	if (m_useProjection)
+	{
 		m_cg.solve(*m_objective, ddv, residual, false);
+	}
 	else
-		m_cr.solve(*m_objective, ddv, residual, false);
+	{
+		TVStack rhs, x;
+		m_objective->addLagrangeMultiplierRHS(residual, m_dv, rhs);
+		m_objective->addLagrangeMultiplier(ddv, x);
+		m_objective->m_preconditioner->reinitialize(true);
+		m_cr.solve(*m_objective, x, rhs, false);
+		for (int i = 0; i < ddv.size(); ++i)
+		{
+			ddv[i] = x[i];
+		}
+	}
 }
 
 void btDeformableBodySolver::reinitialize(const btAlignedObjectArray<btSoftBody*>& softBodies, btScalar dt)
