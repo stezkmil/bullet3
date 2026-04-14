@@ -54,8 +54,6 @@ public:
 
 	virtual void addScaledElasticForce(btScalar scale, TVStack& force)
 	{
-		int numNodes = getNumNodes();
-		btAssert(numNodes <= force.size());
 		btVector3 grad_N_hat_1st_col = btVector3(-1, -1, -1);
 		for (int i = 0; i < m_softBodies.size(); ++i)
 		{
