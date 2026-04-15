@@ -4818,7 +4818,7 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 				delta = (delta / len) * (len * 10.0);
 			}
 			//fprintf(stderr, "node0->m_v delta %d %f %f %f\n", node0->local_index, delta.x(), delta.y(), delta.z());
-			if (invMass0 != 0.0)
+			if (node0->m_frozen <= 0 && invMass0 > 0.0)
 				node0->m_v += delta;
 			//fprintf(stderr, "node0->m_v %f %f %f\n", node0->m_v.x(), node0->m_v.y(), node0->m_v.z());
 		}
@@ -4831,7 +4831,7 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 				delta = (delta / len) * (len * 10.0);
 			}
 			//fprintf(stderr, "node1->m_v delta %d %f %f %f\n", node1->local_index, delta.x(), delta.y(), delta.z());
-			if (invMass1 != 0.0)
+			if (node1->m_frozen <= 0 && invMass1 > 0.0)
 				node1->m_v -= delta;
 			//fprintf(stderr, "node1->m_v %f %f %f\n", node1->m_v.x(), node1->m_v.y(), node1->m_v.z());
 		}
