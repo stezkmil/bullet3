@@ -242,8 +242,13 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 			{
 				for (int j = 0; j < psb->m_nodes.size(); ++j)
 				{
-					// add gravity explicitly
-					psb->m_nodes[j].m_v += m_dt * psb->m_gravityFactor * gravity;
+					btSoftBody::Node& node = psb->m_nodes[j];
+					// Gravity is an acceleration, so skip frozen or zero-mass nodes
+					// but do not scale by mass here.
+					if (node.m_frozen <= 0 && node.m_im > 0)
+					{
+						node.m_v += m_dt * psb->m_gravityFactor * gravity;
+					}
 				}
 			}
 		}
