@@ -529,6 +529,16 @@ void btDeformableMultiBodyDynamicsWorld::setGravity(const btVector3& gravity)
 	m_deformableBodySolver->setGravity(gravity);
 }
 
+void btDeformableMultiBodyDynamicsWorld::setMaxNewtonIterations(int maxNewtonIterations)
+{
+	m_deformableBodySolver->setMaxNewtonIterations(maxNewtonIterations);
+}
+
+int btDeformableMultiBodyDynamicsWorld::getMaxNewtonIterations() const
+{
+	return m_deformableBodySolver->getMaxNewtonIterations();
+}
+
 void btDeformableMultiBodyDynamicsWorld::reinitialize(btScalar timeStep)
 {
 	m_internalTime += timeStep;

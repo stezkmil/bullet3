@@ -78,7 +78,8 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			}
 
 			m_objective->computeResidual(solverdt, m_residual);
-			if (m_objective->computeNorm(m_residual) < m_newtonTolerance && i > 0)
+			const btScalar residualNorm = m_objective->computeNorm(m_residual);
+			if (residualNorm < m_newtonTolerance && i > 0)
 			{
 				break;
 			}
@@ -533,6 +534,11 @@ void btDeformableBodySolver::setImplicit(bool implicit)
 void btDeformableBodySolver::setLineSearch(bool lineSearch)
 {
 	m_lineSearch = lineSearch;
+}
+
+void btDeformableBodySolver::setMaxNewtonIterations(int maxNewtonIterations)
+{
+	m_maxNewtonIterations = btMax(1, maxNewtonIterations);
 }
 
 void btDeformableBodySolver::applyExplicitForce()

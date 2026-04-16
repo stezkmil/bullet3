@@ -176,6 +176,10 @@ public:
 		m_lineSearch = lineSearch;
 	}
 
+	void setMaxNewtonIterations(int maxNewtonIterations);
+
+	int getMaxNewtonIterations() const;
+
 	void setUseProjection(bool useProjection)
 	{
 		m_useProjection = useProjection;

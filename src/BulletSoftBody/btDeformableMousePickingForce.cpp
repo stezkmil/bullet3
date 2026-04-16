@@ -38,7 +38,6 @@ void btDeformableMousePickingForce::calculateNodeToMouse()
 		m_node_to_mouse_q[i] = getNode(i)->m_q - m_mouse_transform.getOrigin();
 		m_node_to_mouse_q_orig[i] = m_node_to_mouse_q[i];
 	}
-	m_mouse_bary = BaryCoord(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, getNode(3)->m_x, m_mouse_transform.getOrigin());
 }
 
 void btDeformableMousePickingForce::rotateNodeToMouse()
@@ -94,81 +93,6 @@ void btDeformableMousePickingForce::orientationError(btScalar& theta, btVector3&
 		axis = q.getAxis();
 		theta = q.getAngle();
 	}
-}
-
-btScalar btDeformableMousePickingForce::transBoost(btScalar theta) const
-{
-	if (m_angleMax <= btScalar(0)) return btScalar(1);
-	btScalar b = btScalar(1) + theta / m_angleMax;
-	if (b > m_scaleCeil) b = m_scaleCeil;
-	return b;
-}
-
-// ---------------------------------------------------------------------
-void btDeformableMousePickingForce::applyTorqueSpring(const btVector3& T, TVStack& force)
-{
-	int n = getIndexCount();
-	if (n == 0) return;
-	//btVector3 picked = /*m_mouse_transform*/ m_mouse_transform_orig.getOrigin();
-	btScalar denom = btScalar(0);
-	btVector3 r[4];
-	btVector3 pickedFromBary = BaryEval(getNode(0)->m_x, getNode(1)->m_x, getNode(2)->m_x, getNode(3)->m_x, m_mouse_bary);
-
-	const auto a = getNode(0);
-	const auto b = getNode(1);
-	const auto c = getNode(2);
-	const auto d = getNode(3);
-	const btSoftBody::Node* nodeArr[4] = {a, b, c, d};
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			b->m_x.x(), b->m_x.y(), b->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			c->m_x.x(), c->m_x.y(), c->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			d->m_x.x(), d->m_x.y(), d->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-			d->m_x.x(), d->m_x.y(), d->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", b->m_x.x(), b->m_x.y(), b->m_x.z(),
-			c->m_x.x(), c->m_x.y(), c->m_x.z());
-	fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", d->m_x.x(), d->m_x.y(), d->m_x.z(),
-			c->m_x.x(), c->m_x.y(), c->m_x.z());
-
-	fprintf(stderr, "drawline \"axisX\" [%f,%f,%f][%f,%f,%f][1,0,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			a->m_x.x() + 10.0, a->m_x.y(), a->m_x.z());
-	fprintf(stderr, "drawline \"axisY\" [%f,%f,%f][%f,%f,%f][0,1,0,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			a->m_x.x(), a->m_x.y() + 10.0, a->m_x.z());
-	fprintf(stderr, "drawline \"axisZ\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", a->m_x.x(), a->m_x.y(), a->m_x.z(),
-			a->m_x.x(), a->m_x.y(), a->m_x.z() + 10.0);
-
-	fprintf(stderr, "drawpoint \"picked\" [%f,%f,%f][1,0,0,1] \n", pickedFromBary.x(), pickedFromBary.y(), pickedFromBary.z());
-	fprintf(stderr, "drawline \"T\" [%f,%f,%f][%f,%f,%f][1,0,0,1] \n", pickedFromBary.x(), pickedFromBary.y(), pickedFromBary.z(),
-			pickedFromBary.x() + (T.x() * 10000.0), pickedFromBary.y() + (T.y() * 10000.0), pickedFromBary.z() + (T.z() * 10000.0));
-
-	for (int i = 0; i < n; ++i)
-	{
-		r[i] = getNode(i)->m_x - pickedFromBary;
-		denom += r[i].length2();
-	}
-	if (denom < btScalar(1e-7)) return;
-
-	std::string str;
-	for (int i = 0; i < n; ++i)
-	{
-		btVector3 dbg(0, 0, 1);
-		if (T./*dbg.*/ cross(r[i].normalized()).norm() > SIMD_EPSILON)
-		{
-			btVector3 F = (T./*dbg.*/ cross(r[i].normalized()) /** 30.0*/ /*/ denom*/) * 100.0;
-			str += " F " + std::to_string(F.x()) + " " + std::to_string(F.y()) + " " + std::to_string(F.z());
-			/*if (F.safeNorm() > m_maxForce)
-			{
-				F.safeNormalize();
-				F *= m_maxForce;
-			}*/
-			force[getNode(i)->index] -= F;
-			fprintf(stderr, "drawline \"line\" [%f,%f,%f][%f,%f,%f][1,0,0,1] \n", nodeArr[i]->m_x.x(), nodeArr[i]->m_x.y(), nodeArr[i]->m_x.z(),
-					nodeArr[i]->m_x.x() + F.x(), nodeArr[i]->m_x.y() + F.y(), nodeArr[i]->m_x.z() + F.z());
-		}
-	}
-	//fprintf(stderr, "%s\n", str.c_str());
 }
 
 btDeformableMousePickingForce::btDeformableMousePickingForce(

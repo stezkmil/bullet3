@@ -35,7 +35,6 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 	btVector3 m_node_to_mouse_x[4], m_node_to_mouse_x_orig[4];
 	btVector3 m_node_to_mouse_q[4], m_node_to_mouse_q_orig[4];
 
-	btVector4 m_mouse_bary;
 
 	btTransform m_mouse_transform, m_mouse_transform_orig, m_mouse_transform_orig_inv;
 	btScalar m_maxForce;  //!< per‑spring clamping
@@ -57,11 +56,6 @@ class btDeformableMousePickingForce : public btDeformableLagrangianForce
 	}
 
 	void orientationError(btScalar& theta, btVector3& axis) const;
-
-	btScalar transBoost(btScalar theta) const;
-
-	// ---------------------------------------------------------------------
-	void applyTorqueSpring(const btVector3& T, TVStack& force);
 
 public:
 	typedef btAlignedObjectArray<btVector3> TVStack;
