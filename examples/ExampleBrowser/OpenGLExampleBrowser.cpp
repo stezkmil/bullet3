@@ -112,6 +112,8 @@ static GwenUserInterface* gui2 = 0;
 static int sCurrentDemoIndex = -1;
 static int sCurrentHightlighted = 0;
 static CommonExampleInterface* sCurrentDemo = 0;
+static int sExampleArgc = 0;
+static char** sExampleArgv = 0;
 static b3AlignedObjectArray<const char*> allNames;
 static float gFixedTimeStep = 0;
 bool gAllowRetina = true;
@@ -449,6 +451,7 @@ void openFileDemo(const char* filename)
 
 	if (sCurrentDemo)
 	{
+		sCurrentDemo->processCommandLineArgs(sExampleArgc, sExampleArgv);
 		sCurrentDemo->initPhysics();
 		sCurrentDemo->resetCamera();
 	}
@@ -493,6 +496,7 @@ void selectDemo(int demoIndex)
 				gui2->setExampleDescription(gAllExamples->getExampleDescription(demoIndex));
 			}
 
+			sCurrentDemo->processCommandLineArgs(sExampleArgc, sExampleArgv);
 			sCurrentDemo->initPhysics();
 			if (resetCamera)
 			{
@@ -839,6 +843,8 @@ OpenGLExampleBrowser::~OpenGLExampleBrowser()
 bool OpenGLExampleBrowser::init(int argc, char* argv[])
 {
 	b3CommandLineArgs args(argc, argv);
+	sExampleArgc = argc;
+	sExampleArgv = argv;
 
 	loadCurrentSettings(startFileName, args);
 	if (args.CheckCmdLineFlag("nogui"))
