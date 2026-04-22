@@ -127,6 +127,13 @@ public:
 	// If true, newton's method with line search is used when implicit time stepping scheme is turned on
 	void setLineSearch(bool lineSearch);
 
+	void setMaxNewtonIterations(int maxNewtonIterations);
+
+	int getMaxNewtonIterations() const
+	{
+		return m_maxNewtonIterations;
+	}
+
 	// set temporary position x^* = x_n + dt * v
 	// update the deformation gradient at position x^*
 	void updateState();
