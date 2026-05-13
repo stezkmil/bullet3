@@ -34,6 +34,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "LinearMath/btConvexHullComputer.h"
 
 #include <map>
+#include <unordered_set>
 #include <vector>
 
 static void drawVertex(btIDebugDraw* idraw,
@@ -1129,17 +1130,58 @@ btSoftBody* btSoftBodyHelpers::CreateFromConvexHull(btSoftBodyWorldInfo& worldIn
 
 void btSoftBodyHelpers::PopulateTetras(btSoftBody* psb, const std::vector<std::array<int, 4>>& tetras, bool createLinks)
 {
-	for (auto& tetra : tetras)
+	const int tetraCount = static_cast<int>(tetras.size());
+	const int finalTetraCount = psb->m_tetras.size() + tetraCount;
+	psb->m_tetras.reserve(psb->m_tetras.size() + tetraCount);
+	psb->m_faces.reserve(psb->m_faces.size() + finalTetraCount * 4);
+	if (createLinks)
+	{
+		psb->m_links.reserve(psb->m_links.size() + tetraCount * 6);
+	}
+
+	std::unordered_set<unsigned long long> links;
+	const auto edgeKey = [](int node0, int node1)
+	{
+		const unsigned int minNode = static_cast<unsigned int>(btMin(node0, node1));
+		const unsigned int maxNode = static_cast<unsigned int>(btMax(node0, node1));
+		return (static_cast<unsigned long long>(minNode) << 32) | maxNode;
+	};
+
+	if (createLinks)
+	{
+		const btSoftBody::Node* nodes = psb->m_nodes.size() ? &psb->m_nodes[0] : 0;
+		links.reserve(static_cast<size_t>(psb->m_links.size() + tetraCount * 6));
+		for (int i = 0; i < psb->m_links.size(); ++i)
+		{
+			const btSoftBody::Link& link = psb->m_links[i];
+			if (link.m_n[0] && link.m_n[1])
+			{
+				const int node0 = static_cast<int>(link.m_n[0] - nodes);
+				const int node1 = static_cast<int>(link.m_n[1] - nodes);
+				links.insert(edgeKey(node0, node1));
+			}
+		}
+	}
+
+	const auto appendUniqueLink = [&](int node0, int node1)
+	{
+		if (links.insert(edgeKey(node0, node1)).second)
+		{
+			psb->appendLink(node0, node1, 0, false);
+		}
+	};
+
+	for (const auto& tetra : tetras)
 	{
 		psb->appendTetra(tetra[0], tetra[1], tetra[2], tetra[3]);
 		if (createLinks)
 		{
-			psb->appendLink(tetra[0], tetra[1], 0, true);
-			psb->appendLink(tetra[1], tetra[2], 0, true);
-			psb->appendLink(tetra[2], tetra[0], 0, true);
-			psb->appendLink(tetra[0], tetra[3], 0, true);
-			psb->appendLink(tetra[1], tetra[3], 0, true);
-			psb->appendLink(tetra[2], tetra[3], 0, true);
+			appendUniqueLink(tetra[0], tetra[1]);
+			appendUniqueLink(tetra[1], tetra[2]);
+			appendUniqueLink(tetra[2], tetra[0]);
+			appendUniqueLink(tetra[0], tetra[3]);
+			appendUniqueLink(tetra[1], tetra[3]);
+			appendUniqueLink(tetra[2], tetra[3]);
 		}
 	}
 
@@ -1390,18 +1432,6 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 		psb->m_nodes[i].index = counter++;
 		psb->m_nodes[i].local_index = psb->m_nodes[i].index;
 	}
-	typedef btAlignedObjectArray<int> Index;
-	btAlignedObjectArray<Index> indices;
-	indices.resize(psb->m_tetras.size());
-	for (int i = 0; i < indices.size(); ++i)
-	{
-		Index index;
-		index.push_back(psb->m_tetras[i].m_n[0]->index);
-		index.push_back(psb->m_tetras[i].m_n[1]->index);
-		index.push_back(psb->m_tetras[i].m_n[2]->index);
-		index.push_back(psb->m_tetras[i].m_n[3]->index);
-		indices[i] = index;
-	}
 
 	// Originally there was simply a std::vector as the map key. I worte this for a signle reason - to dodge one MSVC linker error (caused by MSVC's operator< for comparing two arrays or vectors) when using multiple MSVC versions at once. So, this can be safely deleted over time...
 	class FaceIndices
@@ -1446,44 +1476,46 @@ void btSoftBodyHelpers::generateBoundaryFaces(btSoftBody* psb)
 	};
 
 	std::map<FaceIndices, FaceIndices> dict;
-	for (int i = 0; i < indices.size(); ++i)
+	for (int i = 0; i < psb->m_tetras.size(); ++i)
 	{
+		const btSoftBody::Tetra& tetra = psb->m_tetras[i];
+		const int indices[] = {tetra.m_n[0]->index,
+							   tetra.m_n[1]->index,
+							   tetra.m_n[2]->index,
+							   tetra.m_n[3]->index};
 		for (int j = 0; j < 4; ++j)
 		{
 			FaceIndices f;
 			if (j == 0)
 			{
-				f.Set(0, indices[i][1]);
-				f.Set(1, indices[i][0]);
-				f.Set(2, indices[i][2]);
+				f.Set(0, indices[1]);
+				f.Set(1, indices[0]);
+				f.Set(2, indices[2]);
 			}
 			if (j == 1)
 			{
-				f.Set(0, indices[i][3]);
-				f.Set(1, indices[i][0]);
-				f.Set(2, indices[i][1]);
+				f.Set(0, indices[3]);
+				f.Set(1, indices[0]);
+				f.Set(2, indices[1]);
 			}
 			if (j == 2)
 			{
-				f.Set(0, indices[i][3]);
-				f.Set(1, indices[i][1]);
-				f.Set(2, indices[i][2]);
+				f.Set(0, indices[3]);
+				f.Set(1, indices[1]);
+				f.Set(2, indices[2]);
 			}
 			if (j == 3)
 			{
-				f.Set(0, indices[i][2]);
-				f.Set(1, indices[i][0]);
-				f.Set(2, indices[i][3]);
+				f.Set(0, indices[2]);
+				f.Set(1, indices[0]);
+				f.Set(2, indices[3]);
 			}
 			FaceIndices f_sorted = f;
 			f_sorted.Sort();
-			if (dict.find(f_sorted) != dict.end())
+			std::pair<std::map<FaceIndices, FaceIndices>::iterator, bool> inserted = dict.insert(std::make_pair(f_sorted, f));
+			if (!inserted.second)
 			{
-				dict.erase(f_sorted);
-			}
-			else
-			{
-				dict.insert(std::make_pair(f_sorted, f));
+				dict.erase(inserted.first);
 			}
 		}
 	}
