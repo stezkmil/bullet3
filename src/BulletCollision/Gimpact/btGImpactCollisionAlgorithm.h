@@ -48,7 +48,9 @@ class btDispatcher;
 #include "btGImpactCollisionAlgorithmEval.h"
 
 #include <vector>
+#ifdef BT_USE_TBB
 #include <tbb/tbb.h>
+#endif
 
 //! Collision Algorithm for GImpact Shapes
 /*!
