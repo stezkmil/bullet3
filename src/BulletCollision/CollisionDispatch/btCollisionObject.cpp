@@ -159,7 +159,7 @@ void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTet
 		// We sacrifice few iterations to move to the safe position only gradually. This significantly reduces the jitter of
 		// jumping between the safe and stuck positions. The unstuck position will be much closer to the real point of contact.
 		btScalar fraction = getLastSafeApplyCounter() / maxApplySteps;
-		fraction = std::min(fraction, 1.0);
+		fraction = std::min((double)fraction, 1.0);
 
 		btTransform dst = getLastSafeWorldTransform();
 		btTransform src = getWorldTransform();

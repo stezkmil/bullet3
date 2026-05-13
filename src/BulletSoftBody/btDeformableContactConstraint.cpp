@@ -97,9 +97,9 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		// This greatly improves convergence.
 		if (m_previous_residual_velocity_match != -1.0)
 			if (residualSquare > m_previous_residual_velocity_match)
-				m_convergence_based_relaxation_velocity_match = std::max(0.1, m_convergence_based_relaxation_velocity_match * misconvergenceRelaxationFactor);
+				m_convergence_based_relaxation_velocity_match = std::max(0.1, (double)m_convergence_based_relaxation_velocity_match * misconvergenceRelaxationFactor);
 			else
-				m_convergence_based_relaxation_velocity_match = std::min(1.0, m_convergence_based_relaxation_velocity_match * convergenceRelaxationFactor);
+				m_convergence_based_relaxation_velocity_match = std::min(1.0, (double)m_convergence_based_relaxation_velocity_match * convergenceRelaxationFactor);
 		m_previous_residual_velocity_match = residualSquare;
 
 		// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
@@ -255,9 +255,9 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 		// This greatly improves convergence.
 		if (m_previous_residual_position_drift != -1.0)
 			if (residualSquare > m_previous_residual_position_drift)
-				m_convergence_based_relaxation_position_drift = std::max(0.1, m_convergence_based_relaxation_position_drift * misconvergenceRelaxationFactor);
+				m_convergence_based_relaxation_position_drift = std::max(0.1, (double)m_convergence_based_relaxation_position_drift * misconvergenceRelaxationFactor);
 			else
-				m_convergence_based_relaxation_position_drift = std::min(1.0, m_convergence_based_relaxation_position_drift * convergenceRelaxationFactor);
+				m_convergence_based_relaxation_position_drift = std::min(1.0, (double)m_convergence_based_relaxation_position_drift * convergenceRelaxationFactor);
 		m_previous_residual_position_drift = residualSquare;
 
 		btVector3 rigid_impulse = (pos_diff * rigid_impulse_fraction * m_convergence_based_relaxation_position_drift) / infoGlobal.m_timeStep;

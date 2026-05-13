@@ -220,7 +220,7 @@ void btDeformableMultiBodyConstraintSolver::solveGroupCacheFriendlySplitImpulseI
 							auto it = bodyPenetrations.find(origBodyA);
 							if (it != bodyPenetrations.end())
 								existingPen = it->second;
-							bodyPenetrations.insert_or_assign(origBodyA, std::max(existingPen, solveManifold.m_rhsPenetration));
+							bodyPenetrations.insert_or_assign(origBodyA, std::max(existingPen, (double)solveManifold.m_rhsPenetration));
 						}
 						if (origBodyB)
 						{
@@ -228,7 +228,7 @@ void btDeformableMultiBodyConstraintSolver::solveGroupCacheFriendlySplitImpulseI
 							auto it = bodyPenetrations.find(origBodyB);
 							if (it != bodyPenetrations.end())
 								existingPen = it->second;
-							bodyPenetrations.insert_or_assign(origBodyB, std::max(existingPen, solveManifold.m_rhsPenetration));
+							bodyPenetrations.insert_or_assign(origBodyB, std::max(existingPen, (double)solveManifold.m_rhsPenetration));
 						}
 					}
 					// solve the position correction between deformable and rigid/multibody
