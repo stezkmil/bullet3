@@ -147,6 +147,7 @@ public:
 
 		// number of solver iterations
 		int m_numIterations;
+		int m_solverMode;
 
 		//damping of the velocity
 		btScalar m_damping;

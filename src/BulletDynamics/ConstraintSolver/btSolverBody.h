@@ -121,6 +121,7 @@ btSolverBody
 	btVector3 m_angularVelocity;
 	btVector3 m_externalForceImpulse;
 	btVector3 m_externalTorqueImpulse;
+	bool m_useAsIfUnitMass;
 
 	btRigidBody* m_originalBody;
 	void setWorldTransform(const btTransform& worldTransform)
@@ -217,6 +218,18 @@ btSolverBody
 	const btVector3& internalGetInvMass() const
 	{
 		return m_invMass;
+	}
+
+	const btVector3 internalGetInvMassAsIfUnitMass() const
+	{
+		if (!m_useAsIfUnitMass || m_invMass.isZero())
+			return m_invMass;
+		return btVector3(1, 1, 1);
+	}
+
+	void internalSetUseAsIfUnitMass(bool useAsIfUnitMass)
+	{
+		m_useAsIfUnitMass = useAsIfUnitMass;
 	}
 
 	void internalSetInvMass(const btVector3& invMass)

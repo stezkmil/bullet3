@@ -42,10 +42,33 @@ http://gimpact.sf.net
 */
 
 #include "btGeneric6DofSpring2Constraint.h"
+#include "btContactSolverInfo.h"
 #include "BulletDynamics/Dynamics/btRigidBody.h"
 #include "LinearMath/btTransformUtil.h"
 #include <cmath>
 #include <new>
+
+static bool btUseAsIfUnitMass(const btTypedConstraint::btConstraintInfo2* info)
+{
+	return info && (info->m_solverMode & SOLVER_AS_IF_UNIT_MASS) != 0;
+}
+
+static btScalar btSolverInvMass(const btRigidBody& body, bool useAsIfUnitMass)
+{
+	return useAsIfUnitMass && body.getInvMass() > btScalar(0) ? btScalar(1) : body.getInvMass();
+}
+
+static btMatrix3x3 btSolverInvInertiaTensorWorld(const btRigidBody& body, bool useAsIfUnitMass)
+{
+	if (body.getInvMass() <= btScalar(0))
+	{
+		btMatrix3x3 zero;
+		zero.setZero();
+		return zero;
+	}
+
+	return useAsIfUnitMass ? body.getInvInertiaTensorWorld() * (btScalar(1) / body.getInvMass()) : body.getInvInertiaTensorWorld();
+}
 
 btGeneric6DofSpring2Constraint::btGeneric6DofSpring2Constraint(btRigidBody& rbA, btRigidBody& rbB, const btTransform& frameInA, const btTransform& frameInB, RotateOrder rotOrder)
 	: btTypedConstraint(D6_SPRING_2_CONSTRAINT_TYPE, rbA, rbB), m_frameInA(frameInA), m_frameInB(frameInB), m_rotateOrder(rotOrder), m_flags(0)
@@ -412,20 +435,20 @@ void btGeneric6DofSpring2Constraint::calculateAngleInfo()
 	m_calculatedAxis[2].normalize();
 }
 
-void btGeneric6DofSpring2Constraint::calculateTransforms()
+void btGeneric6DofSpring2Constraint::calculateTransforms(bool useAsIfUnitMass)
 {
-	calculateTransforms(m_rbA.getCenterOfMassTransform(), m_rbB.getCenterOfMassTransform());
+	calculateTransforms(m_rbA.getCenterOfMassTransform(), m_rbB.getCenterOfMassTransform(), useAsIfUnitMass);
 }
 
-void btGeneric6DofSpring2Constraint::calculateTransforms(const btTransform& transA, const btTransform& transB)
+void btGeneric6DofSpring2Constraint::calculateTransforms(const btTransform& transA, const btTransform& transB, bool useAsIfUnitMass)
 {
 	m_calculatedTransformA = transA * m_frameInA;
 	m_calculatedTransformB = transB * m_frameInB;
 	calculateLinearInfo();
 	calculateAngleInfo();
 
-	btScalar miA = getRigidBodyA().getInvMass();
-	btScalar miB = getRigidBodyB().getInvMass();
+	btScalar miA = btSolverInvMass(getRigidBodyA(), useAsIfUnitMass);
+	btScalar miB = btSolverInvMass(getRigidBodyB(), useAsIfUnitMass);
 	m_hasStaticBody = (miA < SIMD_EPSILON) || (miB < SIMD_EPSILON);
 	btScalar miS = miA + miB;
 	if (miS > btScalar(0.f))
@@ -479,6 +502,8 @@ void btGeneric6DofSpring2Constraint::getInfo1(btConstraintInfo1* info)
 
 void btGeneric6DofSpring2Constraint::getInfo2(btConstraintInfo2* info)
 {
+	calculateTransforms(m_rbA.getCenterOfMassTransform(), m_rbB.getCenterOfMassTransform(), btUseAsIfUnitMass(info));
+
 	const btTransform& transA = m_rbA.getCenterOfMassTransform();
 	const btTransform& transB = m_rbB.getCenterOfMassTransform();
 	const btVector3& linVelA = m_rbA.getLinearVelocity();
@@ -837,19 +862,24 @@ int btGeneric6DofSpring2Constraint::get_limit_motor_info2(
 			vel = (linVelA + tanVelA).dot(ax1) - (linVelB + tanVelB).dot(ax1);
 		}
 		btScalar cfm = BT_ZERO;
-		btScalar mA = BT_ONE / m_rbA.getInvMass();
-		btScalar mB = BT_ONE / m_rbB.getInvMass();
+		const bool useAsIfUnitMass = btUseAsIfUnitMass(info);
+		const btScalar invMassA = btSolverInvMass(m_rbA, useAsIfUnitMass);
+		const btScalar invMassB = btSolverInvMass(m_rbB, useAsIfUnitMass);
+		btScalar mA = invMassA > btScalar(0) ? BT_ONE / invMassA : BT_ZERO;
+		btScalar mB = invMassB > btScalar(0) ? BT_ONE / invMassB : BT_ZERO;
 		if (rotational)
 		{
 			btScalar rrA = (m_calculatedTransformA.getOrigin() - transA.getOrigin()).length2();
 			btScalar rrB = (m_calculatedTransformB.getOrigin() - transB.getOrigin()).length2();
-			if (m_rbA.getInvMass()) mA = mA * rrA + 1 / (m_rbA.getInvInertiaTensorWorld() * ax1).length();
-			if (m_rbB.getInvMass()) mB = mB * rrB + 1 / (m_rbB.getInvInertiaTensorWorld() * ax1).length();
+			const btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(m_rbA, useAsIfUnitMass);
+			const btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_B = btSolverInvInertiaTensorWorld(m_rbB, useAsIfUnitMass);
+			if (invMassA > btScalar(0)) mA = mA * rrA + 1 / (invInertiaTensorWorldAsIfUnitMass_A * ax1).length();
+			if (invMassB > btScalar(0)) mB = mB * rrB + 1 / (invInertiaTensorWorldAsIfUnitMass_B * ax1).length();
 		}
 		btScalar m;
-		if (m_rbA.getInvMass() == 0)
+		if (invMassA == btScalar(0))
 			m = mB;
-		else if (m_rbB.getInvMass() == 0)
+		else if (invMassB == btScalar(0))
 			m = mA;
 		else
 			m = mA * mB / (mA + mB);
