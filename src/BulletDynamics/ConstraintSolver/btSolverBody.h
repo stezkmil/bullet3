@@ -232,6 +232,11 @@ btSolverBody
 		m_useAsIfUnitMass = useAsIfUnitMass;
 	}
 
+	bool internalGetUseAsIfUnitMass() const
+	{
+		return m_useAsIfUnitMass;
+	}
+
 	void internalSetInvMass(const btVector3& invMass)
 	{
 		m_invMass = invMass;

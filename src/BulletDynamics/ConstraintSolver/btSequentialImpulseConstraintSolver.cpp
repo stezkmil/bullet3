@@ -57,6 +57,11 @@ static bool btUseAsIfUnitMass(const btContactSolverInfo& infoGlobal)
 	return (infoGlobal.m_solverMode & SOLVER_AS_IF_UNIT_MASS) != 0;
 }
 
+static bool btUseAsIfUnitMassForConstraint(const btTypedConstraint* constraint, const btContactSolverInfo& infoGlobal)
+{
+	return btUseAsIfUnitMass(infoGlobal) && constraint && constraint->getConstraintType() == D6_SPRING_2_CONSTRAINT_TYPE;
+}
+
 static btScalar btSolverInvMass(const btRigidBody* body, bool useAsIfUnitMass)
 {
 	return useAsIfUnitMass ? btAsIfUnitInvMass(body) : (body ? body->getInvMass() : btScalar(0));
@@ -72,6 +77,22 @@ static btMatrix3x3 btSolverInvInertiaTensorWorld(const btRigidBody* body, bool u
 	}
 
 	return useAsIfUnitMass ? body->getInvInertiaTensorWorld() * (btScalar(1) / body->getInvMass()) : body->getInvInertiaTensorWorld();
+}
+
+static void btEnableAsIfUnitMass(btSolverBody& solverBody, btScalar timeStep)
+{
+	if (solverBody.internalGetUseAsIfUnitMass())
+		return;
+
+	solverBody.internalSetUseAsIfUnitMass(true);
+	btRigidBody* body = solverBody.m_originalBody;
+	if (body && body->getInvMass() > btScalar(0))
+	{
+		// Solver bodies can be created before we know they belong to a Spring2 constraint.
+		// Recompute the torque impulse so promoted bodies do not mix raw-mass external torque
+		// with as-if-unit-mass constraint response.
+		solverBody.m_externalTorqueImpulse = body->getTotalTorque() * btSolverInvInertiaTensorWorld(body, true) * timeStep;
+	}
 }
 ///This is the scalar reference implementation of solving a single constraint row, the innerloop of the Projected Gauss Seidel/Sequential Impulse constraint solver
 ///Below are optional SSE2 and SSE4/FMA3 versions. We assume most hardware has SSE2. For SSE4/FMA3 we perform a CPU feature check.
@@ -557,9 +578,10 @@ void btSequentialImpulseConstraintSolver::applyAnisotropicFriction(btCollisionOb
 
 void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstraint& solverConstraint, const btVector3& normalAxis, int solverBodyIdA, int solverBodyIdB, btManifoldPoint& cp, const btVector3& rel_pos1, const btVector3& rel_pos2, btCollisionObject* colObj0, btCollisionObject* colObj1, btScalar relaxation, const btContactSolverInfo& infoGlobal, btScalar desiredVelocity, btScalar cfmSlip)
 {
-	const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
 	btSolverBody& solverBodyA = m_tmpSolverBodyPool[solverBodyIdA];
 	btSolverBody& solverBodyB = m_tmpSolverBodyPool[solverBodyIdB];
+	const bool useAsIfUnitMassA = solverBodyA.internalGetUseAsIfUnitMass();
+	const bool useAsIfUnitMassB = solverBodyB.internalGetUseAsIfUnitMass();
 
 	btRigidBody* body0 = m_tmpSolverBodyPool[solverBodyIdA].m_originalBody;
 	btRigidBody* bodyA = m_tmpSolverBodyPool[solverBodyIdB].m_originalBody;
@@ -577,7 +599,7 @@ void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstr
 	{
 		// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 		// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-		btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = btSolverInvInertiaTensorWorld(body0, useAsIfUnitMass);
+		btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = btSolverInvInertiaTensorWorld(body0, useAsIfUnitMassA);
 
 		solverConstraint.m_contactNormal1 = normalAxis;
 		btVector3 ftorqueAxis1 = rel_pos1.cross(solverConstraint.m_contactNormal1);
@@ -595,7 +617,7 @@ void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstr
 	{
 		// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 		// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-		btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(bodyA, useAsIfUnitMass);
+		btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(bodyA, useAsIfUnitMassB);
 
 		solverConstraint.m_contactNormal2 = -normalAxis;
 		btVector3 ftorqueAxis1 = rel_pos2.cross(solverConstraint.m_contactNormal2);
@@ -616,12 +638,12 @@ void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstr
 		if (body0)
 		{
 			vec = (solverConstraint.m_angularComponentA).cross(rel_pos1);
-			denom0 = btSolverInvMass(body0, useAsIfUnitMass) + normalAxis.dot(vec);
+			denom0 = btSolverInvMass(body0, useAsIfUnitMassA) + normalAxis.dot(vec);
 		}
 		if (bodyA)
 		{
 			vec = (-solverConstraint.m_angularComponentB).cross(rel_pos2);
-			denom1 = btSolverInvMass(bodyA, useAsIfUnitMass) + normalAxis.dot(vec);
+			denom1 = btSolverInvMass(bodyA, useAsIfUnitMassB) + normalAxis.dot(vec);
 		}
 		btScalar denom = relaxation / (denom0 + denom1);
 		solverConstraint.m_jacDiagABInv = denom;
@@ -671,13 +693,14 @@ void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSol
 																		   const btContactSolverInfo& infoGlobal, btScalar desiredVelocity, btScalar cfmSlip)
 
 {
-	const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
 	btVector3 normalAxis(0, 0, 0);
 
 	solverConstraint.m_contactNormal1 = normalAxis;
 	solverConstraint.m_contactNormal2 = -normalAxis;
 	btSolverBody& solverBodyA = m_tmpSolverBodyPool[solverBodyIdA];
 	btSolverBody& solverBodyB = m_tmpSolverBodyPool[solverBodyIdB];
+	const bool useAsIfUnitMassA = solverBodyA.internalGetUseAsIfUnitMass();
+	const bool useAsIfUnitMassB = solverBodyB.internalGetUseAsIfUnitMass();
 
 	btRigidBody* body0 = m_tmpSolverBodyPool[solverBodyIdA].m_originalBody;
 	btRigidBody* bodyA = m_tmpSolverBodyPool[solverBodyIdB].m_originalBody;
@@ -693,11 +716,11 @@ void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSol
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = btSolverInvInertiaTensorWorld(body0, useAsIfUnitMass);
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = btSolverInvInertiaTensorWorld(body0, useAsIfUnitMassA);
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(bodyA, useAsIfUnitMass);
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(bodyA, useAsIfUnitMassB);
 
 	{
 		btVector3 ftorqueAxis1 = -normalAxis1;
@@ -860,12 +883,13 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 																 btScalar& relaxation,
 																 const btVector3& rel_pos1, const btVector3& rel_pos2)
 {
-	const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
 	//	const btVector3& pos1 = cp.getPositionWorldOnA();
 	//	const btVector3& pos2 = cp.getPositionWorldOnB();
 
 	btSolverBody* bodyA = &m_tmpSolverBodyPool[solverBodyIdA];
 	btSolverBody* bodyB = &m_tmpSolverBodyPool[solverBodyIdB];
+	const bool useAsIfUnitMassA = bodyA->internalGetUseAsIfUnitMass();
+	const bool useAsIfUnitMassB = bodyB->internalGetUseAsIfUnitMass();
 
 	btRigidBody* rb0 = bodyA->m_originalBody;
 	btRigidBody* rb1 = bodyB->m_originalBody;
@@ -909,11 +933,11 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = btSolverInvInertiaTensorWorld(rb0, useAsIfUnitMass);
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_0 = btSolverInvInertiaTensorWorld(rb0, useAsIfUnitMassA);
 
 	// This is a workaround for exploding constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 	// not exploding in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_1 = btSolverInvInertiaTensorWorld(rb1, useAsIfUnitMass);
+	btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_1 = btSolverInvInertiaTensorWorld(rb1, useAsIfUnitMassB);
 
 	btVector3 torqueAxis0 = rel_pos1.cross(cp.m_normalWorldOnB);
 	solverConstraint.m_angularComponentA = rb0 ? invInertiaTensorWorldAsIfUnitMass_0 * torqueAxis0 * rb0->getAngularFactor() : btVector3(0, 0, 0);
@@ -931,12 +955,12 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 		if (rb0)
 		{
 			vec = (solverConstraint.m_angularComponentA).cross(rel_pos1);
-			denom0 = btSolverInvMass(rb0, useAsIfUnitMass) + cp.m_normalWorldOnB.dot(vec);
+			denom0 = btSolverInvMass(rb0, useAsIfUnitMassA) + cp.m_normalWorldOnB.dot(vec);
 		}
 		if (rb1)
 		{
 			vec = (-solverConstraint.m_angularComponentB).cross(rel_pos2);
-			denom1 = btSolverInvMass(rb1, useAsIfUnitMass) + cp.m_normalWorldOnB.dot(vec);
+			denom1 = btSolverInvMass(rb1, useAsIfUnitMassB) + cp.m_normalWorldOnB.dot(vec);
 		}
 #endif  //COMPUTE_IMPULSE_DENOM
 
@@ -1073,9 +1097,8 @@ void btSequentialImpulseConstraintSolver::convertContact(btPersistentManifold* m
 	colObj0 = (btCollisionObject*)manifold->getBody0();
 	colObj1 = (btCollisionObject*)manifold->getBody1();
 
-	const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
-	int solverBodyIdA = getOrInitSolverBody(*colObj0, infoGlobal.m_timeStep, useAsIfUnitMass);
-	int solverBodyIdB = getOrInitSolverBody(*colObj1, infoGlobal.m_timeStep, useAsIfUnitMass);
+	int solverBodyIdA = getOrInitSolverBody(*colObj0, infoGlobal.m_timeStep, false);
+	int solverBodyIdB = getOrInitSolverBody(*colObj1, infoGlobal.m_timeStep, false);
 
 	//	btRigidBody* bodyA = btRigidBody::upcast(colObj0);
 	//	btRigidBody* bodyB = btRigidBody::upcast(colObj1);
@@ -1247,8 +1270,14 @@ void btSequentialImpulseConstraintSolver::convertJoint(btSolverConstraint* curre
 	const btRigidBody& rbA = constraint->getRigidBodyA();
 	const btRigidBody& rbB = constraint->getRigidBodyB();
 
-	const btSolverBody* bodyAPtr = &m_tmpSolverBodyPool[solverBodyIdA];
-	const btSolverBody* bodyBPtr = &m_tmpSolverBodyPool[solverBodyIdB];
+	btSolverBody* bodyAPtr = &m_tmpSolverBodyPool[solverBodyIdA];
+	btSolverBody* bodyBPtr = &m_tmpSolverBodyPool[solverBodyIdB];
+	const bool useAsIfUnitMassForJoint = btUseAsIfUnitMassForConstraint(constraint, infoGlobal);
+	if (useAsIfUnitMassForJoint)
+	{
+		btEnableAsIfUnitMass(*bodyAPtr, infoGlobal.m_timeStep);
+		btEnableAsIfUnitMass(*bodyBPtr, infoGlobal.m_timeStep);
+	}
 
 	int overrideNumSolverIterations = constraint->getOverrideNumSolverIterations() > 0 ? constraint->getOverrideNumSolverIterations() : infoGlobal.m_numIterations;
 	if (overrideNumSolverIterations > m_maxOverrideNumSolverIterations)
@@ -1324,9 +1353,8 @@ void btSequentialImpulseConstraintSolver::convertJoint(btSolverConstraint* curre
 		{
 			// This is a workaround for weak constraints when there are high mass differences. Simulates a scenario when both bodies have unit mass (constraints are
 			// strong as they should be in such case). If this workaround is problematic in some cases, then it will have to be enabled optionally using some flag.
-			const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
-			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(&rbA, useAsIfUnitMass);
-			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_B = btSolverInvInertiaTensorWorld(&rbB, useAsIfUnitMass);
+			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(&rbA, useAsIfUnitMassForJoint);
+			btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_B = btSolverInvInertiaTensorWorld(&rbB, useAsIfUnitMassForJoint);
 
 			{
 				const btVector3& ftorqueAxis1 = solverConstraint.m_relpos1CrossNormal;
@@ -1338,9 +1366,9 @@ void btSequentialImpulseConstraintSolver::convertJoint(btSolverConstraint* curre
 			}
 
 			{
-				btVector3 iMJlA = solverConstraint.m_contactNormal1 * btSolverInvMass(&rbA, useAsIfUnitMass);
+				btVector3 iMJlA = solverConstraint.m_contactNormal1 * btSolverInvMass(&rbA, useAsIfUnitMassForJoint);
 				btVector3 iMJaA = /*rbA.getInvInertiaTensorWorld()*/ invInertiaTensorWorldAsIfUnitMass_A * solverConstraint.m_relpos1CrossNormal;
-				btVector3 iMJlB = solverConstraint.m_contactNormal2 * btSolverInvMass(&rbB, useAsIfUnitMass);  //sign of normal?
+				btVector3 iMJlB = solverConstraint.m_contactNormal2 * btSolverInvMass(&rbB, useAsIfUnitMassForJoint);  //sign of normal?
 				btVector3 iMJaB = /*rbB.getInvInertiaTensorWorld()*/ invInertiaTensorWorldAsIfUnitMass_B * solverConstraint.m_relpos2CrossNormal;
 
 				btScalar sum = iMJlA.dot(solverConstraint.m_contactNormal1);
@@ -1433,7 +1461,7 @@ void btSequentialImpulseConstraintSolver::convertJoints(btTypedConstraint** cons
 			btRigidBody& rbA = constraint->getRigidBodyA();
 			btRigidBody& rbB = constraint->getRigidBodyB();
 
-			const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
+			const bool useAsIfUnitMass = btUseAsIfUnitMassForConstraint(constraint, infoGlobal);
 			int solverBodyIdA = getOrInitSolverBody(rbA, infoGlobal.m_timeStep, useAsIfUnitMass);
 			int solverBodyIdB = getOrInitSolverBody(rbB, infoGlobal.m_timeStep, useAsIfUnitMass);
 
@@ -1462,7 +1490,7 @@ void btSequentialImpulseConstraintSolver::convertBodies(btCollisionObject** bodi
 
 	for (int i = 0; i < numBodies; i++)
 	{
-		int bodyId = getOrInitSolverBody(*bodies[i], infoGlobal.m_timeStep, btUseAsIfUnitMass(infoGlobal));
+		int bodyId = getOrInitSolverBody(*bodies[i], infoGlobal.m_timeStep, false);
 
 		btRigidBody* body = btRigidBody::upcast(bodies[i]);
 		if (body && body->getInvMass())
@@ -1671,11 +1699,16 @@ btScalar btSequentialImpulseConstraintSolver::solveSingleIteration(int iteration
 		{
 			if (constraints[j]->isEnabled())
 			{
-				const bool useAsIfUnitMass = btUseAsIfUnitMass(infoGlobal);
+				const bool useAsIfUnitMass = btUseAsIfUnitMassForConstraint(constraints[j], infoGlobal);
 				int bodyAid = getOrInitSolverBody(constraints[j]->getRigidBodyA(), infoGlobal.m_timeStep, useAsIfUnitMass);
 				int bodyBid = getOrInitSolverBody(constraints[j]->getRigidBodyB(), infoGlobal.m_timeStep, useAsIfUnitMass);
 				btSolverBody& bodyA = m_tmpSolverBodyPool[bodyAid];
 				btSolverBody& bodyB = m_tmpSolverBodyPool[bodyBid];
+				if (useAsIfUnitMass)
+				{
+					btEnableAsIfUnitMass(bodyA, infoGlobal.m_timeStep);
+					btEnableAsIfUnitMass(bodyB, infoGlobal.m_timeStep);
+				}
 				constraints[j]->solveConstraintObsolete(bodyA, bodyB, infoGlobal.m_timeStep);
 			}
 		}
