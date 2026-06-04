@@ -120,6 +120,7 @@ void btSequentialImpulseConstraintSolverMt::internalSetupContactConstraints(int 
 										 colObj0,
 										 colObj1,
 										 relaxation,
+										 infoGlobal,
 										 0.0f,
 										 0.0f);
 		btVector3 axis[2];
@@ -156,6 +157,7 @@ void btSequentialImpulseConstraintSolverMt::internalSetupContactConstraints(int 
 												 colObj0,
 												 colObj1,
 												 relaxation,
+												 infoGlobal,
 												 0.0f,
 												 0.0f);
 			}

@@ -737,16 +737,6 @@ void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSol
 	}
 }
 
-void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSolverConstraint& solverConstraint, const btVector3& normalAxis1, int solverBodyIdA, int solverBodyIdB,
-																		   btManifoldPoint& cp, btScalar combinedTorsionalFriction, const btVector3& rel_pos1, const btVector3& rel_pos2,
-																		   btCollisionObject* colObj0, btCollisionObject* colObj1, btScalar relaxation,
-																		   btScalar desiredVelocity, btScalar cfmSlip)
-{
-	btContactSolverInfo infoGlobal;
-	setupTorsionalFrictionConstraint(solverConstraint, normalAxis1, solverBodyIdA, solverBodyIdB, cp, combinedTorsionalFriction, rel_pos1, rel_pos2,
-									 colObj0, colObj1, relaxation, infoGlobal, desiredVelocity, cfmSlip);
-}
-
 btSolverConstraint& btSequentialImpulseConstraintSolver::addTorsionalFrictionConstraint(const btVector3& normalAxis, int solverBodyIdA, int solverBodyIdB, int frictionIndex, btManifoldPoint& cp, btScalar combinedTorsionalFriction, const btVector3& rel_pos1, const btVector3& rel_pos2, btCollisionObject* colObj0, btCollisionObject* colObj1, btScalar relaxation, const btContactSolverInfo& infoGlobal, btScalar desiredVelocity, btScalar cfmSlip)
 {
 	btSolverConstraint& solverConstraint = m_tmpSolverContactRollingFrictionConstraintPool.expandNonInitializing();
