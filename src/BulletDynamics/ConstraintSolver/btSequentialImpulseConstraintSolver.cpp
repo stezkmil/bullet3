@@ -33,6 +33,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 //#include "btJacobianEntry.h"
 #include "LinearMath/btMinMax.h"
 #include "BulletDynamics/ConstraintSolver/btTypedConstraint.h"
+#include "BulletDynamics/ConstraintSolver/btGeneric6DofSpring2Constraint.h"
 #include <new>
 #include "LinearMath/btStackAlloc.h"
 #include "LinearMath/btQuickprof.h"
@@ -59,7 +60,16 @@ static bool btUseAsIfUnitMass(const btContactSolverInfo& infoGlobal)
 
 static bool btUseAsIfUnitMassForConstraint(const btTypedConstraint* constraint, const btContactSolverInfo& infoGlobal)
 {
-	return btUseAsIfUnitMass(infoGlobal) && constraint && constraint->getConstraintType() == D6_SPRING_2_CONSTRAINT_TYPE;
+	if (!btUseAsIfUnitMass(infoGlobal) || !constraint || constraint->getConstraintType() != D6_SPRING_2_CONSTRAINT_TYPE)
+	{
+		return false;
+	}
+
+	const btGeneric6DofSpring2Constraint* spring2 = static_cast<const btGeneric6DofSpring2Constraint*>(constraint);
+	// Limit the workaround to Spring2 constraints that rigidly constrain rotation. Spring2 is also
+	// used for hand grabbing with free angular axes, where changing the effective mass would alter
+	// the intended interaction without improving the strength of a locked or limited joint.
+	return spring2->hasLimitedAngularAxis();
 }
 
 static btScalar btSolverInvMass(const btRigidBody* body, bool useAsIfUnitMass)
@@ -123,8 +133,8 @@ static btScalar gResolveSingleConstraintRowGeneric_scalar_reference(btSolverBody
 		c.m_appliedImpulse = sum;
 	}
 
-	bodyA.internalApplyImpulse(c.m_contactNormal1 * bodyA.internalGetInvMassAsIfUnitMass(), c.m_angularComponentA, deltaImpulse);
-	bodyB.internalApplyImpulse(c.m_contactNormal2 * bodyB.internalGetInvMassAsIfUnitMass(), c.m_angularComponentB, deltaImpulse);
+	bodyA.internalApplyImpulse(c.m_contactNormal1 * bodyA.internalGetInvMassAsIfUnitMass(c.m_useAsIfUnitMass != 0), c.m_angularComponentA, deltaImpulse);
+	bodyB.internalApplyImpulse(c.m_contactNormal2 * bodyB.internalGetInvMassAsIfUnitMass(c.m_useAsIfUnitMass != 0), c.m_angularComponentB, deltaImpulse);
 
 	return deltaImpulse * (1. / c.m_jacDiagABInv);
 }
@@ -148,8 +158,8 @@ static btScalar gResolveSingleConstraintRowLowerLimit_scalar_reference(btSolverB
 	{
 		c.m_appliedImpulse = sum;
 	}
-	bodyA.internalApplyImpulse(c.m_contactNormal1 * bodyA.internalGetInvMassAsIfUnitMass(), c.m_angularComponentA, deltaImpulse);
-	bodyB.internalApplyImpulse(c.m_contactNormal2 * bodyB.internalGetInvMassAsIfUnitMass(), c.m_angularComponentB, deltaImpulse);
+	bodyA.internalApplyImpulse(c.m_contactNormal1 * bodyA.internalGetInvMassAsIfUnitMass(c.m_useAsIfUnitMass != 0), c.m_angularComponentA, deltaImpulse);
+	bodyB.internalApplyImpulse(c.m_contactNormal2 * bodyB.internalGetInvMassAsIfUnitMass(c.m_useAsIfUnitMass != 0), c.m_angularComponentB, deltaImpulse);
 
 	return deltaImpulse * (1. / c.m_jacDiagABInv);
 }
@@ -580,14 +590,15 @@ void btSequentialImpulseConstraintSolver::setupFrictionConstraint(btSolverConstr
 {
 	btSolverBody& solverBodyA = m_tmpSolverBodyPool[solverBodyIdA];
 	btSolverBody& solverBodyB = m_tmpSolverBodyPool[solverBodyIdB];
-	const bool useAsIfUnitMassA = solverBodyA.internalGetUseAsIfUnitMass();
-	const bool useAsIfUnitMassB = solverBodyB.internalGetUseAsIfUnitMass();
+	const bool useAsIfUnitMassA = false;
+	const bool useAsIfUnitMassB = false;
 
 	btRigidBody* body0 = m_tmpSolverBodyPool[solverBodyIdA].m_originalBody;
 	btRigidBody* bodyA = m_tmpSolverBodyPool[solverBodyIdB].m_originalBody;
 
 	solverConstraint.m_solverBodyIdA = solverBodyIdA;
 	solverConstraint.m_solverBodyIdB = solverBodyIdB;
+	solverConstraint.m_useAsIfUnitMass = false;
 
 	solverConstraint.m_friction = cp.m_combinedFriction;
 	solverConstraint.m_originalContactPoint = 0;
@@ -699,14 +710,15 @@ void btSequentialImpulseConstraintSolver::setupTorsionalFrictionConstraint(btSol
 	solverConstraint.m_contactNormal2 = -normalAxis;
 	btSolverBody& solverBodyA = m_tmpSolverBodyPool[solverBodyIdA];
 	btSolverBody& solverBodyB = m_tmpSolverBodyPool[solverBodyIdB];
-	const bool useAsIfUnitMassA = solverBodyA.internalGetUseAsIfUnitMass();
-	const bool useAsIfUnitMassB = solverBodyB.internalGetUseAsIfUnitMass();
+	const bool useAsIfUnitMassA = false;
+	const bool useAsIfUnitMassB = false;
 
 	btRigidBody* body0 = m_tmpSolverBodyPool[solverBodyIdA].m_originalBody;
 	btRigidBody* bodyA = m_tmpSolverBodyPool[solverBodyIdB].m_originalBody;
 
 	solverConstraint.m_solverBodyIdA = solverBodyIdA;
 	solverConstraint.m_solverBodyIdB = solverBodyIdB;
+	solverConstraint.m_useAsIfUnitMass = false;
 
 	solverConstraint.m_friction = combinedTorsionalFriction;
 	solverConstraint.m_originalContactPoint = 0;
@@ -883,13 +895,14 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 																 btScalar& relaxation,
 																 const btVector3& rel_pos1, const btVector3& rel_pos2)
 {
+	solverConstraint.m_useAsIfUnitMass = false;
 	//	const btVector3& pos1 = cp.getPositionWorldOnA();
 	//	const btVector3& pos2 = cp.getPositionWorldOnB();
 
 	btSolverBody* bodyA = &m_tmpSolverBodyPool[solverBodyIdA];
 	btSolverBody* bodyB = &m_tmpSolverBodyPool[solverBodyIdB];
-	const bool useAsIfUnitMassA = bodyA->internalGetUseAsIfUnitMass();
-	const bool useAsIfUnitMassB = bodyB->internalGetUseAsIfUnitMass();
+	const bool useAsIfUnitMassA = false;
+	const bool useAsIfUnitMassB = false;
 
 	btRigidBody* rb0 = bodyA->m_originalBody;
 	btRigidBody* rb1 = bodyB->m_originalBody;
@@ -1016,9 +1029,9 @@ void btSequentialImpulseConstraintSolver::setupContactConstraint(btSolverConstra
 	{
 		solverConstraint.m_appliedImpulse = cp.m_appliedImpulse * infoGlobal.m_warmstartingFactor;
 		if (rb0)
-			bodyA->internalApplyImpulse(solverConstraint.m_contactNormal1 * bodyA->internalGetInvMassAsIfUnitMass(), solverConstraint.m_angularComponentA, solverConstraint.m_appliedImpulse);
+			bodyA->internalApplyImpulse(solverConstraint.m_contactNormal1 * bodyA->internalGetInvMassAsIfUnitMass(solverConstraint.m_useAsIfUnitMass != 0), solverConstraint.m_angularComponentA, solverConstraint.m_appliedImpulse);
 		if (rb1)
-			bodyB->internalApplyImpulse(-solverConstraint.m_contactNormal2 * bodyB->internalGetInvMassAsIfUnitMass(), -solverConstraint.m_angularComponentB, -(btScalar)solverConstraint.m_appliedImpulse);
+			bodyB->internalApplyImpulse(-solverConstraint.m_contactNormal2 * bodyB->internalGetInvMassAsIfUnitMass(solverConstraint.m_useAsIfUnitMass != 0), -solverConstraint.m_angularComponentB, -(btScalar)solverConstraint.m_appliedImpulse);
 	}
 	else
 	{
@@ -1132,6 +1145,7 @@ void btSequentialImpulseConstraintSolver::convertContact(btPersistentManifold* m
 			btSolverConstraint& solverConstraint = m_tmpSolverContactConstraintPool.expandNonInitializing();
 			solverConstraint.m_solverBodyIdA = solverBodyIdA;
 			solverConstraint.m_solverBodyIdB = solverBodyIdB;
+			solverConstraint.m_useAsIfUnitMass = false;
 
 			solverConstraint.m_originalContactPoint = &cp;
 
@@ -1292,6 +1306,7 @@ void btSequentialImpulseConstraintSolver::convertJoint(btSolverConstraint* curre
 		currentConstraintRow[j].m_appliedPushImpulse = 0.f;
 		currentConstraintRow[j].m_solverBodyIdA = solverBodyIdA;
 		currentConstraintRow[j].m_solverBodyIdB = solverBodyIdB;
+		currentConstraintRow[j].m_useAsIfUnitMass = useAsIfUnitMassForJoint;
 		currentConstraintRow[j].m_overrideNumSolverIterations = overrideNumSolverIterations;
 	}
 

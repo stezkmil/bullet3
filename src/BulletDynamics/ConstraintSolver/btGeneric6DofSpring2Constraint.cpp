@@ -48,9 +48,9 @@ http://gimpact.sf.net
 #include <cmath>
 #include <new>
 
-static bool btUseAsIfUnitMass(const btTypedConstraint::btConstraintInfo2* info)
+static bool btUseAsIfUnitMass(const btGeneric6DofSpring2Constraint& constraint, const btTypedConstraint::btConstraintInfo2* info)
 {
-	return info && (info->m_solverMode & SOLVER_AS_IF_UNIT_MASS) != 0;
+	return info && (info->m_solverMode & SOLVER_AS_IF_UNIT_MASS) != 0 && constraint.hasLimitedAngularAxis();
 }
 
 static btScalar btSolverInvMass(const btRigidBody& body, bool useAsIfUnitMass)
@@ -502,7 +502,7 @@ void btGeneric6DofSpring2Constraint::getInfo1(btConstraintInfo1* info)
 
 void btGeneric6DofSpring2Constraint::getInfo2(btConstraintInfo2* info)
 {
-	calculateTransforms(m_rbA.getCenterOfMassTransform(), m_rbB.getCenterOfMassTransform(), btUseAsIfUnitMass(info));
+	calculateTransforms(m_rbA.getCenterOfMassTransform(), m_rbB.getCenterOfMassTransform(), btUseAsIfUnitMass(*this, info));
 
 	const btTransform& transA = m_rbA.getCenterOfMassTransform();
 	const btTransform& transB = m_rbB.getCenterOfMassTransform();
@@ -862,7 +862,7 @@ int btGeneric6DofSpring2Constraint::get_limit_motor_info2(
 			vel = (linVelA + tanVelA).dot(ax1) - (linVelB + tanVelB).dot(ax1);
 		}
 		btScalar cfm = BT_ZERO;
-		const bool useAsIfUnitMass = btUseAsIfUnitMass(info);
+		const bool useAsIfUnitMass = btUseAsIfUnitMass(*this, info);
 		const btScalar invMassA = btSolverInvMass(m_rbA, useAsIfUnitMass);
 		const btScalar invMassB = btSolverInvMass(m_rbB, useAsIfUnitMass);
 		btScalar mA = invMassA > btScalar(0) ? BT_ONE / invMassA : BT_ZERO;

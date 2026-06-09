@@ -220,9 +220,9 @@ btSolverBody
 		return m_invMass;
 	}
 
-	const btVector3 internalGetInvMassAsIfUnitMass() const
+	const btVector3 internalGetInvMassAsIfUnitMass(bool useAsIfUnitMass) const
 	{
-		if (!m_useAsIfUnitMass || m_invMass.isZero())
+		if (!useAsIfUnitMass || m_invMass.isZero())
 			return m_invMass;
 		return btVector3(1, 1, 1);
 	}

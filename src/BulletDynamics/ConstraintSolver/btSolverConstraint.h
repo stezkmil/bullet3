@@ -66,6 +66,7 @@ btSolverConstraint
 	int m_frictionIndex;
 	int m_solverBodyIdA;
 	int m_solverBodyIdB;
+	int m_useAsIfUnitMass;
 
 	enum btSolverConstraintType
 	{

@@ -152,7 +152,7 @@ public:
 		m_currentLimit = limot.m_currentLimit;
 	}
 
-	bool isLimited()
+	bool isLimited() const
 	{
 		if (m_loLimit > m_hiLimit) return false;
 		return true;
@@ -255,7 +255,7 @@ public:
 		}
 	}
 
-	inline bool isLimited(int limitIndex)
+	inline bool isLimited(int limitIndex) const
 	{
 		return (m_upperLimit[limitIndex] >= m_lowerLimit[limitIndex]);
 	}
@@ -445,13 +445,18 @@ public:
 		}
 	}
 
-	bool isLimited(int limitIndex)
+	bool isLimited(int limitIndex) const
 	{
 		if (limitIndex < 3)
 		{
 			return m_linearLimits.isLimited(limitIndex);
 		}
 		return m_angularLimits[limitIndex - 3].isLimited();
+	}
+
+	bool hasLimitedAngularAxis() const
+	{
+		return isLimited(3) || isLimited(4) || isLimited(5);
 	}
 
 	void setRotationOrder(RotateOrder order) { m_rotateOrder = order; }
