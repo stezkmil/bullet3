@@ -151,6 +151,7 @@ btSoftBody::btSoftBody(btSoftBodyWorldInfo* worldInfo, int node_count, const btV
 	/* Nodes			*/
 	const btScalar margin = getCollisionShape()->getMargin();
 	m_nodes.resize(node_count);
+	m_nodeTetraMembership.resize(node_count);
 	m_X.resize(node_count);
 	for (int i = 0, ni = node_count; i < ni; ++i)
 	{
@@ -412,6 +413,7 @@ void btSoftBody::appendNode(const btVector3& x, btScalar m)
 	}
 	const btScalar margin = getCollisionShape()->getMargin();
 	m_nodes.push_back(Node());
+	m_nodeTetraMembership.push_back(btAlignedObjectArray<int>());
 	Node& n = m_nodes[m_nodes.size() - 1];
 	ZeroInitialize(n);
 	n.m_x = x;
@@ -530,14 +532,14 @@ void btSoftBody::appendTetra(int node0,
 	t.m_n[1] = &m_nodes[node1];
 	t.m_n[2] = &m_nodes[node2];
 	t.m_n[3] = &m_nodes[node3];
-	btAssert(m_nodes[node0].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
-	btAssert(m_nodes[node1].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
-	btAssert(m_nodes[node2].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
-	btAssert(m_nodes[node3].m_tetraMembershipCount < Node::kMaxTetraMembershipPerNode);
-	m_nodes[node0].m_tetraMembership[m_nodes[node0].m_tetraMembershipCount++] = tetraIndex;
-	m_nodes[node1].m_tetraMembership[m_nodes[node1].m_tetraMembershipCount++] = tetraIndex;
-	m_nodes[node2].m_tetraMembership[m_nodes[node2].m_tetraMembershipCount++] = tetraIndex;
-	m_nodes[node3].m_tetraMembership[m_nodes[node3].m_tetraMembershipCount++] = tetraIndex;
+	btAssert(node0 >= 0 && node0 < m_nodeTetraMembership.size());
+	btAssert(node1 >= 0 && node1 < m_nodeTetraMembership.size());
+	btAssert(node2 >= 0 && node2 < m_nodeTetraMembership.size());
+	btAssert(node3 >= 0 && node3 < m_nodeTetraMembership.size());
+	m_nodeTetraMembership[node0].push_back(tetraIndex);
+	m_nodeTetraMembership[node1].push_back(tetraIndex);
+	m_nodeTetraMembership[node2].push_back(tetraIndex);
+	m_nodeTetraMembership[node3].push_back(tetraIndex);
 	t.m_rv = VolumeOf(t.m_n[0]->m_x, t.m_n[1]->m_x, t.m_n[2]->m_x, t.m_n[3]->m_x);
 	m_bUpdateRtCst = true;
 }
@@ -5384,9 +5386,12 @@ void btSoftBody::lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, Stuc
 		for (auto& [node, mapped] : nodesInCollision)
 			if (mapped.penetrating)
 			{
-				for (auto m = 0; m < node->m_tetraMembershipCount; ++m)
+				const int nodeIndex = static_cast<int>(node - &m_nodes[0]);
+				btAssert(nodeIndex >= 0 && nodeIndex < m_nodeTetraMembership.size());
+				const auto& tetraMembership = m_nodeTetraMembership[nodeIndex];
+				for (auto m = 0; m < tetraMembership.size(); ++m)
 				{
-					auto tetraMembershipIndex = node->m_tetraMembership[m];
+					auto tetraMembershipIndex = tetraMembership[m];
 					for (auto j = 0; j < 4; ++j)
 					{
 						auto iter = grownNodesInCollision.find(m_tetras[tetraMembershipIndex].m_n[j]);

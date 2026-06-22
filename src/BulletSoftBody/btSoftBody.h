@@ -331,9 +331,6 @@ public:
 		btMatrix3x3 m_effectiveMass;      // effective mass in contact
 		btMatrix3x3 m_effectiveMass_inv;  // inverse of effective mass
 		NodeSafe m_safe;
-		static constexpr int kMaxTetraMembershipPerNode = 64;
-		int m_tetraMembership[kMaxTetraMembershipPerNode];
-		int m_tetraMembershipCount;
 		int m_frozen;  // Whether the node is frozen (not updated by the solver)
 	};
 	/* Link			*/
@@ -893,6 +890,9 @@ public:
 	tFaceArray m_faces;                // Faces
 	tRenderFaceArray m_renderFaces;    // Faces
 	tTetraArray m_tetras;              // Tetras
+	// Keep dynamic tetra membership outside Node. Nodes are stored in a relocatable
+	// btAlignedObjectArray, while nested dynamic containers need independent ownership.
+	btAlignedObjectArray<btAlignedObjectArray<int>> m_nodeTetraMembership;
 	btAlignedObjectArray<TetraScratch> m_tetraScratches;
 	btAlignedObjectArray<TetraScratch> m_tetraScratchesTn;
 	tAnchorArray m_anchors;  // Anchors
