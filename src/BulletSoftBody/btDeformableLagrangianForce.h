@@ -27,7 +27,8 @@ enum btDeformableLagrangianForceType
 	BT_COROTATED_FORCE = 3,
 	BT_NEOHOOKEAN_FORCE = 4,
 	BT_LINEAR_ELASTICITY_FORCE = 5,
-	BT_MOUSE_PICKING_FORCE = 6
+	BT_MOUSE_PICKING_FORCE = 6,
+	BT_NODAL_FORCE = 7
 };
 
 static inline double randomDouble(double low, double high)
