@@ -316,7 +316,7 @@ public:
 										 const btTransform& transform, gim_array<GUINT>& collided_results) const
 	{
 		GIM_AABB transbox = box;
-		transbox.appy_transform(transform);
+		transbox.apply_transform(transform);
 		return boxQuery(transbox, collided_results);
 	}
 

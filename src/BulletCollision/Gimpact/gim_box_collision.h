@@ -286,7 +286,7 @@ public:
 	}
 
 	//! Apply a transform to an AABB
-	SIMD_FORCE_INLINE void appy_transform(const btTransform &trans)
+	SIMD_FORCE_INLINE void apply_transform(const btTransform &trans)
 	{
 		btVector3 center = (m_max + m_min) * 0.5f;
 		btVector3 extends = m_max - center;
@@ -417,7 +417,7 @@ public:
 	SIMD_FORCE_INLINE bool overlapping_trans_conservative(const GIM_AABB &box, btTransform &trans1_to_0)
 	{
 		GIM_AABB tbox = box;
-		tbox.appy_transform(trans1_to_0);
+		tbox.apply_transform(trans1_to_0);
 		return has_collision(tbox);
 	}
 
