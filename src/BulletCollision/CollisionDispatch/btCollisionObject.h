@@ -68,6 +68,9 @@ protected:
 	btTransform m_worldTransform;
 	btTransform m_lastSafeWorldTransform;
 	int m_lastSafeApplyCounter;
+	bool m_lastSafePenetrationWasSelf;
+	int m_lastSafeSelfCollisionSkippedSteps;
+	int m_lastSafeSelfCollisionCooldownTarget;
 
 	///m_interpolationWorldTransform is used for CCD and interpolation
 	///it can be either previous or future (predicted) transform
@@ -577,7 +580,9 @@ public:
 		m_lastSafeWorldTransform = m_worldTransform;
 	}
 
-	virtual void applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial);
+	virtual void applyLastSafeWorldTransform(
+		const std::map<int, StuckTetraIndicesMapped>* partial,
+		btScalar maxNodeDisplacement = btScalar(-1));
 
 	void resetLastSafeApplyCounter()
 	{
@@ -587,6 +592,42 @@ public:
 	int getLastSafeApplyCounter() const
 	{
 		return m_lastSafeApplyCounter;
+	}
+
+	void setLastSafePenetrationWasSelf(bool selfCollision)
+	{
+		m_lastSafePenetrationWasSelf = selfCollision;
+	}
+
+	bool getLastSafePenetrationWasSelf() const
+	{
+		return m_lastSafePenetrationWasSelf;
+	}
+
+	void setLastSafeSelfCollisionSkippedSteps(int skippedSteps)
+	{
+		m_lastSafeSelfCollisionSkippedSteps = skippedSteps;
+	}
+
+	int getLastSafeSelfCollisionSkippedSteps() const
+	{
+		return m_lastSafeSelfCollisionSkippedSteps;
+	}
+
+	void setLastSafeSelfCollisionCooldownTarget(int cooldownTarget)
+	{
+		m_lastSafeSelfCollisionCooldownTarget = cooldownTarget;
+	}
+
+	int getLastSafeSelfCollisionCooldownTarget() const
+	{
+		return m_lastSafeSelfCollisionCooldownTarget;
+	}
+
+	void resetLastSafeSelfCollisionRecoveryState(int initialCooldownTarget = 4)
+	{
+		m_lastSafeSelfCollisionSkippedSteps = 0;
+		m_lastSafeSelfCollisionCooldownTarget = initialCooldownTarget;
 	}
 
 	void setWorldTransform(const btTransform& worldTrans)

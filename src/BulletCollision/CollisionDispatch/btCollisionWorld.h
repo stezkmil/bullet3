@@ -107,6 +107,16 @@ protected:
 
 	void serializeContactManifolds(btSerializer* serializer);
 
+	struct SelfCollisionLastSafeApplyDecision
+	{
+		bool m_shouldApply;
+		btScalar m_maxRollbackNodeDisplacement;
+	};
+
+	SelfCollisionLastSafeApplyDecision processSelfCollisionLastSafeApply(
+		btCollisionObject* body,
+		btScalar maxPenetratingContactDepth);
+
 	void processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies);
 
 public:

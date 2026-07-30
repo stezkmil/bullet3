@@ -1444,7 +1444,9 @@ public:
 
 	void lastSafeBorderGrow(int growth, std::map<btSoftBody::Node*, StuckTetraIndicesMapped>& nodesInCollision);
 	virtual void updateLastSafeWorldTransform() override;
-	virtual void applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial) override;
+	virtual void applyLastSafeWorldTransform(
+		const std::map<int, StuckTetraIndicesMapped>* partial,
+		btScalar maxNodeDisplacement = btScalar(-1)) override;
 };
 
 #endif  //_BT_SOFT_BODY_H

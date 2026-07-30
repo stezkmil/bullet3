@@ -27,7 +27,11 @@ bool btCollisionObject::gDebug = false;
 #endif
 
 btCollisionObject::btCollisionObject()
-	: m_interpolationLinearVelocity(0.f, 0.f, 0.f),
+	: m_lastSafeApplyCounter(0),
+	  m_lastSafePenetrationWasSelf(false),
+	  m_lastSafeSelfCollisionSkippedSteps(0),
+	  m_lastSafeSelfCollisionCooldownTarget(4),
+	  m_interpolationLinearVelocity(0.f, 0.f, 0.f),
 	  m_interpolationAngularVelocity(0.f, 0.f, 0.f),
 	  m_anisotropicFriction(1.f, 1.f, 1.f),
 	  m_hasAnisotropicFriction(false),
@@ -58,8 +62,7 @@ btCollisionObject::btCollisionObject()
 	  m_ccdSweptSphereRadius(btScalar(0.)),
 	  m_ccdMotionThreshold(btScalar(0.)),
 	  m_checkCollideWith(false),
-	  m_updateRevision(0),
-	  m_lastSafeApplyCounter(0)
+	  m_updateRevision(0)
 {
 	m_worldTransform.setIdentity();
 	m_lastSafeWorldTransform.setIdentity();
@@ -151,8 +154,12 @@ void btCollisionObject::serializeSingleObject(class btSerializer* serializer) co
 	serializer->finalizeChunk(chunk, structType, BT_COLLISIONOBJECT_CODE, (void*)this);
 }
 
-void btCollisionObject::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+void btCollisionObject::applyLastSafeWorldTransform(
+	const std::map<int, StuckTetraIndicesMapped>* partial,
+	btScalar maxNodeDisplacement)
 {
+	(void)partial;
+	(void)maxNodeDisplacement;
 	if (getCollisionFlags() & CF_APPLY_LAST_SAFE)
 	{
 		constexpr btScalar maxApplySteps = 10;

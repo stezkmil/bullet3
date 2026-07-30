@@ -4505,13 +4505,12 @@ bool mergeContactIntoBucket(const btCollisionObject* body, T& contacts, const bt
 		}
 	}
 
-	// Whole sphere should be covered by these conical buckets, so if we now have number of bins which is equal or larger than kMaxBucketsPerNode
-	// it indicates a bug somewhere
+	// More than kMaxBucketsPerNode indicates that an earlier insertion exceeded the limit.
 	btAssert(bucketCount <= kMaxBucketsPerNode &&
 			 "Directional coverage theory broken – investigate!");
 
-	if (bucketCount > kMaxBucketsPerNode)
-		return true;  // safety valve – should never fire in practice
+	if (bucketCount >= kMaxBucketsPerNode)
+		return true;  // A full bucket set must not allow a seventh contact to be inserted.
 
 	return merged;
 }
@@ -5459,7 +5458,9 @@ void btSoftBody::updateLastSafeWorldTransform()
 	}
 }
 
-void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndicesMapped>* partial)
+void btSoftBody::applyLastSafeWorldTransform(
+	const std::map<int, StuckTetraIndicesMapped>* partial,
+	btScalar maxNodeDisplacement)
 {
 	// If it turns out that there are some situations where penetrations have to be resolved in a single step:
 	// it is implemented on this branch in bullet3 repo recursive_safe_apply and on VRUT-6981_recursive_safe_apply
@@ -5490,6 +5491,18 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 				nodesInCollision.insert({&m_nodes[i], {}});
 			}
 		}
+		btScalar maxRequestedNodeDisplacement = 0;
+		for (const auto& nodeAndNormals : nodesInCollision)
+		{
+			const Node* node = nodeAndNormals.first;
+			maxRequestedNodeDisplacement =
+				btMax(maxRequestedNodeDisplacement, (node->m_safe.m_x - node->m_x).length());
+		}
+		btScalar rollbackScale = 1;
+		if (maxNodeDisplacement >= 0 && maxRequestedNodeDisplacement > maxNodeDisplacement && maxRequestedNodeDisplacement > SIMD_EPSILON)
+		{
+			rollbackScale = maxNodeDisplacement / maxRequestedNodeDisplacement;
+		}
 
 		for (auto& [nodeInCollision, normals] : nodesInCollision)
 		{
@@ -5501,18 +5514,18 @@ void btSoftBody::applyLastSafeWorldTransform(const std::map<int, StuckTetraIndic
 			fprintf(stderr, "drawline \"apply ln\" [%f,%f,%f][%f,%f,%f][0,0,1,1] \n", dst->m_x.x(), dst->m_x.y(), dst->m_x.z(), src.m_x.x(), src.m_x.y(), src.m_x.z());
 #endif
 
-			dst->m_x = src.m_x;
-			dst->m_q = src.m_q;
+			dst->m_x = dst->m_x.lerp(src.m_x, rollbackScale);
+			dst->m_q = dst->m_x;
 
 			// Velocities are modified (projected), so that they do not cause the penetration again
 			for (const auto& normal : normals)
 			{
-				if (dst->m_v.dot(normal) < 0.0)
-					dst->m_v = dst->m_v.rejectFrom(normal);
-
 				if (dst->m_vn.dot(normal) < 0.0)
 					dst->m_vn = dst->m_vn.rejectFrom(normal);
 			}
+			dst->m_v = dst->m_vn;
 		}
+		if (!nodesInCollision.empty())
+			updateDeformation();
 	}
 }
