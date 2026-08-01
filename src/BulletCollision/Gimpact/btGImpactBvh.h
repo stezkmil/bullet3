@@ -171,6 +171,12 @@ public:
 	virtual void get_primitive_indices(int prim_index, unsigned int& A, unsigned int& B, unsigned int& C) const = 0;
 	virtual int get_mapping_vert(int index) const { return 0; }
 	virtual std::vector<int> get_mapping_tri(int index) const { return std::vector<int>(); }
+	virtual bool reject_self_collision_pair(int prim_index0, int prim_index1) const
+	{
+		(void)prim_index0;
+		(void)prim_index1;
+		return false;
+	}
 };
 
 //! Structure for containing Boxes

@@ -44,7 +44,6 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletCollision/CollisionShapes/btConvexPolyhedron.h"
 #include "BulletCollision/CollisionDispatch/btCollisionObjectWrapper.h"
 #include "BulletCollision/CollisionDispatch/btSimulationIslandManager.h"
-
 //#define DISABLE_DBVT_COMPOUNDSHAPE_RAYCAST_ACCELERATION
 
 //#define USE_BRUTEFORCE_RAYBROADPHASE 1
@@ -1314,6 +1313,93 @@ public:
 	}
 };
 
+// Set this to false to retain only the edge-triggered first apply for a
+// self-collision episode. Consecutive penetrating steps will then never reapply
+// last-safe until the episode resolves and the state is reset.
+constexpr bool kEnableRepeatedSelfCollisionLastSafeApplies = false;
+
+/*
+Self-collision needs a different last-safe policy from soft-rigid collision. Applying
+the same saved state on every penetrating step can phase-lock the deformable body:
+the rollback is followed by elastic acceleration into another penetration, which
+immediately restores the same state again and prevents simulation progress.
+
+The first penetration in an episode still requests an unbounded partial last-safe
+apply. Consecutive penetrations normally continue without another rollback. If
+reapplies are enabled above, deterministic cooldown targets grow from 4 through
+7, 11, 17, and 26 to a maximum of 32 skipped steps. A penetration whose depth,
+normalized by the collision margin, reaches eight times the current cooldown can
+request an earlier emergency reapply. Later timeout reapplies are limited to four
+collision margins of node displacement, while emergency reapplies are limited to
+eight, avoiding a violent jump to an increasingly stale safe state.
+
+The returned decision tells processLastSafeTransforms whether to apply last-safe
+and what node-displacement limit to pass to the soft body. Recovery state is reset
+when the self-collision episode resolves. Setting
+kEnableRepeatedSelfCollisionLastSafeApplies to false keeps only the edge-triggered
+first apply for direct comparison. Soft-rigid recovery is unaffected.
+*/
+btCollisionWorld::SelfCollisionLastSafeApplyDecision btCollisionWorld::processSelfCollisionLastSafeApply(
+	btCollisionObject* body,
+	btScalar maxPenetratingContactDepth)
+{
+	constexpr int initialCooldownTarget = 4;
+	constexpr int maxCooldownTarget = 32;
+	constexpr int emergencyDepthMultiplier = 8;
+	constexpr btScalar cooldownRollbackMarginMultiplier = btScalar(4);
+	constexpr btScalar emergencyRollbackMarginMultiplier = btScalar(8);
+
+	const bool repeatedPenetration =
+		(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING) != 0;
+	const bool repeatedSelfPenetration =
+		repeatedPenetration && body->getLastSafePenetrationWasSelf();
+	const int skippedSteps = body->getLastSafeSelfCollisionSkippedSteps();
+	const int cooldownTarget =
+		btMax(initialCooldownTarget,
+			  btMin(maxCooldownTarget, body->getLastSafeSelfCollisionCooldownTarget()));
+	const btScalar collisionMargin =
+		body->getCollisionShape() ? body->getCollisionShape()->getMargin() : btScalar(0);
+	const btScalar normalizedPenetrationDepth =
+		collisionMargin > SIMD_EPSILON
+			? maxPenetratingContactDepth / collisionMargin
+			: btScalar(-1);
+	const btScalar emergencyNormalizedDepth =
+		btScalar(emergencyDepthMultiplier * cooldownTarget);
+	const bool cooldownExpired =
+		repeatedSelfPenetration && skippedSteps >= cooldownTarget;
+	const bool depthEmergency =
+		repeatedSelfPenetration && normalizedPenetrationDepth >= emergencyNormalizedDepth;
+	const bool reapplyRequested =
+		kEnableRepeatedSelfCollisionLastSafeApplies && (cooldownExpired || depthEmergency);
+
+	if (repeatedSelfPenetration && !reapplyRequested)
+	{
+		body->setLastSafeSelfCollisionSkippedSteps(skippedSteps + 1);
+		return {false, btScalar(-1)};
+	}
+
+	if (reapplyRequested)
+	{
+		btScalar maxRollbackNodeDisplacement = btScalar(-1);
+		if (collisionMargin > SIMD_EPSILON)
+		{
+			maxRollbackNodeDisplacement =
+				collisionMargin * (depthEmergency
+									   ? emergencyRollbackMarginMultiplier
+									   : cooldownRollbackMarginMultiplier);
+		}
+
+		const int nextCooldownTarget =
+			btMin(maxCooldownTarget, cooldownTarget + 1 + cooldownTarget / 2);
+		body->setLastSafeSelfCollisionSkippedSteps(0);
+		body->setLastSafeSelfCollisionCooldownTarget(nextCooldownTarget);
+		return {true, maxRollbackNodeDisplacement};
+	}
+
+	body->resetLastSafeSelfCollisionRecoveryState(initialCooldownTarget);
+	return {true, btScalar(-1)};
+}
+
 void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int numBodies, btCollisionObject** softBodies, int numSoftBodies)
 {
 	int numManifolds = getDispatcher()->getNumManifolds();
@@ -1324,6 +1410,7 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		int numContacts = 0;
 		std::map<int, StuckTetraIndicesMapped> stuckTetraIndices;
 		bool anyPenetration = false;
+		btScalar maxPenetratingContactDepth = 0;
 	};
 	std::map<btCollisionObject*, MappedType> penetratingColliders;
 	for (int i = 0; i < numManifolds; i++)
@@ -1359,7 +1446,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody1()),
 							.numContacts = numContacts,
 							.stuckTetraIndices = stuckTetraIndices,
-							.anyPenetration = penetration};
+							.anyPenetration = penetration,
+							.maxPenetratingContactDepth = penetration ? cp.getUnmodifiedDistance() : btScalar(0)};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody0()), val});
 					}
 					else
@@ -1381,6 +1469,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 							}
 						}
 						body0Iter->second.anyPenetration |= penetration;
+						if (penetration)
+							body0Iter->second.maxPenetratingContactDepth =
+								btMax(body0Iter->second.maxPenetratingContactDepth, cp.getUnmodifiedDistance());
 					}
 				}
 
@@ -1401,7 +1492,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 							.mappedCollisionObject = const_cast<btCollisionObject*>(contactManifold->getBody0()),
 							.numContacts = numContacts,
 							.stuckTetraIndices = stuckTetraIndices,
-							.anyPenetration = penetration};
+							.anyPenetration = penetration,
+							.maxPenetratingContactDepth = penetration ? cp.getUnmodifiedDistance() : btScalar(0)};
 						penetratingColliders.insert({const_cast<btCollisionObject*>(contactManifold->getBody1()), val});
 					}
 					else
@@ -1423,6 +1515,9 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 							}
 						}
 						body1Iter->second.anyPenetration |= penetration;
+						if (penetration)
+							body1Iter->second.maxPenetratingContactDepth =
+								btMax(body1Iter->second.maxPenetratingContactDepth, cp.getUnmodifiedDistance());
 					}
 				}
 			}
@@ -1434,7 +1529,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			iter = penetratingColliders.erase(iter);
 		else
 			++iter;
-
 	bool anyPenetrations = !penetratingColliders.empty();
 
 	if (anyPenetrations)
@@ -1448,7 +1542,6 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		islandManagerAABB.updateActivationState(this, m_dispatcher1);
 		islandManagerAABB.storeIslandActivationState(this);
 	}
-
 	std::multimap<int, btCollisionObject*> islandsWithLastSafeUpdated;
 
 	for (int i = 0; i < numBodies; i++)
@@ -1463,6 +1556,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		{
 			//fprintf(stderr, "no pen\n");
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
+			body->setLastSafePenetrationWasSelf(false);
+			body->resetLastSafeSelfCollisionRecoveryState();
 			auto stuckTestCounter = body->getUserIndex2();
 			if (stuckTestCounter > 0)
 			{
@@ -1482,6 +1577,8 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		{
 			//fprintf(stderr, "no pen\n");
 			body->setCollisionFlags(body->getCollisionFlags() & (~btCollisionObject::CF_IS_PENETRATING));
+			body->setLastSafePenetrationWasSelf(false);
+			body->resetLastSafeSelfCollisionRecoveryState();
 			auto stuckTestCounter = body->getUserIndex2();
 			if (stuckTestCounter > 0)
 			{
@@ -1489,13 +1586,13 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 			}
 		}
 	}
-
 	struct VectorElem
 	{
 		btCollisionObject* body;
 		const btCollisionObject* opposingBody;
 		bool isSoft;
 		int numContacts = 0;
+		btScalar maxPenetratingContactDepth = 0;
 		std::map<int, StuckTetraIndicesMapped> stuckTetraIndices;
 	};
 
@@ -1510,13 +1607,16 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		{
 			// We got into the penetration which I consider to be an invalid state. In this case, top priority for me is unstuck.
 			// Another added safety mechanism against being stuck is to teleport the mesh into the safe position.
-			unstuckVector.push_back({body, penColIter->second.mappedCollisionObject, body->getInternalType() == btCollisionObject::CO_SOFT_BODY, penColIter->second.numContacts, penColIter->second.stuckTetraIndices});
+			unstuckVector.push_back({body, penColIter->second.mappedCollisionObject,
+									 body->getInternalType() == btCollisionObject::CO_SOFT_BODY,
+									 penColIter->second.numContacts,
+									 penColIter->second.maxPenetratingContactDepth,
+									 penColIter->second.stuckTetraIndices});
 
 			auto eraseRange = islandsWithLastSafeUpdated.equal_range(body->getIslandTag2());
 			islandsWithLastSafeUpdated.erase(eraseRange.first, eraseRange.second);
 		}
 	}
-
 	for (const auto& unstuckVectorElem : unstuckVector)
 	{
 		auto body = unstuckVectorElem.body;
@@ -1524,30 +1624,32 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		auto isSoft = unstuckVectorElem.isSoft;
 		auto opposingIsSoft = opposingBody->getInternalType() == btCollisionObject::CO_SOFT_BODY;
 		auto bothSoft = isSoft && opposingIsSoft;
-		auto numContacts = unstuckVectorElem.numContacts;
+		const bool selfCollision = bothSoft && body == opposingBody;
 
 		if (body->getCollisionFlags() & btCollisionObject::CF_DO_UNSTUCK)
 		{
 			if (!isSoft && body->getLastSafeWorldTransform() == btTransform::getIdentity())
 				continue;
 
-			// This is a band-aid for the self collision unstucks. They do not work that great for self collisions yet. For example when quickly manipulating a self colliding
-			// cloth, the simulation sometimes goes into a vicious cycle. The safe is applied, then the simulation is OK for one step and then the simulation progresses in such a way
-			// that we are in a penetrating state again, so the safe is applied and the cycle repeats, with no apparent progression in the simulation. This happens even if I modify
-			// the code to reset all the node velocities. A careful debugging session is needed to diagnose why this phenomena is not observed in simulations without self collisions.
-			// UPDATE: disabled for now - found out that it works better like this for my wire case (some spasms on the wire otherwise when self colliding), but as mentioned above,
-			// not so well for the fast cloth movements. There is no time for a proper fix, so I choose the lesser evil and go for the working wire case.
-			//if (bothSoft && body == opposingBody)
-			//	continue;
-
 			if (!(body->getCollisionFlags() & btCollisionObject::CF_IS_PENETRATING))
 				body->resetLastSafeApplyCounter();
 
-			//fprintf(stderr, "dist %f numContacts %d\n", dist, numContacts);
+			SelfCollisionLastSafeApplyDecision applyDecision{true, btScalar(-1)};
+			if (selfCollision)
+			{
+				applyDecision = processSelfCollisionLastSafeApply(
+					body,
+					unstuckVectorElem.maxPenetratingContactDepth);
+			}
 
-			body->applyLastSafeWorldTransform(&unstuckVectorElem.stuckTetraIndices);
-			if (!isSoft && !m_forceUpdateAllAabbs)
-				updateSingleAabb(body);
+			if (applyDecision.m_shouldApply)
+			{
+				body->applyLastSafeWorldTransform(
+					&unstuckVectorElem.stuckTetraIndices,
+					applyDecision.m_maxRollbackNodeDisplacement);
+				if (!isSoft && !m_forceUpdateAllAabbs)
+					updateSingleAabb(body);
+			}
 
 			if (body->getUserIndex2() > 0)
 			{
@@ -1560,8 +1662,10 @@ void btCollisionWorld::processLastSafeTransforms(btCollisionObject** bodies, int
 		}
 		//fprintf(stderr, "pen\n");
 		body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CF_IS_PENETRATING);
+		body->setLastSafePenetrationWasSelf(selfCollision);
+		if (!selfCollision)
+			body->resetLastSafeSelfCollisionRecoveryState();
 	}
-
 	// Safe transforms are saved only if nothing is stuck so that the safe transforms are a coherent previous state.
 	if (anyPenetrations)
 	{
