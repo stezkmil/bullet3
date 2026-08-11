@@ -29,12 +29,6 @@ public:
 	// normal of the contact
 	btVector3 m_normal;
 
-	btScalar m_previous_residual_velocity_match = -1.0;
-	btScalar m_convergence_based_relaxation_velocity_match = 1.0;
-
-	btScalar m_previous_residual_position_drift = -1.0;
-	btScalar m_convergence_based_relaxation_position_drift = 1.0;
-
 	btDeformableContactConstraint(const btVector3& normal, const btContactSolverInfo& infoGlobal) : m_static(false), m_normal(normal), m_infoGlobal(&infoGlobal)
 	{
 	}
@@ -46,7 +40,7 @@ public:
 	btDeformableContactConstraint() : m_static(false) {}
 
 	btDeformableContactConstraint(const btDeformableContactConstraint& other)
-		: m_static(other.m_static), m_normal(other.m_normal), m_infoGlobal(other.m_infoGlobal), m_convergence_based_relaxation_velocity_match(other.m_convergence_based_relaxation_velocity_match), m_convergence_based_relaxation_position_drift(other.m_convergence_based_relaxation_position_drift)
+		: m_static(other.m_static), m_infoGlobal(other.m_infoGlobal), m_normal(other.m_normal)
 	{
 	}
 
@@ -120,7 +114,6 @@ class btDeformableNodeAnchorConstraint : public btDeformableContactConstraint
 {
 public:
 	const btSoftBody::DeformableNodeRigidAnchor* m_anchor;
-	btScalar m_anchor_rigid_penetration = 0.0;
 
 	btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& c, const btContactSolverInfo& infoGlobal);
 	btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other);
