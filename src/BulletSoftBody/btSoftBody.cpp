@@ -576,6 +576,12 @@ void btSoftBody::appendAnchor(int node, btRigidBody* body, const btVector3& loca
 //
 void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t userIndex)
 {
+	appendDeformableAnchor(node, body, userIndex, btScalar(0));
+}
+
+//
+void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t userIndex, btScalar compliance)
+{
 	DeformableNodeRigidAnchor c;
 	btSoftBody::Node& n = m_nodes[node];
 	const btScalar ima = n.m_im;
@@ -608,6 +614,7 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 	c.m_local = body->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
 	c.m_userIndex = userIndex;
+	c.m_compliance = btMax(compliance, btScalar(0));
 
 	m_deformableAnchors.push_back(c);
 	body->addAnchorRef(this);
@@ -692,6 +699,12 @@ std::vector<int> btSoftBody::getDeformableAnchorByUserIndex(int userIndex) const
 //
 void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex)
 {
+	appendDeformableAnchor(node, link, userIndex, btScalar(0));
+}
+
+//
+void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex, btScalar compliance)
+{
 	DeformableNodeRigidAnchor c;
 	btSoftBody::Node& n = m_nodes[node];
 	const btScalar ima = n.m_im;
@@ -744,6 +757,7 @@ void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link,
 	c.m_local = link->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
 	c.m_userIndex = userIndex;
+	c.m_compliance = btMax(compliance, btScalar(0));
 	m_deformableAnchors.push_back(c);
 }
 //

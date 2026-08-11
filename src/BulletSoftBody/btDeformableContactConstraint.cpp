@@ -17,7 +17,7 @@
 
 namespace
 {
-btMatrix3x3 getAnchorImpulseMatrix(const btSoftBody::DeformableNodeRigidAnchor& anchor)
+btMatrix3x3 getAnchorVelocityResponse(const btSoftBody::DeformableNodeRigidAnchor& anchor)
 {
 	const btRigidBody* rigidBody = btRigidBody::upcast(anchor.m_cti.m_colObj);
 	if (rigidBody)
@@ -41,12 +41,32 @@ btMatrix3x3 getAnchorImpulseMatrix(const btSoftBody::DeformableNodeRigidAnchor& 
 			velocityResponse[1][column] = pointVelocityResponse.y();
 			velocityResponse[2][column] = pointVelocityResponse.z();
 		}
-		return velocityResponse.inverse();
+		return velocityResponse;
 	}
 
 	// The multibody impulse matrix and Jacobians are refreshed together by the
-	// deformable solver, so use the stored matrix for a Featherstone anchor.
-	return anchor.m_c0;
+	// deformable solver. m_c0 stores its inverse velocity response.
+	return anchor.m_c0.inverse();
+}
+
+btScalar getAnchorRegularization(const btSoftBody::DeformableNodeRigidAnchor& anchor,
+								 const btContactSolverInfo& infoGlobal)
+{
+	if (anchor.m_compliance <= 0 || infoGlobal.m_timeStep <= SIMD_EPSILON)
+	{
+		return 0;
+	}
+	return anchor.m_compliance / (infoGlobal.m_timeStep * infoGlobal.m_timeStep);
+}
+
+btMatrix3x3 getAnchorImpulseMatrix(const btSoftBody::DeformableNodeRigidAnchor& anchor,
+								  btScalar regularization)
+{
+	btMatrix3x3 velocityResponse = getAnchorVelocityResponse(anchor);
+	velocityResponse[0][0] += regularization;
+	velocityResponse[1][1] += regularization;
+	velocityResponse[2][2] += regularization;
+	return velocityResponse.inverse();
 }
 
 void applyAnchorImpulseToMultiBody(const btSoftBody::DeformableNodeRigidAnchor& anchor,
@@ -84,12 +104,18 @@ void applyAnchorImpulseToMultiBody(const btSoftBody::DeformableNodeRigidAnchor& 
 
 /* ================   Deformable Node Anchor   =================== */
 btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& a, const btContactSolverInfo& infoGlobal)
-	: m_anchor(&a), btDeformableContactConstraint(a.m_cti.m_normal, infoGlobal)
+	: m_anchor(&a),
+	  m_totalImpulse(0, 0, 0),
+	  m_totalSplitImpulse(0, 0, 0),
+	  btDeformableContactConstraint(a.m_cti.m_normal, infoGlobal)
 {
 }
 
 btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other)
-	: m_anchor(other.m_anchor), btDeformableContactConstraint(other)
+	: m_anchor(other.m_anchor),
+	  m_totalImpulse(other.m_totalImpulse),
+	  m_totalSplitImpulse(other.m_totalSplitImpulse),
+	  btDeformableContactConstraint(other)
 {
 }
 
@@ -149,18 +175,20 @@ btVector3 btDeformableNodeAnchorConstraint::getVa() const
 btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolverInfo& infoGlobal)
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
-	if (!cti.m_colObj->hasContactResponse() ||
-		cti.m_colObj->isStaticOrKinematicObject() ||
-		!cti.m_colObj->isActive())
+	if (!cti.m_colObj->hasContactResponse())
 	{
 		return 0;
 	}
 
-	// The bilateral anchor has three velocity rows: v_soft - v_rigid = 0.
-	// m_c0 is the inverse of the combined point-velocity response, so the
-	// resulting impulse is distributed according to mass and inertia.
+	// The hard bilateral anchor has three rows v_soft - v_rigid = 0. A
+	// compliant anchor regularizes those rows by compliance / dt^2 and uses
+	// the accumulated impulse in the CFM term. The resulting impulse is still
+	// distributed according to the complete soft/rigid mass and inertia.
+	const btScalar regularization = getAnchorRegularization(*m_anchor, infoGlobal);
 	const btVector3 relativeVelocity = getVb() - getVa();
-	const btVector3 impulse = getAnchorImpulseMatrix(*m_anchor) * relativeVelocity * infoGlobal.m_sor;
+	const btVector3 residual = relativeVelocity - m_totalImpulse * regularization;
+	const btVector3 impulse = getAnchorImpulseMatrix(*m_anchor, regularization) * residual * infoGlobal.m_sor;
+	m_totalImpulse += impulse;
 
 	applyImpulse(impulse);
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
@@ -176,7 +204,7 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 		applyAnchorImpulseToMultiBody(*m_anchor, impulse, false);
 	}
 
-	return relativeVelocity.length2();
+	return residual.length2();
 }
 
 btVector3 btDeformableNodeAnchorConstraint::getVb() const
@@ -250,9 +278,7 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
 	if (infoGlobal.m_timeStep <= SIMD_EPSILON ||
-		!cti.m_colObj->hasContactResponse() ||
-		cti.m_colObj->isStaticOrKinematicObject() ||
-		!cti.m_colObj->isActive())
+		!cti.m_colObj->hasContactResponse())
 	{
 		return 0;
 	}
@@ -263,9 +289,12 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 	const btVector3 positionError =
 		m_anchor->m_node->m_x - cti.m_colObj->getWorldTransform() * m_anchor->m_local;
 	const btVector3 relativePushVelocity = getSplitVb() - getSplitVa();
+	const btScalar regularization = getAnchorRegularization(*m_anchor, infoGlobal);
 	const btVector3 constraintError = relativePushVelocity +
-									  positionError * (infoGlobal.m_deformable_erp / infoGlobal.m_timeStep);
-	const btVector3 impulse = getAnchorImpulseMatrix(*m_anchor) * constraintError * infoGlobal.m_sor;
+									  positionError * (infoGlobal.m_deformable_erp / infoGlobal.m_timeStep) -
+									  m_totalSplitImpulse * regularization;
+	const btVector3 impulse = getAnchorImpulseMatrix(*m_anchor, regularization) * constraintError * infoGlobal.m_sor;
+	m_totalSplitImpulse += impulse;
 
 	applySplitImpulse(impulse);
 	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)

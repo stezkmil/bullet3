@@ -114,10 +114,15 @@ class btDeformableNodeAnchorConstraint : public btDeformableContactConstraint
 {
 public:
 	const btSoftBody::DeformableNodeRigidAnchor* m_anchor;
+	btVector3 m_totalImpulse;
+	btVector3 m_totalSplitImpulse;
 
 	btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& c, const btContactSolverInfo& infoGlobal);
 	btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other);
-	btDeformableNodeAnchorConstraint() {}
+	btDeformableNodeAnchorConstraint()
+		: m_anchor(0), m_totalImpulse(0, 0, 0), m_totalSplitImpulse(0, 0, 0)
+	{
+	}
 	virtual ~btDeformableNodeAnchorConstraint()
 	{
 	}
@@ -128,7 +133,7 @@ public:
 	// get the velocity of the deformable node in contact
 	virtual btVector3 getVb() const;
 
-	// --- hard positional (split-impulse) anchor solve ---
+	// --- positional (split-impulse) anchor solve ---
 	btVector3 getSplitVa() const;
 	btVector3 getSplitVb() const;
 	void applySplitImpulse(const btVector3& impulse);

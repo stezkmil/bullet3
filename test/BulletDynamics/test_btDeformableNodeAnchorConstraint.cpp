@@ -112,6 +112,66 @@ GTEST_TEST(btDeformableNodeAnchorConstraint, SplitSolveUsesOnlyPositionAndPushVe
 	expectVectorNear(fixture.node.m_v, btVector3(7, -8, 9), btScalar(0));
 }
 
+GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesVelocityConstraint)
+{
+	AnchorFixture fixture(1, 1);
+	fixture.node.m_v = btVector3(2, 0, 0);
+	fixture.anchor.m_compliance =
+		btScalar(2) * fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep;
+
+	btDeformableNodeAnchorConstraint constraint(fixture.anchor, fixture.solverInfo);
+	EXPECT_GT(constraint.solveConstraint(fixture.solverInfo), 0);
+
+	const btScalar regularization = fixture.anchor.m_compliance /
+		(fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep);
+	const btVector3 relativeVelocity = constraint.getVb() - constraint.getVa();
+	expectVectorNear(relativeVelocity,
+				 constraint.m_totalImpulse * regularization,
+				 btScalar(1e-5));
+	EXPECT_GT(relativeVelocity.length2(), btScalar(0));
+	EXPECT_NEAR(constraint.solveConstraint(fixture.solverInfo), 0, btScalar(1e-5));
+
+	const btVector3 momentum = fixture.node.m_v + fixture.rigidBody.getLinearVelocity();
+	expectVectorNear(momentum, btVector3(2, 0, 0), btScalar(1e-5));
+}
+
+GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesSplitPositionCorrection)
+{
+	AnchorFixture fixture(1, 1);
+	const btVector3 positionError(btScalar(0.1), 0, 0);
+	fixture.node.m_x = positionError;
+	fixture.anchor.m_compliance =
+		btScalar(2) * fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep;
+
+	btDeformableNodeAnchorConstraint constraint(fixture.anchor, fixture.solverInfo);
+	EXPECT_GT(constraint.solveSplitImpulse(fixture.solverInfo), 0);
+
+	const btScalar regularization = fixture.anchor.m_compliance /
+		(fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep);
+	const btVector3 relativePushVelocity = constraint.getSplitVb() - constraint.getSplitVa();
+	const btVector3 residual = relativePushVelocity +
+		positionError * (fixture.solverInfo.m_deformable_erp / fixture.solverInfo.m_timeStep) -
+		constraint.m_totalSplitImpulse * regularization;
+	expectVectorNear(residual, btVector3(0, 0, 0), btScalar(1e-5));
+
+	const btScalar hardCorrectionSpeed =
+		positionError.length() * fixture.solverInfo.m_deformable_erp / fixture.solverInfo.m_timeStep;
+	EXPECT_LT(relativePushVelocity.length(), hardCorrectionSpeed);
+}
+
+GTEST_TEST(btDeformableNodeAnchorConstraint, CompliantAnchorSupportsStaticRigidBody)
+{
+	AnchorFixture fixture(1, 0);
+	fixture.node.m_v = btVector3(2, 0, 0);
+	fixture.anchor.m_compliance =
+		fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep;
+
+	btDeformableNodeAnchorConstraint constraint(fixture.anchor, fixture.solverInfo);
+	EXPECT_GT(constraint.solveConstraint(fixture.solverInfo), 0);
+	expectVectorNear(fixture.node.m_v, btVector3(1, 0, 0), btScalar(1e-5));
+	expectVectorNear(fixture.rigidBody.getLinearVelocity(), btVector3(0, 0, 0), btScalar(0));
+}
+
 int main(int argc, char** argv)
 {
 	::testing::InitGoogleTest(&argc, argv);

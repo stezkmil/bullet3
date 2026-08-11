@@ -104,10 +104,13 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			continue;
 		}
 
-		auto isImmovable = [](btRigidBody* rb) -> bool
+		auto isImmovable = [](const btCollisionObject* object) -> bool
 		{
-			if (!rb) return true;
-			return rb->isStaticOrKinematicObject() || (rb->getInvMass() == btScalar(0) || !rb->isActive());
+			if (!object) return true;
+			const btRigidBody* rigidBody = btRigidBody::upcast(object);
+			return object->isStaticOrKinematicObject() ||
+				   (rigidBody && rigidBody->getInvMass() == btScalar(0)) ||
+				   !object->isActive();
 		};
 
 		for (int a = 0; a < psb->m_deformableAnchors.size(); ++a)
@@ -115,8 +118,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			int wantFreeze = 0;
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[a];
 
-			btRigidBody* rb = anchor.m_body;
-			if (isImmovable(rb))
+			if (anchor.m_compliance <= 0 && isImmovable(anchor.m_cti.m_colObj))
 				wantFreeze = 1;
 
 			int hadFreeze = anchor.m_freezeContribution;
@@ -288,6 +290,10 @@ void btDeformableContactProjection::setProjection()
 		}
 		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
+			if (m_nodeAnchorConstraints[i][j].m_anchor->m_compliance > 0)
+			{
+				continue;
+			}
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_constrained = true;
 			if (m_projectionsDict.find(index) == NULL)
@@ -416,6 +422,10 @@ void btDeformableContactProjection::setProjection()
 
 		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
+			if (m_nodeAnchorConstraints[i][j].m_anchor->m_compliance > 0)
+			{
+				continue;
+			}
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_penetration = SIMD_INFINITY;
 			btAlignedObjectArray<int> indices;
@@ -537,6 +547,10 @@ void btDeformableContactProjection::setLagrangeMultiplier()
 		}
 		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
+			if (m_nodeAnchorConstraints[i][j].m_anchor->m_compliance > 0)
+			{
+				continue;
+			}
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_constrained = true;
 			LagrangeMultiplier lm;
