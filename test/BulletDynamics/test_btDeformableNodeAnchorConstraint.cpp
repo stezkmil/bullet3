@@ -1,6 +1,8 @@
 #include "BulletCollision/CollisionShapes/btSphereShape.h"
 #include "BulletDynamics/Dynamics/btRigidBody.h"
+#include "BulletSoftBody/btDeformableBodySolver.h"
 #include "BulletSoftBody/btDeformableContactConstraint.h"
+#include "BulletSoftBody/btDeformableContactProjection.h"
 #include "gtest/gtest.h"
 
 namespace
@@ -27,9 +29,11 @@ struct AnchorFixture
 		node.m_vn.setZero();
 		node.m_splitv.setZero();
 		node.m_x.setZero();
+		node.index = 0;
 
 		anchor.m_node = &node;
 		anchor.m_body = &rigidBody;
+		anchor.m_userIndex = 0;
 		anchor.m_cti.m_colObj = &rigidBody;
 		anchor.m_cti.m_normal = btVector3(1, 0, 0);
 		anchor.m_c1.setZero();
@@ -116,6 +120,7 @@ GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesVelocityConstr
 {
 	AnchorFixture fixture(1, 1);
 	fixture.node.m_v = btVector3(2, 0, 0);
+	fixture.node.m_x = btVector3(btScalar(0.1), 0, 0);
 	fixture.anchor.m_compliance =
 		btScalar(2) * fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep;
 
@@ -125,9 +130,10 @@ GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesVelocityConstr
 	const btScalar regularization = fixture.anchor.m_compliance /
 		(fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep);
 	const btVector3 relativeVelocity = constraint.getVb() - constraint.getVa();
-	expectVectorNear(relativeVelocity,
-				 constraint.m_totalImpulse * regularization,
-				 btScalar(1e-5));
+	const btVector3 residual = relativeVelocity +
+		fixture.node.m_x / fixture.solverInfo.m_timeStep -
+		constraint.m_totalImpulse * regularization;
+	expectVectorNear(residual, btVector3(0, 0, 0), btScalar(1e-5));
 	EXPECT_GT(relativeVelocity.length2(), btScalar(0));
 	EXPECT_NEAR(constraint.solveConstraint(fixture.solverInfo), 0, btScalar(1e-5));
 
@@ -135,7 +141,7 @@ GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesVelocityConstr
 	expectVectorNear(momentum, btVector3(2, 0, 0), btScalar(1e-5));
 }
 
-GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesSplitPositionCorrection)
+GTEST_TEST(btDeformableNodeAnchorConstraint, CompliantAnchorDoesNotDuplicatePositionCorrectionInSplitSolve)
 {
 	AnchorFixture fixture(1, 1);
 	const btVector3 positionError(btScalar(0.1), 0, 0);
@@ -144,19 +150,9 @@ GTEST_TEST(btDeformableNodeAnchorConstraint, ComplianceRegularizesSplitPositionC
 		btScalar(2) * fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep;
 
 	btDeformableNodeAnchorConstraint constraint(fixture.anchor, fixture.solverInfo);
-	EXPECT_GT(constraint.solveSplitImpulse(fixture.solverInfo), 0);
-
-	const btScalar regularization = fixture.anchor.m_compliance /
-		(fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep);
-	const btVector3 relativePushVelocity = constraint.getSplitVb() - constraint.getSplitVa();
-	const btVector3 residual = relativePushVelocity +
-		positionError * (fixture.solverInfo.m_deformable_erp / fixture.solverInfo.m_timeStep) -
-		constraint.m_totalSplitImpulse * regularization;
-	expectVectorNear(residual, btVector3(0, 0, 0), btScalar(1e-5));
-
-	const btScalar hardCorrectionSpeed =
-		positionError.length() * fixture.solverInfo.m_deformable_erp / fixture.solverInfo.m_timeStep;
-	EXPECT_LT(relativePushVelocity.length(), hardCorrectionSpeed);
+	EXPECT_EQ(constraint.solveSplitImpulse(fixture.solverInfo), 0);
+	expectVectorNear(constraint.getSplitVb() - constraint.getSplitVa(), btVector3(0, 0, 0), btScalar(0));
+	expectVectorNear(constraint.m_totalSplitImpulse, btVector3(0, 0, 0), btScalar(0));
 }
 
 GTEST_TEST(btDeformableNodeAnchorConstraint, CompliantAnchorSupportsStaticRigidBody)
@@ -170,6 +166,64 @@ GTEST_TEST(btDeformableNodeAnchorConstraint, CompliantAnchorSupportsStaticRigidB
 	EXPECT_GT(constraint.solveConstraint(fixture.solverInfo), 0);
 	expectVectorNear(fixture.node.m_v, btVector3(1, 0, 0), btScalar(1e-5));
 	expectVectorNear(fixture.rigidBody.getLinearVelocity(), btVector3(0, 0, 0), btScalar(0));
+}
+
+GTEST_TEST(btDeformableNodeAnchorConstraint, AnchorIgnoresCollisionResponseFlag)
+{
+	AnchorFixture fixture(1, 0);
+	fixture.rigidBody.setCollisionFlags(
+		fixture.rigidBody.getCollisionFlags() | btCollisionObject::CF_NO_CONTACT_RESPONSE);
+	fixture.node.m_x = btVector3(btScalar(0.1), 0, 0);
+	fixture.anchor.m_compliance =
+		fixture.solverInfo.m_timeStep * fixture.solverInfo.m_timeStep;
+
+	btDeformableNodeAnchorConstraint constraint(fixture.anchor, fixture.solverInfo);
+	EXPECT_GT(constraint.solveConstraint(fixture.solverInfo), 0);
+	EXPECT_LT(fixture.node.m_v.x(), 0);
+}
+
+GTEST_TEST(btDeformableNodeAnchorConstraint, CompliantAnchorVelocityIsPreservedByProjection)
+{
+	AnchorFixture fixture(1, 1);
+	fixture.anchor.m_compliance = btScalar(1e-5);
+	btSoftBodyWorldInfo worldInfo;
+	btSoftBody softBody(&worldInfo);
+
+	btAlignedObjectArray<btSoftBody*> softBodies;
+	softBodies.push_back(&softBody);
+	btDeformableContactProjection projection(softBodies);
+	projection.reinitialize(true);
+	projection.m_nodeAnchorConstraints[0].push_back(
+		btDeformableNodeAnchorConstraint(fixture.anchor, fixture.solverInfo));
+	projection.setProjection();
+
+	btDeformableContactProjection::TVStack increment;
+	increment.resize(1, btVector3(1, 2, 3));
+	projection.project(increment);
+	expectVectorNear(increment[0], btVector3(0, 0, 0), btScalar(0));
+}
+
+GTEST_TEST(btDeformableNodeAnchorConstraint, ZeroMassNodeIsNotIntegrated)
+{
+	btSoftBodyWorldInfo worldInfo;
+	worldInfo.m_maxDisplacement = 100;
+	btVector3 position(4, 5, 6);
+	btScalar mass = 1;
+	btSoftBody softBody(&worldInfo, 1, &position, &mass);
+	softBody.m_nodes[0].m_v = btVector3(10, 20, 30);
+	softBody.m_nodes[0].m_vn = btVector3(40, 50, 60);
+	softBody.m_nodes[0].m_splitv = btVector3(70, 80, 90);
+	softBody.setMass(0, 0);
+
+	btAlignedObjectArray<btSoftBody*> softBodies;
+	softBodies.push_back(&softBody);
+	btDeformableBodySolver solver;
+	solver.reinitialize(softBodies, btScalar(0.01));
+	solver.applyTransforms(btScalar(0.01));
+
+	expectVectorNear(softBody.m_nodes[0].m_x, position, btScalar(0));
+	expectVectorNear(softBody.m_nodes[0].m_v, btVector3(0, 0, 0), btScalar(0));
+	expectVectorNear(softBody.m_nodes[0].m_splitv, btVector3(0, 0, 0), btScalar(0));
 }
 
 int main(int argc, char** argv)

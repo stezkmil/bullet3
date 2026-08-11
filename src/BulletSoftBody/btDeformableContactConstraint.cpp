@@ -14,6 +14,7 @@
  */
 
 #include "btDeformableContactConstraint.h"
+#include <cstdio>
 
 namespace
 {
@@ -123,7 +124,7 @@ btVector3 btDeformableNodeAnchorConstraint::getVa() const
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
 	btVector3 va(0, 0, 0);
-	if (cti.m_colObj->hasContactResponse())
+	if (cti.m_colObj)
 	{
 		btRigidBody* rigidCol = 0;
 		btMultiBodyLinkCollider* multibodyLinkCol = 0;
@@ -175,19 +176,28 @@ btVector3 btDeformableNodeAnchorConstraint::getVa() const
 btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolverInfo& infoGlobal)
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
-	if (!cti.m_colObj->hasContactResponse())
+	if (!cti.m_colObj ||
+		(m_anchor->m_compliance > 0 && infoGlobal.m_timeStep <= SIMD_EPSILON))
 	{
 		return 0;
 	}
 
 	// The hard bilateral anchor has three rows v_soft - v_rigid = 0. A
-	// compliant anchor regularizes those rows by compliance / dt^2 and uses
-	// the accumulated impulse in the CFM term. The resulting impulse is still
-	// distributed according to the complete soft/rigid mass and inertia.
+	// compliant anchor is an implicit spring: C / dt is added to the velocity
+	// row and compliance / dt^2 regularizes its accumulated impulse. At rest,
+	// this gives C = compliance * force. The resulting impulse is distributed
+	// according to the complete soft/rigid mass and inertia.
 	const btScalar regularization = getAnchorRegularization(*m_anchor, infoGlobal);
+	const btVector3 positionError =
+		m_anchor->m_node->m_x - cti.m_colObj->getWorldTransform() * m_anchor->m_local;
 	const btVector3 relativeVelocity = getVb() - getVa();
-	const btVector3 residual = relativeVelocity - m_totalImpulse * regularization;
-	const btVector3 impulse = getAnchorImpulseMatrix(*m_anchor, regularization) * residual * infoGlobal.m_sor;
+	const btVector3 positionVelocity = m_anchor->m_compliance > 0
+									   ? positionError / infoGlobal.m_timeStep
+									   : btVector3(0, 0, 0);
+	const btVector3 residual = relativeVelocity + positionVelocity - m_totalImpulse * regularization;
+	const btMatrix3x3 impulseMatrix = getAnchorImpulseMatrix(*m_anchor, regularization);
+	const btVector3 previousTotalImpulse = m_totalImpulse;
+	const btVector3 impulse = impulseMatrix * residual * infoGlobal.m_sor;
 	m_totalImpulse += impulse;
 
 	applyImpulse(impulse);
@@ -202,6 +212,31 @@ btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolver
 	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
 	{
 		applyAnchorImpulseToMultiBody(*m_anchor, impulse, false);
+	}
+
+	if (m_anchor->m_compliance > 0)
+	{
+		const btVector3 postRelativeVelocity = getVb() - getVa();
+		std::fprintf(stderr,
+					 "[BT_ANCHOR_DEBUG] velocity user=%u node=%d anchor=%p body=%p "
+					 "dt=%.9g compliance=%.9g alpha=%.9g sor=%.9g "
+					 "position=(%.9g %.9g %.9g) relative=(%.9g %.9g %.9g) "
+					 "lambda0=(%.9g %.9g %.9g) residual=(%.9g %.9g %.9g) "
+					 "K=(%.9g %.9g %.9g) delta=(%.9g %.9g %.9g) "
+					 "lambda1=(%.9g %.9g %.9g) postRelative=(%.9g %.9g %.9g)\n",
+					 static_cast<unsigned>(m_anchor->m_userIndex), m_anchor->m_node->index,
+					 const_cast<void*>(static_cast<const void*>(m_anchor)),
+					 const_cast<void*>(static_cast<const void*>(cti.m_colObj)),
+					 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(m_anchor->m_compliance),
+					 static_cast<double>(regularization), static_cast<double>(infoGlobal.m_sor),
+					 static_cast<double>(positionError.x()), static_cast<double>(positionError.y()), static_cast<double>(positionError.z()),
+					 static_cast<double>(relativeVelocity.x()), static_cast<double>(relativeVelocity.y()), static_cast<double>(relativeVelocity.z()),
+					 static_cast<double>(previousTotalImpulse.x()), static_cast<double>(previousTotalImpulse.y()), static_cast<double>(previousTotalImpulse.z()),
+					 static_cast<double>(residual.x()), static_cast<double>(residual.y()), static_cast<double>(residual.z()),
+					 static_cast<double>(impulseMatrix[0][0]), static_cast<double>(impulseMatrix[1][1]), static_cast<double>(impulseMatrix[2][2]),
+					 static_cast<double>(impulse.x()), static_cast<double>(impulse.y()), static_cast<double>(impulse.z()),
+					 static_cast<double>(m_totalImpulse.x()), static_cast<double>(m_totalImpulse.y()), static_cast<double>(m_totalImpulse.z()),
+					 static_cast<double>(postRelativeVelocity.x()), static_cast<double>(postRelativeVelocity.y()), static_cast<double>(postRelativeVelocity.z()));
 	}
 
 	return residual.length2();
@@ -223,7 +258,7 @@ btVector3 btDeformableNodeAnchorConstraint::getSplitVa() const
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
 	btVector3 va(0, 0, 0);
-	if (cti.m_colObj->hasContactResponse())
+	if (cti.m_colObj)
 	{
 		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
 		{
@@ -277,9 +312,22 @@ void btDeformableNodeAnchorConstraint::applySplitImpulse(const btVector3& impuls
 btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolverInfo& infoGlobal)
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
-	if (infoGlobal.m_timeStep <= SIMD_EPSILON ||
-		!cti.m_colObj->hasContactResponse())
+	if (infoGlobal.m_timeStep <= SIMD_EPSILON || !cti.m_colObj)
 	{
+		return 0;
+	}
+	if (m_anchor->m_compliance > 0)
+	{
+		// The compliant anchor's position error is part of its physical implicit
+		// spring row in solveConstraint. A second split-impulse multiplier would
+		// duplicate that correction and would not represent the spring force.
+		std::fprintf(stderr,
+					 "[BT_ANCHOR_DEBUG] split-disabled user=%u node=%d anchor=%p body=%p "
+					 "dt=%.9g compliance=%.9g\n",
+					 static_cast<unsigned>(m_anchor->m_userIndex), m_anchor->m_node->index,
+					 const_cast<void*>(static_cast<const void*>(m_anchor)),
+					 const_cast<void*>(static_cast<const void*>(cti.m_colObj)),
+					 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(m_anchor->m_compliance));
 		return 0;
 	}
 
@@ -293,7 +341,9 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 	const btVector3 constraintError = relativePushVelocity +
 									  positionError * (infoGlobal.m_deformable_erp / infoGlobal.m_timeStep) -
 									  m_totalSplitImpulse * regularization;
-	const btVector3 impulse = getAnchorImpulseMatrix(*m_anchor, regularization) * constraintError * infoGlobal.m_sor;
+	const btMatrix3x3 impulseMatrix = getAnchorImpulseMatrix(*m_anchor, regularization);
+	const btVector3 previousTotalSplitImpulse = m_totalSplitImpulse;
+	const btVector3 impulse = impulseMatrix * constraintError * infoGlobal.m_sor;
 	m_totalSplitImpulse += impulse;
 
 	applySplitImpulse(impulse);
@@ -308,6 +358,32 @@ btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolv
 	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
 	{
 		applyAnchorImpulseToMultiBody(*m_anchor, impulse, true);
+	}
+
+	if (m_anchor->m_compliance > 0)
+	{
+		const btVector3 postRelativePushVelocity = getSplitVb() - getSplitVa();
+		std::fprintf(stderr,
+					 "[BT_ANCHOR_DEBUG] split user=%u node=%d anchor=%p body=%p "
+					 "dt=%.9g compliance=%.9g alpha=%.9g erp=%.9g sor=%.9g "
+					 "position=(%.9g %.9g %.9g) relativePush=(%.9g %.9g %.9g) "
+					 "lambda0=(%.9g %.9g %.9g) residual=(%.9g %.9g %.9g) "
+					 "K=(%.9g %.9g %.9g) delta=(%.9g %.9g %.9g) "
+					 "lambda1=(%.9g %.9g %.9g) postRelativePush=(%.9g %.9g %.9g)\n",
+					 static_cast<unsigned>(m_anchor->m_userIndex), m_anchor->m_node->index,
+					 const_cast<void*>(static_cast<const void*>(m_anchor)),
+					 const_cast<void*>(static_cast<const void*>(cti.m_colObj)),
+					 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(m_anchor->m_compliance),
+					 static_cast<double>(regularization), static_cast<double>(infoGlobal.m_deformable_erp),
+					 static_cast<double>(infoGlobal.m_sor),
+					 static_cast<double>(positionError.x()), static_cast<double>(positionError.y()), static_cast<double>(positionError.z()),
+					 static_cast<double>(relativePushVelocity.x()), static_cast<double>(relativePushVelocity.y()), static_cast<double>(relativePushVelocity.z()),
+					 static_cast<double>(previousTotalSplitImpulse.x()), static_cast<double>(previousTotalSplitImpulse.y()), static_cast<double>(previousTotalSplitImpulse.z()),
+					 static_cast<double>(constraintError.x()), static_cast<double>(constraintError.y()), static_cast<double>(constraintError.z()),
+					 static_cast<double>(impulseMatrix[0][0]), static_cast<double>(impulseMatrix[1][1]), static_cast<double>(impulseMatrix[2][2]),
+					 static_cast<double>(impulse.x()), static_cast<double>(impulse.y()), static_cast<double>(impulse.z()),
+					 static_cast<double>(m_totalSplitImpulse.x()), static_cast<double>(m_totalSplitImpulse.y()), static_cast<double>(m_totalSplitImpulse.z()),
+					 static_cast<double>(postRelativePushVelocity.x()), static_cast<double>(postRelativePushVelocity.y()), static_cast<double>(postRelativePushVelocity.z()));
 	}
 
 	return constraintError.length2();

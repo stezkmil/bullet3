@@ -17,6 +17,7 @@
 #include "btDeformableMultiBodyDynamicsWorld.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 btScalar btDeformableContactProjection::update(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
 {
 	btScalar residualSquare = 0;
@@ -141,7 +142,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		// set Dirichlet constraint
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
-			if (psb->m_nodes[j].m_frozen > 0)
+			if (psb->m_nodes[j].m_frozen > 0 || psb->m_nodes[j].m_im <= 0)
 			{
 				btDeformableStaticConstraint static_constraint(&psb->m_nodes[j], infoGlobal);
 				m_staticConstraints[i].push_back(static_constraint);
@@ -153,13 +154,27 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[j];
 			// skip fixed points
-			if (anchor.m_node->m_frozen > 0)
+			if (anchor.m_node->m_frozen > 0 || anchor.m_node->m_im <= 0)
 			{
 				continue;
 			}
 			anchor.m_c1 = anchor.m_cti.m_colObj->getWorldTransform().getBasis() * anchor.m_local;
 			btDeformableNodeAnchorConstraint constraint(anchor, infoGlobal);
 			m_nodeAnchorConstraints[i].push_back(constraint);
+			if (anchor.m_compliance > 0)
+			{
+				const btVector3 positionError =
+					anchor.m_node->m_x - anchor.m_cti.m_colObj->getWorldTransform() * anchor.m_local;
+				std::fprintf(stderr,
+							 "[BT_ANCHOR_DEBUG] setup user=%u node=%d anchor=%p body=%p "
+							 "dt=%.9g compliance=%.9g frozen=%d projected=1 position=(%.9g %.9g %.9g)\n",
+							 static_cast<unsigned>(anchor.m_userIndex), anchor.m_node->index,
+							 static_cast<void*>(&anchor),
+							 const_cast<void*>(static_cast<const void*>(anchor.m_cti.m_colObj)),
+							 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(anchor.m_compliance),
+							 anchor.m_node->m_frozen,
+							 static_cast<double>(positionError.x()), static_cast<double>(positionError.y()), static_cast<double>(positionError.z()));
+			}
 		}
 
 		// set Deformable Node vs. Rigid constraint
@@ -177,7 +192,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			const btSoftBody::DeformableNodeRigidContact& contact = psb->m_nodeRigidContacts[j];
 			// skip fixed points
-			if (contact.m_node->m_frozen > 0)
+			if (contact.m_node->m_frozen > 0 || contact.m_node->m_im <= 0)
 			{
 				continue;
 			}
@@ -290,10 +305,6 @@ void btDeformableContactProjection::setProjection()
 		}
 		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
-			if (m_nodeAnchorConstraints[i][j].m_anchor->m_compliance > 0)
-			{
-				continue;
-			}
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_constrained = true;
 			if (m_projectionsDict.find(index) == NULL)
@@ -422,10 +433,6 @@ void btDeformableContactProjection::setProjection()
 
 		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
-			if (m_nodeAnchorConstraints[i][j].m_anchor->m_compliance > 0)
-			{
-				continue;
-			}
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_penetration = SIMD_INFINITY;
 			btAlignedObjectArray<int> indices;
@@ -547,10 +554,6 @@ void btDeformableContactProjection::setLagrangeMultiplier()
 		}
 		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
-			if (m_nodeAnchorConstraints[i][j].m_anchor->m_compliance > 0)
-			{
-				continue;
-			}
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_constrained = true;
 			LagrangeMultiplier lm;

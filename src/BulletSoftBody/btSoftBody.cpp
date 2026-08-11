@@ -1050,6 +1050,8 @@ void btSoftBody::freezeNode(int node, bool freeze)
 		++m_nodes[node].m_frozen;
 		m_nodes[node].m_v = btVector3(0, 0, 0);
 		m_nodes[node].m_vn = btVector3(0, 0, 0);
+		m_nodes[node].m_splitv.setZero();
+		m_nodes[node].m_q = m_nodes[node].m_x;
 	}
 	else
 	{
@@ -1064,6 +1066,13 @@ void btSoftBody::freezeNode(int node, bool freeze)
 void btSoftBody::setMass(int node, btScalar mass)
 {
 	m_nodes[node].m_im = mass > 0 ? 1 / mass : 0;
+	if (mass <= 0)
+	{
+		m_nodes[node].m_v.setZero();
+		m_nodes[node].m_vn.setZero();
+		m_nodes[node].m_splitv.setZero();
+		m_nodes[node].m_q = m_nodes[node].m_x;
+	}
 	m_bUpdateRtCst = true;
 }
 
