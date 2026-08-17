@@ -306,6 +306,17 @@ void btDeformableBodySolver::updateVelocity()
 		}
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
+			btSoftBody::Node& node = psb->m_nodes[j];
+			if (node.m_frozen > 0 || node.m_im <= 0)
+			{
+				node.m_v.setZero();
+				node.m_vn.setZero();
+				node.m_splitv.setZero();
+				m_dv[counter].setZero();
+				m_backupVelocity[counter].setZero();
+				++counter;
+				continue;
+			}
 			// set NaN to zero;
 			if (m_dv[counter] != m_dv[counter])
 			{
@@ -338,7 +349,18 @@ void btDeformableBodySolver::updateTempPosition()
 		}
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
-			psb->m_nodes[j].m_q = psb->m_nodes[j].m_x + m_dt * (psb->m_nodes[j].m_v + psb->m_nodes[j].m_splitv);
+			btSoftBody::Node& node = psb->m_nodes[j];
+			if (node.m_frozen > 0 || node.m_im <= 0)
+			{
+				node.m_v.setZero();
+				node.m_vn.setZero();
+				node.m_splitv.setZero();
+				node.m_q = node.m_x;
+			}
+			else
+			{
+				node.m_q = node.m_x + m_dt * (node.m_v + node.m_splitv);
+			}
 			++counter;
 		}
 		psb->updateDeformation();
@@ -371,6 +393,17 @@ void btDeformableBodySolver::setupDeformableSolve(bool implicit)
 		}
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
+			btSoftBody::Node& node = psb->m_nodes[j];
+			if (node.m_frozen > 0 || node.m_im <= 0)
+			{
+				node.m_v.setZero();
+				node.m_vn.setZero();
+				node.m_splitv.setZero();
+				m_dv[counter].setZero();
+				m_backupVelocity[counter].setZero();
+				++counter;
+				continue;
+			}
 			if (implicit)
 			{
 				// Use the current post-explicit/post-contact velocity as the initial guess for the implicit solve.
@@ -481,6 +514,15 @@ void btDeformableBodySolver::predictDeformableMotion(btSoftBody* psb, btScalar d
 	for (i = 0, ni = psb->m_nodes.size(); i < ni; ++i)
 	{
 		btSoftBody::Node& n = psb->m_nodes[i];
+		if (n.m_frozen > 0 || n.m_im <= 0)
+		{
+			n.m_v.setZero();
+			n.m_vn.setZero();
+			n.m_splitv.setZero();
+			n.m_q = n.m_x;
+			n.m_constrained = false;
+			continue;
+		}
 		// apply drag
 		n.m_v *= (1 - psb->m_cfg.drag);
 		// scale velocity back
@@ -555,6 +597,14 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
 			btSoftBody::Node& node = psb->m_nodes[j];
+			if (node.m_frozen > 0 || node.m_im <= 0)
+			{
+				node.m_v.setZero();
+				node.m_vn.setZero();
+				node.m_splitv.setZero();
+				node.m_q = node.m_x;
+				continue;
+			}
 			btScalar maxDisplacement = psb->getWorldInfo()->m_maxDisplacement;
 			btScalar clampDeltaV = maxDisplacement / timeStep;
 			//fprintf(stderr, "v %d %f %f %f\n", j, node.m_v.x(), node.m_v.y(), node.m_v.z());
