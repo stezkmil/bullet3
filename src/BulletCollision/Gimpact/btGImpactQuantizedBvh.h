@@ -37,7 +37,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include <atomic>
 #include <map>
 #include <vector>
+#ifdef BT_USE_TBB
 #include <tbb/tbb.h>
+#endif
 
 class GIM_QUANTIZED_BVH_NODE_ARRAY : public btAlignedObjectArray<BT_QUANTIZED_BVH_NODE>
 {
@@ -197,6 +199,9 @@ struct spinlock
 			{
 				return;
 			}
+#if !defined(_M_ARM64) && !defined(__i386__)
+			static const timespec ns = { 0, 1 };
+#endif
 			// Wait for lock to be released without generating cache misses
 			while (lock_.load(std::memory_order_relaxed))
 			{
@@ -204,8 +209,10 @@ struct spinlock
 				// hyper-threads
 #ifdef _M_ARM64
 				__yield();
-#else
+#elif defined(__i386__)
 				_mm_pause();
+#else
+				nanosleep(&ns, NULL);
 #endif
 			}
 		}
