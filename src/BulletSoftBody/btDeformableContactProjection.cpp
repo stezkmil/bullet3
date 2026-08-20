@@ -17,6 +17,7 @@
 #include "btDeformableMultiBodyDynamicsWorld.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 btScalar btDeformableContactProjection::update(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
 {
 	btScalar residualSquare = 0;
@@ -58,7 +59,7 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 	return residualSquare;
 }
 
-btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal, const std::unordered_map<const btRigidBody*, btScalar>& penetrations)
+btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
 {
 	btScalar residualSquare = 0;
 	for (int i = 0; i < numDeformableBodies; ++i)
@@ -85,13 +86,6 @@ btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** de
 			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
-				{
-					auto it = penetrations.find(constraint.m_anchor->m_body);
-					if (it != penetrations.end())
-						constraint.m_anchor_rigid_penetration = it->second;
-					else
-						constraint.m_anchor_rigid_penetration = 0.0;
-				}
 				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
@@ -111,10 +105,13 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			continue;
 		}
 
-		auto isImmovable = [](btRigidBody* rb) -> bool
+		auto isImmovable = [](const btCollisionObject* object) -> bool
 		{
-			if (!rb) return true;
-			return rb->isStaticOrKinematicObject() || (rb->getInvMass() == btScalar(0) || !rb->isActive());
+			if (!object) return true;
+			const btRigidBody* rigidBody = btRigidBody::upcast(object);
+			return object->isStaticOrKinematicObject() ||
+				   (rigidBody && rigidBody->getInvMass() == btScalar(0)) ||
+				   !object->isActive();
 		};
 
 		for (int a = 0; a < psb->m_deformableAnchors.size(); ++a)
@@ -122,8 +119,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			int wantFreeze = 0;
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[a];
 
-			btRigidBody* rb = anchor.m_body;
-			if (isImmovable(rb))
+			if (anchor.m_compliance <= 0 && isImmovable(anchor.m_cti.m_colObj))
 				wantFreeze = 1;
 
 			int hadFreeze = anchor.m_freezeContribution;
@@ -146,7 +142,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		// set Dirichlet constraint
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
-			if (psb->m_nodes[j].m_frozen > 0)
+			if (psb->m_nodes[j].m_frozen > 0 || psb->m_nodes[j].m_im <= 0)
 			{
 				btDeformableStaticConstraint static_constraint(&psb->m_nodes[j], infoGlobal);
 				m_staticConstraints[i].push_back(static_constraint);
@@ -158,13 +154,27 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			btSoftBody::DeformableNodeRigidAnchor& anchor = psb->m_deformableAnchors[j];
 			// skip fixed points
-			if (anchor.m_node->m_frozen > 0)
+			if (anchor.m_node->m_frozen > 0 || anchor.m_node->m_im <= 0)
 			{
 				continue;
 			}
 			anchor.m_c1 = anchor.m_cti.m_colObj->getWorldTransform().getBasis() * anchor.m_local;
 			btDeformableNodeAnchorConstraint constraint(anchor, infoGlobal);
 			m_nodeAnchorConstraints[i].push_back(constraint);
+			if (anchor.m_compliance > 0)
+			{
+				const btVector3 positionError =
+					anchor.m_node->m_x - anchor.m_cti.m_colObj->getWorldTransform() * anchor.m_local;
+				std::fprintf(stderr,
+							 "[BT_ANCHOR_DEBUG] setup user=%u node=%d anchor=%p body=%p "
+							 "dt=%.9g compliance=%.9g frozen=%d projected=1 position=(%.9g %.9g %.9g)\n",
+							 static_cast<unsigned>(anchor.m_userIndex), anchor.m_node->index,
+							 static_cast<void*>(&anchor),
+							 const_cast<void*>(static_cast<const void*>(anchor.m_cti.m_colObj)),
+							 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(anchor.m_compliance),
+							 anchor.m_node->m_frozen,
+							 static_cast<double>(positionError.x()), static_cast<double>(positionError.y()), static_cast<double>(positionError.z()));
+			}
 		}
 
 		// set Deformable Node vs. Rigid constraint
@@ -182,7 +192,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 		{
 			const btSoftBody::DeformableNodeRigidContact& contact = psb->m_nodeRigidContacts[j];
 			// skip fixed points
-			if (contact.m_node->m_frozen > 0)
+			if (contact.m_node->m_frozen > 0 || contact.m_node->m_im <= 0)
 			{
 				continue;
 			}

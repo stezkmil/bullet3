@@ -24,7 +24,6 @@
 #include "LinearMath/btReducedVector.h"
 #include "LinearMath/btModifiedGramSchmidt.h"
 #include <vector>
-#include <unordered_map>
 
 struct LagrangeMultiplier
 {
@@ -91,7 +90,7 @@ public:
 
 	virtual void reinitialize(bool nodeUpdated);
 
-	btScalar solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal, const std::unordered_map<const btRigidBody*, btScalar>& penetrations);
+	btScalar solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal);
 
 	virtual void setLagrangeMultiplier();
 
