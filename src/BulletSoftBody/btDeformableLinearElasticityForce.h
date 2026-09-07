@@ -212,7 +212,10 @@ public:
 	double elasticEnergyDensity(const btSoftBody::TetraScratch& s)
 	{
 		double density = 0;
-		btMatrix3x3 epsilon = (s.m_F + s.m_F.transpose()) * 0.5 - btMatrix3x3::getIdentity();
+		// Keep the line-search merit function consistent with firstPiola():
+		// rigid element rotation must not contribute elastic energy.
+		const btMatrix3x3 corotated_F = s.m_corotation.transpose() * s.m_F;
+		btMatrix3x3 epsilon = (corotated_F + corotated_F.transpose()) * 0.5 - btMatrix3x3::getIdentity();
 		btScalar trace = epsilon[0][0] + epsilon[1][1] + epsilon[2][2];
 		density += m_mu * (epsilon[0].length2() + epsilon[1].length2() + epsilon[2].length2());
 		density += m_lambda * trace * trace * 0.5;

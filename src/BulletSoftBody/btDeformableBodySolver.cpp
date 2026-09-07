@@ -20,8 +20,38 @@
 #include "LinearMath/btQuickprof.h"
 static const int kMaxConjugateGradientIterations = 300;
 
+// Temporary diagnostics for the implicit/contact investigation.  Keep the
+// trace bounded: a few startup solves and a short window around first contact.
+#define BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS 1
+
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+namespace
+{
+btScalar maxVectorLength(const btAlignedObjectArray<btVector3>& values)
+{
+	btScalar maxLength2 = 0;
+	for (int i = 0; i < values.size(); ++i)
+	{
+		maxLength2 = btMax(maxLength2, values[i].length2());
+	}
+	return btSqrt(maxLength2);
+}
+
+btScalar vectorDot(const btAlignedObjectArray<btVector3>& a, const btAlignedObjectArray<btVector3>& b)
+{
+	btScalar result = 0;
+	const int count = btMin(a.size(), b.size());
+	for (int i = 0; i < count; ++i)
+	{
+		result += a[i].dot(b[i]);
+	}
+	return result;
+}
+}  // namespace
+#endif
+
 btDeformableBodySolver::btDeformableBodySolver()
-	: m_numNodes(0), m_cg(kMaxConjugateGradientIterations), m_cr(kMaxConjugateGradientIterations), m_maxNewtonIterations(1), m_newtonTolerance(1e-4), m_lineSearch(false), m_useProjection(false)
+	: m_numNodes(0), m_cg(kMaxConjugateGradientIterations), m_cr(kMaxConjugateGradientIterations), m_lastLinearSolverIterations(0), m_maxNewtonIterations(1), m_newtonTolerance(1e-4), m_lineSearch(false), m_useProjection(false)
 {
 	m_objective = new btDeformableBackwardEulerObjective(m_softBodies, m_backupVelocity);
 	m_reducedSolver = false;
@@ -59,6 +89,26 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 	}
 	else
 	{
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+		static unsigned long long solveIndex = 0;
+		static bool wasInContact = false;
+		static int contactTraceCountdown = 0;
+		const int contactMultiplierCount = m_objective->m_projection.m_lagrangeMultipliers.size();
+		const bool inContact = contactMultiplierCount > 0;
+		if (inContact && !wasInContact)
+		{
+			contactTraceCountdown = 24;
+		}
+		wasInContact = inContact;
+		const bool traceImplicitSolve = solveIndex < 3 || contactTraceCountdown > 0;
+		if (traceImplicitSolve)
+		{
+			fprintf(stderr,
+					"[BT_IMPLICIT] solve=%llu begin dt=%.9g lineSearch=%d nodes=%d contactLM=%d maxNewton=%d initialDvMax=%.9g\n",
+					solveIndex, (double)solverdt, m_lineSearch ? 1 : 0, m_numNodes,
+					contactMultiplierCount, m_maxNewtonIterations, (double)maxVectorLength(m_dv));
+		}
+#endif
 		for (int i = 0; i < m_maxNewtonIterations; ++i)
 		{
 			updateState();
@@ -79,8 +129,23 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 
 			m_objective->computeResidual(solverdt, m_residual);
 			const btScalar residualNorm = m_objective->computeNorm(m_residual);
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+			if (traceImplicitSolve)
+			{
+				const btScalar merit = m_objective->totalEnergy(solverdt) + kineticEnergy();
+				fprintf(stderr,
+						"[BT_IMPLICIT] solve=%llu iter=%d state residual=%.9g dvMax=%.9g merit=%.9g\n",
+						solveIndex, i, (double)residualNorm, (double)maxVectorLength(m_dv), (double)merit);
+			}
+#endif
 			if (residualNorm < m_newtonTolerance && i > 0)
 			{
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+				if (traceImplicitSolve)
+				{
+					fprintf(stderr, "[BT_IMPLICIT] solve=%llu iter=%d converged\n", solveIndex, i);
+				}
+#endif
 				break;
 			}
 			// todo xuchenhan@: this really only needs to be calculated once
@@ -88,27 +153,106 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			if (m_lineSearch)
 			{
 				btScalar inner_product = computeDescentStep(m_ddv, m_residual);
+				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
+				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
+				if (i > 0 && stepNorm <= relativeStepTolerance)
+				{
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+					if (traceImplicitSolve)
+					{
+						fprintf(stderr,
+								"[BT_IMPLICIT] solve=%llu iter=%d convergedByStep stepNorm=%.9g tolerance=%.9g linearIterations=%d linearStagnated=%d linearResidualInitial=%.9g linearResidualFinal=%.9g linearResidualRatio=%.9g linearResidualTarget=%.9g\n",
+								solveIndex, i, (double)stepNorm, (double)relativeStepTolerance, m_lastLinearSolverIterations,
+								m_cr.getStagnated() ? 1 : 0,
+								(double)m_cr.getInitialResidual(), (double)m_cr.getFinalResidual(),
+								(double)m_cr.getResidualRatio(), (double)m_cr.getTargetResidual());
+					}
+#endif
+					break;
+				}
 				btScalar alpha = 0.01, beta = 0.5;  // Boyd & Vandenberghe suggested alpha between 0.01 and 0.3, beta between 0.1 to 0.8
 				btScalar scale = 2;
 				btScalar f0 = m_objective->totalEnergy(solverdt) + kineticEnergy(), f1, f2;
+				int backtracks = -1;
+				bool lineSearchFailed = false;
 				backupDv();
 				do
 				{
 					scale *= beta;
+					++backtracks;
 					if (scale < 1e-8)
 					{
-						return;
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+						if (traceImplicitSolve)
+						{
+							fprintf(stderr,
+									"[BT_IMPLICIT] solve=%llu iter=%d lineSearchFailed ddvMax=%.9g inner=%.9g linearIterations=%d linearStagnated=%d linearResidualRatio=%.9g f0=%.9g\n",
+									solveIndex, i, (double)maxVectorLength(m_ddv), (double)inner_product, m_lastLinearSolverIterations,
+									m_cr.getStagnated() ? 1 : 0, (double)m_cr.getResidualRatio(), (double)f0);
+						}
+#endif
+						lineSearchFailed = true;
+						break;
 					}
 					updateEnergy(scale);
 					f1 = m_objective->totalEnergy(solverdt) + kineticEnergy();
 					f2 = f0 - alpha * scale * inner_product;
 				} while (!(f1 < f2 + SIMD_EPSILON));  // if anything here is nan then the search continues
+				if (lineSearchFailed)
+				{
+					// The trial evaluations modified m_dv, node velocities, temporary
+					// positions, and deformation scratch data. Restore the accepted
+					// iterate before terminating this Newton solve.
+					revertDv();
+					updateState();
+					break;
+				}
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+				if (traceImplicitSolve)
+				{
+					fprintf(stderr,
+							"[BT_IMPLICIT] solve=%llu iter=%d step mode=lineSearch ddvMax=%.9g inner=%.9g scale=%.9g backtracks=%d linearIterations=%d linearStagnated=%d linearResidualInitial=%.9g linearResidualFinal=%.9g linearResidualRatio=%.9g linearResidualTarget=%.9g f0=%.9g f1=%.9g armijo=%.9g\n",
+							solveIndex, i, (double)maxVectorLength(m_ddv), (double)inner_product,
+							(double)scale, backtracks, m_lastLinearSolverIterations, m_cr.getStagnated() ? 1 : 0,
+							(double)m_cr.getInitialResidual(), (double)m_cr.getFinalResidual(),
+							(double)m_cr.getResidualRatio(), (double)m_cr.getTargetResidual(),
+							(double)f0, (double)f1, (double)f2);
+				}
+#endif
 				revertDv();
 				updateDv(scale);
 			}
 			else
 			{
 				computeStep(m_ddv, m_residual);
+				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
+				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
+				if (i > 0 && stepNorm <= relativeStepTolerance)
+				{
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+					if (traceImplicitSolve)
+					{
+						fprintf(stderr,
+								"[BT_IMPLICIT] solve=%llu iter=%d convergedByStep stepNorm=%.9g tolerance=%.9g linearIterations=%d linearStagnated=%d linearResidualInitial=%.9g linearResidualFinal=%.9g linearResidualRatio=%.9g linearResidualTarget=%.9g\n",
+								solveIndex, i, (double)stepNorm, (double)relativeStepTolerance, m_lastLinearSolverIterations,
+								m_cr.getStagnated() ? 1 : 0,
+								(double)m_cr.getInitialResidual(), (double)m_cr.getFinalResidual(),
+								(double)m_cr.getResidualRatio(), (double)m_cr.getTargetResidual());
+					}
+#endif
+					break;
+				}
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+				if (traceImplicitSolve)
+				{
+					fprintf(stderr,
+							"[BT_IMPLICIT] solve=%llu iter=%d step mode=full ddvMax=%.9g residualDotStep=%.9g linearIterations=%d linearStagnated=%d linearResidualInitial=%.9g linearResidualFinal=%.9g linearResidualRatio=%.9g linearResidualTarget=%.9g\n",
+							solveIndex, i, (double)maxVectorLength(m_ddv), (double)vectorDot(m_residual, m_ddv), m_lastLinearSolverIterations,
+							m_cr.getStagnated() ? 1 : 0,
+							(double)m_cr.getInitialResidual(), (double)m_cr.getFinalResidual(),
+							(double)m_cr.getResidualRatio(), (double)m_cr.getTargetResidual());
+				}
+#endif
 				updateDv();
 			}
 			for (int j = 0; j < m_numNodes; ++j)
@@ -118,6 +262,27 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			}
 		}
 		updateVelocity();
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+		if (traceImplicitSolve)
+		{
+			btScalar finalVelocityMax = 0;
+			for (int bodyIndex = 0; bodyIndex < m_softBodies.size(); ++bodyIndex)
+			{
+				const btSoftBody* body = m_softBodies[bodyIndex];
+				for (int nodeIndex = 0; nodeIndex < body->m_nodes.size(); ++nodeIndex)
+				{
+					finalVelocityMax = btMax(finalVelocityMax, body->m_nodes[nodeIndex].m_v.length());
+				}
+			}
+			fprintf(stderr, "[BT_IMPLICIT] solve=%llu end finalDvMax=%.9g finalVelocityMax=%.9g\n",
+					solveIndex, (double)maxVectorLength(m_dv), (double)finalVelocityMax);
+		}
+		if (contactTraceCountdown > 0)
+		{
+			--contactTraceCountdown;
+		}
+		++solveIndex;
+#endif
 	}
 }
 
@@ -170,7 +335,7 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 	btScalar inner_product = 0;
 	if (m_useProjection)
 	{
-		m_cg.solve(*m_objective, ddv, residual, false);
+		m_lastLinearSolverIterations = m_cg.solve(*m_objective, ddv, residual, false);
 		inner_product = m_cg.dot(residual, m_ddv);
 	}
 	else
@@ -179,7 +344,7 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 		m_objective->addLagrangeMultiplierRHS(residual, m_dv, rhs);
 		m_objective->addLagrangeMultiplier(ddv, x);
 		m_objective->m_preconditioner->reinitialize(true);
-		m_cr.solve(*m_objective, x, rhs, false);
+		m_lastLinearSolverIterations = m_cr.solve(*m_objective, x, rhs, false);
 		for (int i = 0; i < ddv.size(); ++i)
 		{
 			ddv[i] = x[i];
@@ -234,7 +399,7 @@ void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
 {
 	if (m_useProjection)
 	{
-		m_cg.solve(*m_objective, ddv, residual, false);
+		m_lastLinearSolverIterations = m_cg.solve(*m_objective, ddv, residual, false);
 	}
 	else
 	{
@@ -242,7 +407,7 @@ void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
 		m_objective->addLagrangeMultiplierRHS(residual, m_dv, rhs);
 		m_objective->addLagrangeMultiplier(ddv, x);
 		m_objective->m_preconditioner->reinitialize(true);
-		m_cr.solve(*m_objective, x, rhs, false);
+		m_lastLinearSolverIterations = m_cr.solve(*m_objective, x, rhs, false);
 		for (int i = 0; i < ddv.size(); ++i)
 		{
 			ddv[i] = x[i];
@@ -632,6 +797,48 @@ void btDeformableBodySolver::applyTransforms(btScalar timeStep)
 		//fprintf(stderr, "frameend()\n");
 		psb->interpolateRenderMesh();
 	}
+#if BT_DEFORMABLE_IMPLICIT_DIAGNOSTICS
+	if (m_implicit)
+	{
+		static unsigned long long motionStep = 0;
+		if (motionStep % 25 == 0)
+		{
+			const int contactMultiplierCount = m_objective->m_projection.m_lagrangeMultipliers.size();
+			for (int bodyIndex = 0; bodyIndex < m_softBodies.size(); ++bodyIndex)
+			{
+				const btSoftBody* body = m_softBodies[bodyIndex];
+				btScalar dynamicMass = 0;
+				btVector3 weightedPosition(0, 0, 0);
+				btVector3 weightedVelocity(0, 0, 0);
+				int dynamicNodeCount = 0;
+				for (int nodeIndex = 0; nodeIndex < body->m_nodes.size(); ++nodeIndex)
+				{
+					const btSoftBody::Node& node = body->m_nodes[nodeIndex];
+					if (node.m_im > 0)
+					{
+						const btScalar mass = btScalar(1) / node.m_im;
+						dynamicMass += mass;
+						weightedPosition += mass * node.m_x;
+						weightedVelocity += mass * (node.m_v + node.m_splitv);
+						++dynamicNodeCount;
+					}
+				}
+				if (dynamicMass > 0)
+				{
+					const btVector3 centerOfMass = weightedPosition / dynamicMass;
+					const btVector3 centerOfMassVelocity = weightedVelocity / dynamicMass;
+					fprintf(stderr,
+							"[BT_MOTION] step=%llu body=%d dt=%.9g dynamicNodes=%d mass=%.9g com=(%.9g,%.9g,%.9g) velocity=(%.9g,%.9g,%.9g) contactLM=%d nodeRigid=%d faceRigid=%d\n",
+							motionStep, bodyIndex, (double)timeStep, dynamicNodeCount, (double)dynamicMass,
+							(double)centerOfMass.x(), (double)centerOfMass.y(), (double)centerOfMass.z(),
+							(double)centerOfMassVelocity.x(), (double)centerOfMassVelocity.y(), (double)centerOfMassVelocity.z(),
+							contactMultiplierCount, body->m_nodeRigidContacts.size(), body->m_faceRigidContacts.size());
+				}
+			}
+		}
+		++motionStep;
+	}
+#endif
 }
 
 void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btCollisionObjectWrapper* collisionObjectWrap, btManifoldResultForSkin* resultOut)

@@ -42,9 +42,10 @@ protected:
 	btScalar m_dt;                                                 // dt
 	btConjugateGradient<btDeformableBackwardEulerObjective> m_cg;  // CG solver
 	btConjugateResidual<btDeformableBackwardEulerObjective> m_cr;  // CR solver
+	int m_lastLinearSolverIterations;                              // iterations used by the latest CG/CR solve
 	bool m_implicit;                                               // use implicit scheme if true, explicit scheme if false
 	int m_maxNewtonIterations;                                     // max number of newton iterations
-	btScalar m_newtonTolerance;                                    // stop newton iterations if f(x) < m_newtonTolerance
+	btScalar m_newtonTolerance;                                    // absolute residual and relative Newton-step tolerance
 	bool m_lineSearch;                                             // If true, use newton's method with line search under implicit scheme
 	bool m_reducedSolver;                                          // flag for reduced soft body solver
 public:

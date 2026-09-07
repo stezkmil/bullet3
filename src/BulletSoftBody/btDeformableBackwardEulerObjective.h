@@ -169,7 +169,9 @@ public:
 			{
 				for (int n = 0; n < lm.m_num_nodes; ++n)
 				{
-					extended_residual[offset + i][d] += lm.m_weights[n] * m_dv[lm.m_indices[n]].dot(lm.m_dirs[d]);
+					// Newton updates m_dv additively. Enforce
+					// C * (m_dv + ddv) = 0, hence C * ddv = -C * m_dv.
+					extended_residual[offset + i][d] -= lm.m_weights[n] * m_dv[lm.m_indices[n]].dot(lm.m_dirs[d]);
 				}
 			}
 		}

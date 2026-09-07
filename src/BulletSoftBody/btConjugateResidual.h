@@ -27,10 +27,20 @@ class btConjugateResidual : public btKrylovSolver<MatrixX>
 	// temp_p = A*p
 	// z = M^(-1) * temp_p = M^(-1) * A * p
 	btScalar best_r;
+	btScalar m_initialResidual;
+	btScalar m_finalResidual;
+	btScalar m_targetResidual;
+	btScalar m_relativeTolerance;
+	bool m_stagnated;
 
 public:
 	btConjugateResidual(const int max_it_in)
-		: Base(max_it_in, 1e-8)
+		: Base(max_it_in, 1e-8),
+		  m_initialResidual(0),
+		  m_finalResidual(0),
+		  m_targetResidual(0),
+		  m_relativeTolerance(1e-4),
+		  m_stagnated(false)
 	{
 	}
 
@@ -49,7 +59,13 @@ public:
 		A.precondition(r, z);  // borrow z to store preconditioned r
 		r = z;
 		btScalar residual_norm = this->norm(r);
-		if (residual_norm <= Base::m_tolerance)
+		m_initialResidual = residual_norm;
+		m_finalResidual = residual_norm;
+		m_targetResidual = btMax(Base::m_tolerance, m_relativeTolerance * residual_norm);
+		m_stagnated = false;
+		best_x = x;
+		best_r = residual_norm;
+		if (residual_norm <= m_targetResidual)
 		{
 			return 0;
 		}
@@ -60,6 +76,9 @@ public:
 		// temp_r = A*r
 		temp_r = temp_p;
 		r_dot_Ar = this->dot(r, temp_r);
+		const int stagnationWindow = 25;
+		const btScalar minimumWindowReduction = btScalar(1e-3);
+		btScalar windowInitialBest = best_r;
 		for (int k = 1; k <= Base::m_maxIterations; k++)
 		{
 			// z = M^(-1) * Ap
@@ -75,10 +94,30 @@ public:
 			{
 				best_x = x;
 				best_r = norm_r;
-				if (norm_r < Base::m_tolerance)
+				m_finalResidual = norm_r;
+				if (norm_r <= m_targetResidual)
 				{
 					return k;
 				}
+			}
+			// Returning the best iterate after a flat residual window avoids spending
+			// the remainder of the iteration budget on roundoff-level progress.  The
+			// test uses the best residual, so temporary CR oscillations do not trigger it.
+			if (k % stagnationWindow == 0)
+			{
+				const btScalar requiredBest = windowInitialBest * (btScalar(1) - minimumWindowReduction);
+				if (!(best_r < requiredBest))
+				{
+					x = best_x;
+					m_finalResidual = best_r;
+					m_stagnated = true;
+					if (verbose)
+					{
+						std::cout << "ConjugateResidual stagnated at iteration " << k << ", residual = " << best_r << std::endl;
+					}
+					return k;
+				}
+				windowInitialBest = best_r;
 			}
 			// temp_r = A * r;
 			A.multiply(r, temp_r);
@@ -95,7 +134,33 @@ public:
 			std::cout << "ConjugateResidual max iterations reached, residual = " << best_r << std::endl;
 		}
 		x = best_x;
+		m_finalResidual = best_r;
 		return Base::m_maxIterations;
+	}
+
+	btScalar getInitialResidual() const
+	{
+		return m_initialResidual;
+	}
+
+	btScalar getFinalResidual() const
+	{
+		return m_finalResidual;
+	}
+
+	btScalar getTargetResidual() const
+	{
+		return m_targetResidual;
+	}
+
+	btScalar getResidualRatio() const
+	{
+		return m_initialResidual > btScalar(0) ? m_finalResidual / m_initialResidual : btScalar(0);
+	}
+
+	bool getStagnated() const
+	{
+		return m_stagnated;
 	}
 
 	void reinitialize(const TVStack& b)
