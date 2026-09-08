@@ -44,6 +44,7 @@ public:
 	Preconditioner* m_preconditioner;
 	btDeformableContactProjection m_projection;
 	const TVStack& m_backupVelocity;
+	TVStack m_implicitConstraintDv; // Frozen post-contact velocity change for this timestep.
 	btAlignedObjectArray<btSoftBody::Node*> m_nodes;
 	bool m_implicit;
 	MassPreconditioner* m_massPreconditioner;
@@ -98,10 +99,21 @@ public:
 	}
 
 	// perform precondition M^(-1) x = b
-	void precondition(const TVStack& x, TVStack& b)
+	void precondition(const TVStack& x, TVStack& b);
+
+	// Balanced two-level preconditioning with the three uniform translations Z.
+	// Built from A*Z, so heterogeneous masses and damping need no special case.
+	bool m_translationCorrection = false;
+	TVStack m_translationAZ[3], m_translationWork;
+	struct TranslationBody
 	{
-		m_preconditioner->operator()(x, b);
-	}
+		int offset, count;
+		btMatrix3x3 inverse;
+		btVector3 coarse;
+	};
+	btAlignedObjectArray<TranslationBody> m_translationBodies;
+	bool setupTranslationCorrection();
+	btScalar correctTranslation(TVStack& x, const TVStack& rhs);
 
 	// reindex all the vertices
 	virtual void updateId()
@@ -169,9 +181,13 @@ public:
 			{
 				for (int n = 0; n < lm.m_num_nodes; ++n)
 				{
-					// Newton updates m_dv additively. Enforce
-					// C * (m_dv + ddv) = 0, hence C * ddv = -C * m_dv.
-					extended_residual[offset + i][d] -= lm.m_weights[n] * m_dv[lm.m_indices[n]].dot(lm.m_dirs[d]);
+					// Newton adds ddv: C * ddv = C * (contactDv - m_dv).
+					// Explicit integration replaces m_dv, so preserve the
+					// velocity change already imposed by contacts/anchors.
+					const btScalar rhsSign = m_implicit ? btScalar(-1) : btScalar(1);
+					extended_residual[offset + i][d] += rhsSign * lm.m_weights[n] * m_dv[lm.m_indices[n]].dot(lm.m_dirs[d]);
+					if (m_implicit && m_implicitConstraintDv.size() == m_dv.size())
+						extended_residual[offset + i][d] += lm.m_weights[n] * m_implicitConstraintDv[lm.m_indices[n]].dot(lm.m_dirs[d]);
 				}
 			}
 		}

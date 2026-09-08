@@ -302,3 +302,113 @@ void btDeformableBackwardEulerObjective::applyDynamicFriction(TVStack& r)
 {
 	m_projection.applyDynamicFriction(r);
 }
+
+bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
+{
+	m_translationCorrection = false;
+	m_translationBodies.clear();
+	if (!m_implicit) return false;
+	// These validated force operators act independently on each body. This
+	// permits three shared A*Z products, rather than three per eligible body.
+	for (int f = 0; f < m_lf.size(); ++f)
+		if (m_lf[f]->getForceType() != BT_LINEAR_ELASTICITY_FORCE &&
+			m_lf[f]->getForceType() != BT_GRAVITY_FORCE &&
+			m_lf[f]->getForceType() != BT_NODAL_FORCE) return false;
+	btAlignedObjectArray<int> constrained;
+	constrained.resize(m_nodes.size(), 0);
+	for (int c = 0; c < m_projection.m_lagrangeMultipliers.size(); ++c)
+	{
+		const LagrangeMultiplier& lm = m_projection.m_lagrangeMultipliers[c];
+		for (int n = 0; n < lm.m_num_nodes; ++n) constrained[lm.m_indices[n]] = 1;
+	}
+	int offset = 0;
+	for (int b = 0; b < m_softBodies.size(); ++b)
+	{
+		const btSoftBody& body = *m_softBodies[b];
+		bool eligible = body.isActive() && !body.isStaticObject() && body.m_nodes.size() > 0;
+		for (int n = 0; eligible && n < body.m_nodes.size(); ++n)
+			eligible = body.m_nodes[n].m_frozen <= 0 && body.m_nodes[n].m_im > 0 && !constrained[offset + n];
+		if (eligible)
+		{
+			TranslationBody entry;
+			entry.offset = offset; entry.count = body.m_nodes.size();
+			entry.inverse.setIdentity(); entry.coarse.setZero();
+			m_translationBodies.push_back(entry);
+		}
+		offset += body.m_nodes.size();
+	}
+	if (m_translationBodies.size() == 0) return false;
+	m_translationWork.resize(m_nodes.size() + m_projection.m_lagrangeMultipliers.size());
+	for (int d = 0; d < 3; ++d)
+	{
+		for (int n = 0; n < m_translationWork.size(); ++n) m_translationWork[n].setZero();
+		for (int b = 0; b < m_translationBodies.size(); ++b)
+		{
+			const TranslationBody& entry = m_translationBodies[b];
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n) m_translationWork[n][d] = 1;
+		}
+		m_translationAZ[d].resize(m_translationWork.size());
+		multiply(m_translationWork, m_translationAZ[d]);
+	}
+	for (int b = m_translationBodies.size() - 1; b >= 0; --b)
+	{
+		TranslationBody& entry = m_translationBodies[b];
+		btMatrix3x3 coarse;
+		for (int d = 0; d < 3; ++d)
+		{
+			btVector3 sum(0, 0, 0);
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += m_translationAZ[d][n];
+			for (int r = 0; r < 3; ++r) coarse[r][d] = sum[r];
+		}
+		bool regularized = false;
+		// Do not substitute a regularized balance equation for this body.
+		if (!KKTPreconditioner::invertPositiveBlock(coarse, entry.inverse, regularized) || regularized)
+			m_translationBodies.removeAtIndex(b);
+	}
+	m_translationCorrection = m_translationBodies.size() > 0;
+	return m_translationCorrection;
+}
+
+void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack& b)
+{
+	if (!m_translationCorrection) { m_preconditioner->operator()(x, b); return; }
+	// B = Q + (I-Q*A)*D*(I-A*Q), with three coarse modes per free body.
+	// Constrained bodies and multiplier entries keep the original D action.
+	m_translationWork = x;
+	for (int body = 0; body < m_translationBodies.size(); ++body)
+	{
+		TranslationBody& entry = m_translationBodies[body];
+		btVector3 sum(0, 0, 0);
+		for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += x[n];
+		entry.coarse = entry.inverse * sum;
+		for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+			for (int d = 0; d < 3; ++d) m_translationWork[n] -= m_translationAZ[d][n] * entry.coarse[d];
+	}
+	m_preconditioner->operator()(m_translationWork, b);
+	for (int body = 0; body < m_translationBodies.size(); ++body)
+	{
+		const TranslationBody& entry = m_translationBodies[body];
+		btVector3 coupling(0, 0, 0);
+		for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+			for (int d = 0; d < 3; ++d) coupling[d] += m_translationAZ[d][n].dot(b[n]);
+		const btVector3 translation = entry.coarse - entry.inverse * coupling;
+		for (int n = entry.offset; n < entry.offset + entry.count; ++n) b[n] += translation;
+	}
+}
+
+btScalar btDeformableBackwardEulerObjective::correctTranslation(TVStack& x, const TVStack& rhs)
+{
+	if (!m_translationCorrection) return 0;
+	multiply(x, m_translationWork);
+	btScalar largestCorrection = 0;
+	for (int b = 0; b < m_translationBodies.size(); ++b)
+	{
+		const TranslationBody& entry = m_translationBodies[b];
+		btVector3 sum(0, 0, 0);
+		for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += rhs[n] - m_translationWork[n];
+		const btVector3 correction = entry.inverse * sum;
+		for (int n = entry.offset; n < entry.offset + entry.count; ++n) x[n] += correction;
+		largestCorrection = btMax(largestCorrection, correction.length());
+	}
+	return largestCorrection;
+}

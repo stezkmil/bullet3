@@ -15,6 +15,7 @@
 
 #ifndef BT_PRECONDITIONER_H
 #define BT_PRECONDITIONER_H
+#include <cmath>
 
 class Preconditioner
 {
@@ -87,6 +88,7 @@ class KKTPreconditioner : public Preconditioner
 	const btDeformableContactProjection& m_projections;
 	const btAlignedObjectArray<btDeformableLagrangianForce*>& m_lf;
 	TVStack m_inv_A, m_inv_S;
+	btAlignedObjectArray<btMatrix3x3> m_invBlocks;
 	const btScalar& m_dt;
 	const bool& m_implicit;
 
@@ -108,13 +110,20 @@ public:
 			}
 			m_inv_A.resize(num_nodes);
 		}
-		buildDiagonalA(m_inv_A);
-		for (int i = 0; i < m_inv_A.size(); ++i)
+		if (m_implicit)
 		{
-			//            printf("A[%d] = %f, %f, %f \n", i, m_inv_A[i][0], m_inv_A[i][1], m_inv_A[i][2]);
-			for (int d = 0; d < 3; ++d)
+			buildImplicitBlocks();
+		}
+		else
+		{
+			buildDiagonalA(m_inv_A);
+			for (int i = 0; i < m_inv_A.size(); ++i)
 			{
-				m_inv_A[i][d] = (m_inv_A[i][d] == 0) ? 0.0 : 1.0 / m_inv_A[i][d];
+				//            printf("A[%d] = %f, %f, %f \n", i, m_inv_A[i][0], m_inv_A[i][1], m_inv_A[i][2]);
+				for (int d = 0; d < 3; ++d)
+				{
+					m_inv_A[i][d] = (m_inv_A[i][d] == 0) ? 0.0 : 1.0 / m_inv_A[i][d];
+				}
 			}
 		}
 		m_inv_S.resize(m_projections.m_lagrangeMultipliers.size());
@@ -130,6 +139,120 @@ public:
 		}
 	}
 
+
+
+	btVector3 applyInverseNodeBlock(int index, const btVector3& x) const
+	{
+		return m_implicit ? m_invBlocks[index] * x : x * m_inv_A[index];
+	}
+
+	// Scale before Cholesky to avoid a determinant-based inverse on ill-scaled blocks.
+	static bool invertPositiveBlock(const btMatrix3x3& block, btMatrix3x3& inverse, bool& regularized)
+	{
+		btScalar scale = 0;
+		for (int r = 0; r < 3; ++r)
+			for (int c = 0; c < 3; ++c)
+			{
+				if (!std::isfinite((double)block[r][c]))
+					return false;
+				scale = btMax(scale, btFabs(block[r][c]));
+			}
+		if (!(scale > 0))
+			return false;
+		const btMatrix3x3 normalized = (block * (btScalar(1) / scale) + block.transpose() * (btScalar(1) / scale)) * btScalar(0.5);
+		btScalar shift = 0;
+		for (int attempt = 0; attempt < 6; ++attempt)
+		{
+			btScalar l[3][3] = {};
+			bool positive = true;
+			for (int r = 0; r < 3 && positive; ++r)
+				for (int c = 0; c <= r; ++c)
+				{
+					btScalar value = normalized[r][c] + (r == c ? shift : btScalar(0));
+					for (int k = 0; k < c; ++k)
+						value -= l[r][k] * l[c][k];
+					if (r == c)
+					{
+						if (!(value > btScalar(0))) { positive = false; break; }
+						l[r][c] = btSqrt(value);
+					}
+					else
+						l[r][c] = value / l[c][c];
+				}
+			if (positive)
+			{
+				for (int column = 0; column < 3; ++column)
+				{
+					btScalar y[3] = {}, x[3] = {};
+					for (int r = 0; r < 3; ++r)
+					{
+						btScalar value = r == column ? btScalar(1) : btScalar(0);
+						for (int k = 0; k < r; ++k) value -= l[r][k] * y[k];
+						y[r] = value / l[r][r];
+					}
+					for (int r = 2; r >= 0; --r)
+					{
+						btScalar value = y[r];
+						for (int k = r + 1; k < 3; ++k) value -= l[k][r] * x[k];
+						x[r] = value / l[r][r];
+						inverse[r][column] = x[r] / scale;
+						positive = positive && std::isfinite((double)inverse[r][column]);
+					}
+				}
+				if (positive)
+				{
+					inverse = (inverse + inverse.transpose()) * btScalar(0.5);
+					regularized = attempt > 0;
+					return true;
+				}
+			}
+			shift = attempt == 0 ? btMax(btScalar(1e-8), btScalar(64) * SIMD_EPSILON) : shift * btScalar(10);
+		}
+		return false;
+	}
+
+	void buildImplicitBlocks()
+	{
+		BT_PROFILE("buildImplicitBlocks");
+		m_invBlocks.resize(m_inv_A.size());
+		const btMatrix3x3 identity = btMatrix3x3::getIdentity();
+		int index = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b)
+			for (int n = 0; n < m_softBodies[b]->m_nodes.size(); ++n, ++index)
+			{
+				const btSoftBody::Node& node = m_softBodies[b]->m_nodes[n];
+				m_invBlocks[index] = identity * ((node.m_frozen <= 0 && node.m_im > 0) ? btScalar(1) / node.m_im : btScalar(0));
+			}
+		TVStack diagonal;
+		for (int f = 0; f < m_lf.size(); ++f)
+		{
+			if (m_lf[f]->addImplicitForceDifferentialBlocks(m_dt, m_invBlocks))
+				continue;
+			// Forces without a block implementation retain their existing approximation.
+			diagonal.resize(m_inv_A.size());
+			for (int n = 0; n < diagonal.size(); ++n) diagonal[n].setZero();
+			m_lf[f]->buildDampingForceDifferentialDiagonal(-m_dt, diagonal);
+			for (int n = 0; n < diagonal.size(); ++n)
+				for (int d = 0; d < 3; ++d) m_invBlocks[n][d][d] += diagonal[n][d];
+		}
+		index = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b)
+			for (int n = 0; n < m_softBodies[b]->m_nodes.size(); ++n, ++index)
+			{
+				const btSoftBody::Node& node = m_softBodies[b]->m_nodes[n];
+				btMatrix3x3 inverse;
+				bool regularized = false;
+				if (node.m_frozen > 0 || node.m_im <= 0)
+					inverse = identity * btScalar(0);
+				else if (!invertPositiveBlock(m_invBlocks[index], inverse, regularized))
+				{
+					inverse = identity * node.m_im;
+				}
+				m_invBlocks[index] = inverse;
+				m_inv_A[index] = btVector3(inverse[0][0], inverse[1][1], inverse[2][2]);
+			}
+	}
+
 	void buildDiagonalA(TVStack& diagA) const
 	{
 		size_t counter = 0;
@@ -142,11 +265,6 @@ public:
 				diagA[counter] = (node.m_frozen > 0) ? btVector3(0, 0, 0) : btVector3(1.0 / node.m_im, 1.0 / node.m_im, 1.0 / node.m_im);
 				++counter;
 			}
-		}
-		if (m_implicit)
-		{
-			// For implicit KKT solves we still use the mass and damping diagonal as a lightweight approximation.
-			// This omits the elastic differential, but remains a valid preconditioner for the extended system.
 		}
 		for (int i = 0; i < m_lf.size(); ++i)
 		{
@@ -167,9 +285,16 @@ public:
 			{
 				for (int i = 0; i < lm.m_num_nodes; ++i)
 				{
-					for (int d = 0; d < 3; ++d)
+					if (m_implicit)
 					{
-						t[j] += inv_A[lm.m_indices[i]][d] * lm.m_dirs[j][d] * lm.m_dirs[j][d] * lm.m_weights[i] * lm.m_weights[i];
+						t[j] += lm.m_dirs[j].dot(applyInverseNodeBlock(lm.m_indices[i], lm.m_dirs[j])) * lm.m_weights[i] * lm.m_weights[i];
+					}
+					else
+					{
+						for (int d = 0; d < 3; ++d)
+						{
+							t[j] += inv_A[lm.m_indices[i]][d] * lm.m_dirs[j][d] * lm.m_dirs[j][d] * lm.m_weights[i] * lm.m_weights[i];
+						}
 					}
 				}
 			}
@@ -182,7 +307,7 @@ public:
 		btAssert(b.size() == x.size());
 		for (int i = 0; i < m_inv_A.size(); ++i)
 		{
-			b[i] = x[i] * m_inv_A[i];
+			b[i] = applyInverseNodeBlock(i, x[i]);
 		}
 		int offset = m_inv_A.size();
 		for (int i = 0; i < m_inv_S.size(); ++i)
@@ -198,7 +323,7 @@ public:
 
 		for (int i = 0; i < m_inv_A.size(); ++i)
 		{
-			b[i] = x[i] * m_inv_A[i];
+			b[i] = applyInverseNodeBlock(i, x[i]);
 		}
 
 		for (int i = 0; i < m_inv_S.size(); ++i)
@@ -244,7 +369,7 @@ public:
 
 		for (int i = 0; i < m_inv_A.size(); ++i)
 		{
-			b[i] = (x[i] - b[i]) * m_inv_A[i];
+			b[i] = applyInverseNodeBlock(i, x[i] - b[i]);
 		}
 
 		TVStack t;
@@ -271,7 +396,7 @@ public:
 		}
 		for (int i = 0; i < m_inv_A.size(); ++i)
 		{
-			b[i] += t[i] * m_inv_A[i];
+			b[i] += applyInverseNodeBlock(i, t[i]);
 		}
 
 		for (int i = 0; i < m_inv_S.size(); ++i)

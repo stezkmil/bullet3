@@ -295,6 +295,52 @@ public:
 
 	virtual void buildDampingForceDifferentialDiagonal(btScalar scale, TVStack& diagA) {}
 
+	virtual bool addImplicitForceDifferentialBlocks(btScalar dt, btAlignedObjectArray<btMatrix3x3>& blocks)
+	{
+		BT_PROFILE("linearElasticityBlocks");
+		const btMatrix3x3 identity = btMatrix3x3::getIdentity();
+		for (int b = 0; b < m_softBodies.size(); ++b)
+		{
+			const btSoftBody* body = m_softBodies[b];
+			if (!body->isActive() || body->isStaticObject())
+				continue;
+			for (int t = 0; t < body->m_tetras.size(); ++t)
+			{
+				const btSoftBody::Tetra& tetra = body->m_tetras[t];
+				const btSoftBody::TetraScratch& scratch = body->m_tetraScratches[t];
+				btVector3 gradient[4];
+				gradient[1] = tetra.m_Dm_inverse[0];
+				gradient[2] = tetra.m_Dm_inverse[1];
+				gradient[3] = tetra.m_Dm_inverse[2];
+				gradient[0] = -(gradient[1] + gradient[2] + gradient[3]);
+				for (int n = 0; n < 4; ++n)
+				{
+					const btSoftBody::Node& node = *tetra.m_n[n];
+					if (node.m_frozen > 0 || node.m_im <= 0)
+						continue;
+					const btVector3 g = gradient[n];
+					const btVector3 rotated = scratch.m_corotation * g;
+					// Frozen-rotation tangent used by addScaledElasticForceDifferential:
+					// K_ii = V * (mu*|g|^2*I + (mu+lambda)*(R*g)*(R*g)^T).
+					const btMatrix3x3 isotropic = identity * (m_mu * g.length2());
+					const btMatrix3x3 elastic = isotropic + OuterProduct(rotated, rotated) * (m_mu + m_lambda);
+					// Match the unrotated damping differential for nearly flat elements.
+					const btVector3 dampingGradient = scratch.m_J < TETRA_FLAT_THRESHOLD ? g : rotated;
+					const btMatrix3x3 damping = isotropic + OuterProduct(dampingGradient, dampingGradient) * (m_mu + m_lambda);
+					blocks[node.index] += (elastic * (dt * dt) + damping * (dt * m_damping_beta)) * tetra.m_element_measure;
+				}
+			}
+			for (int n = 0; n < body->m_nodes.size(); ++n)
+			{
+				const btSoftBody::Node& node = body->m_nodes[n];
+				if (node.m_frozen <= 0 && node.m_im > 0)
+					blocks[node.index] += identity * (dt * m_damping_alpha / node.m_im);
+			}
+		}
+		return true;
+	}
+
+
 	// The damping matrix is calculated using the time n state as described in https://www.math.ucla.edu/~jteran/papers/GSSJT15.pdf to allow line search
 	virtual void addScaledDampingForceDifferential(btScalar scale, const TVStack& dv, TVStack& df)
 	{

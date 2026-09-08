@@ -42,7 +42,14 @@ protected:
 	btScalar m_dt;                                                 // dt
 	btConjugateGradient<btDeformableBackwardEulerObjective> m_cg;  // CG solver
 	btConjugateResidual<btDeformableBackwardEulerObjective> m_cr;  // CR solver
-	int m_lastLinearSolverIterations;                              // iterations used by the latest CG/CR solve
+	int m_newtonIteration = 0;
+	bool m_implicitRecoveryUsed = false;
+	btScalar m_lastLinearMomentumResidual = SIMD_INFINITY;
+	btScalar m_lastLinearConstraintResidual = SIMD_INFINITY;
+	btScalar m_lastStationarityResidual = SIMD_INFINITY;
+	void solveImplicitKKT(TVStack& x, const TVStack& rhs);
+	void measureImplicitLinearResidual(const TVStack& x, const TVStack& rhs);
+	btScalar implicitConstraintError(const TVStack& dv) const;
 	bool m_implicit;                                               // use implicit scheme if true, explicit scheme if false
 	int m_maxNewtonIterations;                                     // max number of newton iterations
 	btScalar m_newtonTolerance;                                    // absolute residual and relative Newton-step tolerance

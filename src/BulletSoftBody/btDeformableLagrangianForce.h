@@ -58,6 +58,13 @@ public:
 	// build diagonal of A matrix
 	virtual void buildDampingForceDifferentialDiagonal(btScalar scale, TVStack& diagA) = 0;
 
+	// Add this force's diagonal 3x3 blocks of -dt*dF/dv - dt^2*dF/dx.
+	// Return false without modifying blocks to use the existing damping-diagonal fallback.
+	virtual bool addImplicitForceDifferentialBlocks(btScalar dt, btAlignedObjectArray<btMatrix3x3>& blocks)
+	{
+		return false;
+	}
+
 	// add elastic df
 	virtual void addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df) = 0;
 

@@ -23,3 +23,8 @@ IF (INTERNAL_ADD_POSTFIX_EXECUTABLE_NAMES)
 			SET_TARGET_PROPERTIES(Test_btKinematicCharacterController PROPERTIES  MINSIZEREL_POSTFIX "_MinsizeRel")
 			SET_TARGET_PROPERTIES(Test_btKinematicCharacterController PROPERTIES  RELWITHDEBINFO_POSTFIX "_RelWithDebugInfo")
 ENDIF(INTERNAL_ADD_POSTFIX_EXECUTABLE_NAMES)
+
+ADD_EXECUTABLE(Test_btDeformableBlockPreconditioner test_btDeformableBlockPreconditioner.cpp)
+SET_TARGET_PROPERTIES(Test_btDeformableBlockPreconditioner PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+TARGET_LINK_LIBRARIES(Test_btDeformableBlockPreconditioner BulletSoftBody)
+ADD_TEST(Test_btDeformableBlockPreconditioner_PASS Test_btDeformableBlockPreconditioner)
