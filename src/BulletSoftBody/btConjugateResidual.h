@@ -17,6 +17,7 @@
 #define BT_CONJUGATE_RESIDUAL_H
 #include "btKrylovSolver.h"
 #include <cmath>
+#include <chrono>
 
 template <class MatrixX>
 class btConjugateResidual : public btKrylovSolver<MatrixX>
@@ -33,8 +34,26 @@ class btConjugateResidual : public btKrylovSolver<MatrixX>
 	btScalar m_targetResidual;
 	btScalar m_relativeTolerance;
 	bool m_stagnated;
+	const char* m_stopReason = "not_run";
 
 public:
+	// Temporary diagnostics. Disabled by default; no changes to stopping policy.
+	struct ProgressRecord
+	{
+		int iteration;
+		double recurrenceWeighted, recurrenceL2, trueMomentumL2, trueConstraintInf;
+		double residualGapL2, weightedBest;
+	};
+	btAlignedObjectArray<ProgressRecord> m_progress;
+	bool m_progressEnabled = false;
+	int m_progressNodes = 0;
+	double m_progressMs = 0;
+	TVStack m_progressProduct;
+	void configureProgress(bool enabled, int nodes)
+	{
+		m_progressEnabled = enabled; m_progressNodes = nodes;
+	}
+
 	btConjugateResidual(const int max_it_in)
 		: Base(max_it_in, 1e-8),
 		  m_initialResidual(0),
@@ -61,11 +80,18 @@ public:
 		BT_PROFILE("CRSolve");
 		btAssert(x.size() == b.size());
 		reinitialize(b);
+		m_stopReason = "iteration_limit";
+		m_progress.clear();
+		m_progressMs = 0;
 		const int maxIterations = iterationLimit > 0 ? iterationLimit : Base::m_maxIterations;
 		if (trueResidualTarget > 0) useWeightedResidual = true;
 		// r = b - A * x --with assigned dof zeroed out
 		A.multiply(x, temp_r);  // borrow temp_r here to store A*x
+#if BT_KRYLOV_USE_INPLACE_UPDATES
 		this->subtractInto(b, temp_r, r);
+#else
+		r = this->sub(b, temp_r);
+#endif
 		if (useWeightedResidual) rawResidual = r;
 		// z = M^(-1) * r
 		A.precondition(r, z);  // borrow z to store preconditioned r
@@ -79,6 +105,7 @@ public:
 		best_r = residual_norm;
 		if (trueResidualTarget > 0 ? btSqrt(this->dot(rawResidual, rawResidual)) <= trueResidualTarget : residual_norm <= m_targetResidual)
 		{
+			m_stopReason = "initial_residual";
 			return 0;
 		}
 		p = r;
@@ -100,6 +127,7 @@ public:
 			if (trueResidualTarget > 0 && (!(denominator > 0) || !std::isfinite((double)denominator) || !std::isfinite((double)r_dot_Ar)))
 			{
 				x = best_x; m_finalResidual = best_r; m_stagnated = true;
+				m_stopReason = "breakdown";
 				return k - 1;
 			}
 			btScalar alpha = r_dot_Ar / denominator;
@@ -109,6 +137,29 @@ public:
 			this->multAndAddTo(-alpha, z, r);
 			if (useWeightedResidual) this->multAndAddTo(-alpha, temp_p, rawResidual);
 			btScalar norm_r = residualNorm(useWeightedResidual);
+			if (m_progressEnabled && useWeightedResidual &&
+				(k == 25 || k == 100 || k == 200 || k == 300 || k == maxIterations))
+			{
+				const auto start = std::chrono::steady_clock::now();
+				m_progressProduct.resize(b.size());
+				A.multiply(x, m_progressProduct);
+				double momentum2 = 0, constraintInf = 0, gap2 = 0;
+				for (int n = 0; n < b.size(); ++n)
+				{
+					const btVector3 exact = b[n] - m_progressProduct[n];
+					gap2 += double((exact - rawResidual[n]).length2());
+					if (n < m_progressNodes) momentum2 += double(exact.length2());
+					else for (int d = 0; d < 3; ++d)
+						constraintInf = btMax(constraintInf, double(btFabs(exact[d])));
+				}
+				ProgressRecord entry;
+				entry.iteration = k; entry.recurrenceWeighted = norm_r;
+				entry.recurrenceL2 = btSqrt(this->dot(rawResidual, rawResidual));
+				entry.trueMomentumL2 = std::sqrt(momentum2); entry.trueConstraintInf = constraintInf;
+				entry.residualGapL2 = std::sqrt(gap2); entry.weightedBest = btMin(best_r, norm_r);
+				m_progress.push_back(entry);
+				m_progressMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+			}
 			if (norm_r < best_r)
 			{
 				best_x = x;
@@ -116,6 +167,7 @@ public:
 				m_finalResidual = norm_r;
 				if (trueResidualTarget <= 0 && norm_r <= m_targetResidual)
 				{
+					m_stopReason = "residual_target";
 					return k;
 				}
 			}
@@ -129,6 +181,7 @@ public:
 				if (btSqrt(this->dot(verifiedResidual, verifiedResidual)) <= trueResidualTarget)
 				{
 					m_finalResidual = norm_r;
+					m_stopReason = "verified_physical_target";
 					return k;
 				}
 			}
@@ -143,6 +196,7 @@ public:
 					x = best_x;
 					m_finalResidual = best_r;
 					m_stagnated = true;
+					m_stopReason = "stagnation";
 					if (verbose)
 					{
 						std::cout << "ConjugateResidual stagnated at iteration " << k << ", residual = " << best_r << std::endl;
@@ -157,9 +211,17 @@ public:
 			btScalar beta = r_dot_Ar_new / r_dot_Ar;
 			r_dot_Ar = r_dot_Ar_new;
 			// p = beta*p + r;
+#if BT_KRYLOV_USE_INPLACE_UPDATES
 			this->scaleAndAddInPlace(beta, r, p);
+#else
+			p = this->multAndAdd(beta, p, r);
+#endif
 			// temp_p = beta*temp_p + temp_r;
+#if BT_KRYLOV_USE_INPLACE_UPDATES
 			this->scaleAndAddInPlace(beta, temp_r, temp_p);
+#else
+			temp_p = this->multAndAdd(beta, temp_p, temp_r);
+#endif
 		}
 		if (verbose)
 		{
@@ -200,6 +262,7 @@ public:
 		return m_initialResidual > btScalar(0) ? m_finalResidual / m_initialResidual : btScalar(0);
 	}
 
+	const char* getStopReason() const { return m_stopReason; }
 
 	bool getStagnated() const
 	{

@@ -43,6 +43,7 @@ protected:
 	btConjugateGradient<btDeformableBackwardEulerObjective> m_cg;  // CG solver
 	btConjugateResidual<btDeformableBackwardEulerObjective> m_cr;  // CR solver
 	int m_newtonIteration = 0;
+	unsigned long long m_performanceStep = 0;
 	bool m_implicitRecoveryUsed = false;
 	btScalar m_lastLinearMomentumResidual = SIMD_INFINITY;
 	btScalar m_lastLinearConstraintResidual = SIMD_INFINITY;

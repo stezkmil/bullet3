@@ -27,10 +27,12 @@
 #include "btPreconditioner.h"
 // #include "btDeformableMultiBodyDynamicsWorld.h"
 #include "LinearMath/btQuickprof.h"
+#include "btDeformableSolverPerformance.h"
 
 class btDeformableBackwardEulerObjective
 {
 public:
+	mutable btDeformableSolverPerformance m_performance;
 	enum _
 	{
 		Mass_preconditioner,

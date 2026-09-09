@@ -97,7 +97,11 @@ public:
 			}
 
 			btScalar beta = r_dot_z_new / r_dot_z;
+#if BT_KRYLOV_USE_INPLACE_UPDATES
 			this->scaleAndAddInPlace(beta, z, p);
+#else
+			p = this->multAndAdd(beta, p, z);
+#endif
 		}
 		if (verbose)
 		{

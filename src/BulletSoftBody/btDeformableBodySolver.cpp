@@ -14,6 +14,7 @@
  */
 
 #include <limits>
+#include <stdio.h>
 #include "btDeformableBodySolver.h"
 #include "btSoftBodyInternals.h"
 #include "LinearMath/btQuickprof.h"
@@ -27,9 +28,10 @@ class ImplicitOperatorCacheScope
 	bool m_enabled;
 public:
 	explicit ImplicitOperatorCacheScope(btDeformableBackwardEulerObjective& objective)
-		: m_objective(objective), m_enabled(objective.m_implicit)
+		: m_objective(objective), m_enabled(BT_DEFORMABLE_USE_CACHED_OPERATOR && objective.m_implicit)
 	{
 		if (!m_enabled) return;
+		btDeformablePerformanceScope perf(objective.m_performance.cacheSetup, objective.m_performance.active);
 		for (int f = 0; f < objective.m_lf.size(); ++f)
 			objective.m_lf[f]->prepareImplicitForceDifferential(objective.m_dt);
 	}
@@ -41,6 +43,7 @@ public:
 	}
 };
 }
+
 
 btDeformableBodySolver::btDeformableBodySolver()
 	: m_numNodes(0), m_cg(kMaxConjugateGradientIterations), m_cr(kMaxConjugateGradientIterations), m_maxNewtonIterations(1), m_newtonTolerance(1e-4), m_lineSearch(false), m_useProjection(false)
@@ -57,6 +60,11 @@ btDeformableBodySolver::~btDeformableBodySolver()
 void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 {
 	BT_PROFILE("solveDeformableConstraints");
+	btDeformableSolverPerformance& perf = m_objective->m_performance;
+	perf = btDeformableSolverPerformance();
+	perf.active = m_implicit;
+	++m_performanceStep;
+	const std::chrono::steady_clock::time_point perfStart = std::chrono::steady_clock::now();
 	if (!m_implicit)
 	{
 		m_objective->computeResidual(solverdt, m_residual);
@@ -70,10 +78,16 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			TVStack rhs, x;
 			m_objective->addLagrangeMultiplierRHS(m_residual, m_dv, rhs);
 			m_objective->addLagrangeMultiplier(m_dv, x);
-			m_objective->m_preconditioner->reinitialize(true);
+			{
+				btDeformablePerformanceScope blockPerf(m_objective->m_performance.blockSetup, m_objective->m_performance.active);
+				m_objective->m_preconditioner->reinitialize(true);
+			}
 			// Explicit damping needs the previous absolute-tolerance/full-budget
 			// policy: a small relative residual can still leave large velocity errors.
-			m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false);
+			{
+				btDeformablePerformanceScope linearPerf(m_objective->m_performance.linear, m_objective->m_performance.active);
+				m_objective->m_performance.krylovIterations += m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false);
+			}
 			for (int i = 0; i < m_dv.size(); ++i)
 			{
 				m_dv[i] = x[i];
@@ -87,6 +101,11 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 		for (int i = 0; i < m_maxNewtonIterations; ++i)
 		{
 			m_newtonIteration = i;
+			++perf.newton;
+			btDeformableSolverPerformance::NewtonRecord newton;
+			newton.iteration = i + 1;
+			perf.newtonRecords.push_back(newton);
+			btDeformableSolverPerformance::NewtonRecord& nr = perf.newtonRecords[perf.newtonRecords.size() - 1];
 			updateState();
 			// add the inertia term in the residual
 			int counter = 0;
@@ -106,8 +125,12 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			m_objective->computeResidual(solverdt, m_residual);
 			const btScalar residualNorm = m_objective->computeNorm(m_residual);
 			const btScalar constraintError = implicitConstraintError(m_dv);
+			nr.inputForceL2 = residualNorm;
+			nr.inputConstraintInf = constraintError;
+			nr.outputConstraintInf = constraintError;
 			if (residualNorm < m_newtonTolerance && constraintError <= m_newtonTolerance && i > 0)
 			{
+				nr.outcome = "input_residual_target";
 				break;
 			}
 			// todo xuchenhan@: this really only needs to be calculated once
@@ -117,6 +140,10 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 				btScalar inner_product = computeDescentStep(m_ddv, m_residual);
 				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
 				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
+				nr.solved = true; nr.stepL2 = stepNorm; nr.stepTolerance = relativeStepTolerance;
+				nr.stationarityL2 = m_lastStationarityResidual;
+				nr.linearMomentumL2 = m_lastLinearMomentumResidual;
+				nr.linearConstraintInf = m_lastLinearConstraintResidual;
 				const bool accurateLinearStep = !m_useProjection &&
 					m_lastLinearMomentumResidual <= m_newtonTolerance &&
 					m_lastLinearConstraintResidual <= m_newtonTolerance;
@@ -124,6 +151,7 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 					m_lastStationarityResidual <= m_newtonTolerance && constraintError <= m_newtonTolerance;
 				if (i > 0 && stepNorm <= relativeStepTolerance && (stepConverged || !accurateLinearStep))
 				{
+					nr.outcome = stepConverged ? "small_stationary_step" : "small_inaccurate_step";
 					// Check stationarity at the accepted state, not just the solved
 					// linear system. Otherwise apply a small but accurate correction.
 					break;
@@ -139,14 +167,17 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 					if (scale < 1e-8)
 					{
 						lineSearchFailed = true;
+						++perf.lineFailures;
 						break;
 					}
+					++perf.lineTrials;
 					updateEnergy(scale);
 					f1 = m_objective->totalEnergy(solverdt) + kineticEnergy();
 					f2 = f0 - alpha * scale * inner_product;
 				} while (!(f1 < f2 + SIMD_EPSILON));  // if anything here is nan then the search continues
 				if (lineSearchFailed)
 				{
+					nr.outcome = "line_search_failed";
 					// The trial evaluations modified m_dv, node velocities, temporary
 					// positions, and deformation scratch data. Restore the accepted
 					// iterate before terminating this Newton solve.
@@ -156,12 +187,17 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 				}
 				revertDv();
 				updateDv(scale);
+				nr.appliedScale = scale;
 			}
 			else
 			{
 				computeStep(m_ddv, m_residual);
 				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
 				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
+				nr.solved = true; nr.stepL2 = stepNorm; nr.stepTolerance = relativeStepTolerance;
+				nr.stationarityL2 = m_lastStationarityResidual;
+				nr.linearMomentumL2 = m_lastLinearMomentumResidual;
+				nr.linearConstraintInf = m_lastLinearConstraintResidual;
 				const bool accurateLinearStep = !m_useProjection &&
 					m_lastLinearMomentumResidual <= m_newtonTolerance &&
 					m_lastLinearConstraintResidual <= m_newtonTolerance;
@@ -169,12 +205,16 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 					m_lastStationarityResidual <= m_newtonTolerance && constraintError <= m_newtonTolerance;
 				if (i > 0 && stepNorm <= relativeStepTolerance && (stepConverged || !accurateLinearStep))
 				{
+					nr.outcome = stepConverged ? "small_stationary_step" : "small_inaccurate_step";
 					// Check stationarity at the accepted state, not just the solved
 					// linear system. Otherwise apply a small but accurate correction.
 					break;
 				}
 				updateDv();
+				nr.appliedScale = 1;
 			}
+			nr.outputConstraintInf = implicitConstraintError(m_dv);
+			nr.outcome = i + 1 == m_maxNewtonIterations ? "iteration_limit" : "applied";
 			for (int j = 0; j < m_numNodes; ++j)
 			{
 				m_ddv[j].setZero();
@@ -182,6 +222,50 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			}
 		}
 		updateVelocity();
+	}
+	if (perf.active)
+	{
+		const double totalMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - perfStart).count();
+		perf.active = false; // Exclude stderr I/O from all measured intervals.
+		int tetras = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b) tetras += m_softBodies[b]->m_tetras.size();
+		// Each timing is milliseconds/calls; nested timings must not be summed.
+		fprintf(stderr, "[deform-perf] solver=%p step=%llu inplace=%d cached=%d dt=%.6g nodes=%d tetras=%d constraints=%d projection=%d linesearch=%d total_ms=%.3f newton=%d krylov_iters=%d trials=%d line_failures=%d recovery=%d linear=%.3f/%d multiply=%.3f/%d combined=%.3f/%d damping=%.3f/%d elastic=%.3f/%d precondition=%.3f/%d blocks=%.3f/%d translation_setup=%.3f/%d translation_correct=%.3f/%d verify=%.3f/%d state=%.3f/%d energy=%.3f/%d residual=%.3f/%d cache_setup=%.3f/%d\n",
+			static_cast<void*>(this), m_performanceStep, int(BT_KRYLOV_USE_INPLACE_UPDATES), int(BT_DEFORMABLE_USE_CACHED_OPERATOR), double(solverdt), m_numNodes, tetras, m_objective->m_projection.m_lagrangeMultipliers.size(), int(m_useProjection), int(m_lineSearch), totalMs, perf.newton, perf.krylovIterations, perf.lineTrials, perf.lineFailures, int(m_implicitRecoveryUsed),
+			perf.linear.ms, perf.linear.calls,
+			perf.multiply.ms, perf.multiply.calls,
+			perf.combined.ms, perf.combined.calls,
+			perf.damping.ms, perf.damping.calls,
+			perf.elastic.ms, perf.elastic.calls,
+			perf.precondition.ms, perf.precondition.calls,
+			perf.blockSetup.ms, perf.blockSetup.calls,
+			perf.translationSetup.ms, perf.translationSetup.calls,
+			perf.translationCorrect.ms, perf.translationCorrect.calls,
+			perf.verification.ms, perf.verification.calls,
+			perf.state.ms, perf.state.calls,
+			perf.energy.ms, perf.energy.calls,
+			perf.residual.ms, perf.residual.calls, perf.cacheSetup.ms, perf.cacheSetup.calls);
+		for (int i = 0; i < perf.newtonRecords.size(); ++i)
+		{
+			const auto& nr = perf.newtonRecords[i];
+			fprintf(stderr, "[deform-newton] solver=%p step=%llu newton=%d outcome=%s solved=%d input_force_l2=%.9g input_constraint_inf=%.9g correction_l2=%.9g correction_tolerance=%.9g stationarity_l2=%.9g linear_momentum_l2=%.9g linear_constraint_inf=%.9g applied_scale=%.9g output_constraint_inf=%.9g\n",
+				static_cast<void*>(this), m_performanceStep, nr.iteration, nr.outcome, int(nr.solved), nr.inputForceL2, nr.inputConstraintInf, nr.stepL2, nr.stepTolerance, nr.stationarityL2, nr.linearMomentumL2, nr.linearConstraintInf, nr.appliedScale, nr.outputConstraintInf);
+		}
+		for (int i = 0; i < perf.linearRecords.size(); ++i)
+		{
+			const btDeformableSolverPerformance::LinearRecord& record = perf.linearRecords[i];
+			// Weighted CR values precede translation correction. Physical values
+			// reuse the existing verification AFTER that correction, with no extra A*x.
+			fprintf(stderr, "[deform-linear] solver=%p step=%llu newton=%d recovery=%d translation=%d relative=%d iterations=%d budget=%d stop=%s linear_ms=%.3f weighted_initial=%.9g weighted_final=%.9g weighted_target=%.9g physical_target=%.9g post_translation_momentum_l2=%.9g post_translation_constraint_inf=%.9g stationarity_l2=%.9g rhs_momentum_l2=%.9g rhs_constraint_inf=%.9g step_l2=%.9g checkpoint_ms=%.3f\n",
+				static_cast<void*>(this), m_performanceStep, record.newton, int(record.recovery), int(record.translation), int(record.relative), record.iterations, record.budget, record.stop, record.ms, record.initial, record.final, record.target, record.physicalTarget, record.momentum, record.constraint, record.stationarity, record.rhsMomentum, record.rhsConstraint, record.stepL2, record.checkpointMs);
+			for (int k = record.progressBegin; k < record.progressEnd; ++k)
+			{
+				const auto& progress = perf.progressRecords[k];
+				fprintf(stderr, "[deform-cr-progress] solver=%p step=%llu newton=%d recovery=%d iteration=%d recurrence_weighted=%.9g best_weighted=%.9g recurrence_l2=%.9g true_momentum_l2=%.9g true_constraint_inf=%.9g recurrence_gap_l2=%.9g\n",
+					static_cast<void*>(this), m_performanceStep, record.newton, int(record.recovery), progress.iteration,
+					progress.recurrenceWeighted, progress.weightedBest, progress.recurrenceL2, progress.trueMomentumL2, progress.trueConstraintInf, progress.residualGapL2);
+			}
+		}
 	}
 }
 
@@ -234,8 +318,11 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 	btScalar inner_product = 0;
 	if (m_useProjection)
 	{
-		ImplicitOperatorCacheScope cacheScope(*m_objective);
-		m_cg.solve(*m_objective, ddv, residual, false);
+		{
+			btDeformablePerformanceScope linearPerf(m_objective->m_performance.linear, m_objective->m_performance.active);
+			ImplicitOperatorCacheScope cacheScope(*m_objective);
+			m_objective->m_performance.krylovIterations += m_cg.solve(*m_objective, ddv, residual, false);
+		}
 		inner_product = m_cg.dot(residual, m_ddv);
 	}
 	else
@@ -282,6 +369,7 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 
 void btDeformableBodySolver::updateState()
 {
+	btDeformablePerformanceScope perf(m_objective->m_performance.state, m_objective->m_performance.active);
 	updateVelocity();
 	updateTempPosition();
 }
@@ -321,6 +409,7 @@ btScalar btDeformableBodySolver::implicitConstraintError(const TVStack& dv) cons
 
 void btDeformableBodySolver::measureImplicitLinearResidual(const TVStack& x, const TVStack& rhs)
 {
+	btDeformablePerformanceScope perf(m_objective->m_performance.verification, m_objective->m_performance.active);
 	TVStack product;
 	product.resize(rhs.size());
 	m_objective->multiply(x, product);
@@ -361,17 +450,63 @@ void btDeformableBodySolver::measureImplicitLinearResidual(const TVStack& x, con
 void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 {
 	ImplicitOperatorCacheScope cacheScope(*m_objective);
-	m_objective->m_preconditioner->reinitialize(true);
+	{
+		btDeformablePerformanceScope blockPerf(m_objective->m_performance.blockSetup, m_objective->m_performance.active);
+		m_objective->m_preconditioner->reinitialize(true);
+	}
 	const bool translation = m_objective->setupTranslationCorrection();
+	m_cr.configureProgress(m_objective->m_performance.active &&
+		m_objective->m_projection.m_lagrangeMultipliers.size() > 0, m_numNodes);
 	m_objective->correctTranslation(x, rhs);
 	// Preserve the cheap first Newton solve. Continue difficult free-body
 	// corrections without discarding conjugate directions at iteration 300.
 	const bool continued = translation && m_objective->m_projection.m_lagrangeMultipliers.size() == 0 && m_newtonIteration > 0;
 	const int linearBudget = continued ? 1200 : kMaxConjugateGradientIterations;
 	const btScalar physicalTarget = continued ? btScalar(0.5) * m_newtonTolerance : btScalar(0);
-	m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, !continued, true, linearBudget, physicalTarget);
+	const auto recordSolve = [&](int iterations, int budget, bool recovery, bool relative, btScalar target, double ms)
+	{
+		if (!m_objective->m_performance.active) return;
+		btDeformableSolverPerformance::LinearRecord record;
+		record.newton = m_newtonIteration + 1;
+		record.iterations = iterations; record.budget = budget;
+		record.recovery = recovery; record.translation = translation; record.relative = relative;
+		record.stop = m_cr.getStopReason(); record.ms = ms;
+		record.initial = m_cr.getInitialResidual(); record.final = m_cr.getFinalResidual();
+		record.target = m_cr.getTargetResidual(); record.physicalTarget = target;
+		record.momentum = m_lastLinearMomentumResidual; record.constraint = m_lastLinearConstraintResidual;
+		record.stationarity = m_lastStationarityResidual;
+		double rhs2 = 0, step2 = 0, constraint = 0;
+		for (int n = 0; n < rhs.size(); ++n)
+		{
+			if (n < m_numNodes) { rhs2 += double(rhs[n].length2()); step2 += double(x[n].length2()); }
+			else for (int d = 0; d < 3; ++d) constraint = btMax(constraint, double(btFabs(rhs[n][d])));
+		}
+		record.rhsMomentum = std::sqrt(rhs2); record.rhsConstraint = constraint;
+		record.stepL2 = std::sqrt(step2); record.checkpointMs = m_cr.m_progressMs;
+		record.progressBegin = m_objective->m_performance.progressRecords.size();
+		for (int k = 0; k < m_cr.m_progress.size(); ++k)
+		{
+			const auto& source = m_cr.m_progress[k];
+			btDeformableSolverPerformance::ProgressRecord entry;
+			entry.iteration = source.iteration; entry.recurrenceWeighted = source.recurrenceWeighted;
+			entry.recurrenceL2 = source.recurrenceL2; entry.trueMomentumL2 = source.trueMomentumL2;
+			entry.trueConstraintInf = source.trueConstraintInf; entry.residualGapL2 = source.residualGapL2;
+			entry.weightedBest = source.weightedBest;
+			m_objective->m_performance.progressRecords.push_back(entry);
+		}
+		record.progressEnd = m_objective->m_performance.progressRecords.size();
+		m_objective->m_performance.linearRecords.push_back(record);
+	};
+	int iterations;
+	double linearStartMs = m_objective->m_performance.linear.ms;
+	{
+		btDeformablePerformanceScope linearPerf(m_objective->m_performance.linear, m_objective->m_performance.active);
+		iterations = m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, !continued, true, linearBudget, physicalTarget);
+		m_objective->m_performance.krylovIterations += iterations;
+	}
 	m_objective->correctTranslation(x, rhs);
 	measureImplicitLinearResidual(x, rhs);
+	recordSolve(iterations, linearBudget, false, !continued, physicalTarget, m_objective->m_performance.linear.ms - linearStartMs);
 	btScalar stepSquared = 0;
 	for (int n = 0; n < m_numNodes; ++n) stepSquared += x[n].length2();
 	const btScalar stepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
@@ -380,10 +515,17 @@ void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 	{
 		// One full-budget restart per timestep for an inaccurate, tiny step.
 		m_implicitRecoveryUsed = true;
-		m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false, true);
+		linearStartMs = m_objective->m_performance.linear.ms;
+		{
+			btDeformablePerformanceScope linearPerf(m_objective->m_performance.linear, m_objective->m_performance.active);
+			iterations = m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false, true);
+			m_objective->m_performance.krylovIterations += iterations;
+		}
 		m_objective->correctTranslation(x, rhs);
 		measureImplicitLinearResidual(x, rhs);
+		recordSolve(iterations, kMaxConjugateGradientIterations, true, false, 0, m_objective->m_performance.linear.ms - linearStartMs);
 	}
+	m_cr.configureProgress(false, 0);
 	m_objective->m_translationCorrection = false;
 }
 
@@ -391,8 +533,11 @@ void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
 {
 	if (m_useProjection)
 	{
-		ImplicitOperatorCacheScope cacheScope(*m_objective);
-		m_cg.solve(*m_objective, ddv, residual, false);
+		{
+			btDeformablePerformanceScope linearPerf(m_objective->m_performance.linear, m_objective->m_performance.active);
+			ImplicitOperatorCacheScope cacheScope(*m_objective);
+			m_objective->m_performance.krylovIterations += m_cg.solve(*m_objective, ddv, residual, false);
+		}
 	}
 	else
 	{

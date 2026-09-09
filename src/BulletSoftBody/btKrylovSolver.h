@@ -16,6 +16,10 @@
 #ifndef BT_KRYLOV_SOLVER_H
 #define BT_KRYLOV_SOLVER_H
 
+// Temporary A/B measurement switch. Rebuild Bullet and consumers after changing it.
+#ifndef BT_KRYLOV_USE_INPLACE_UPDATES
+#define BT_KRYLOV_USE_INPLACE_UPDATES 1
+#endif
 #include <iostream>
 #include <cmath>
 #include <limits>

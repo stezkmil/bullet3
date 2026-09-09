@@ -16,6 +16,10 @@
 #ifndef BT_DEFORMABLE_LAGRANGIAN_FORCE_H
 #define BT_DEFORMABLE_LAGRANGIAN_FORCE_H
 
+// Temporary A/B switch for the cached implicit element operator.
+#ifndef BT_DEFORMABLE_USE_CACHED_OPERATOR
+#define BT_DEFORMABLE_USE_CACHED_OPERATOR 1
+#endif
 
 #include "btSoftBody.h"
 #include <LinearMath/btHashMap.h>

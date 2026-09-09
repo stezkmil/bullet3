@@ -140,7 +140,7 @@ TEST_F(DeformableBlockPreconditioner, CachedOperatorRefreshAndFallback)
 	}
 }
 
-TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveClosesCache)
+TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveRecordsDiagnosticsAndClosesCache)
 {
 	btDeformableBodySolver solver;
 	solver.setImplicit(true);
@@ -156,7 +156,23 @@ TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveClosesCache)
 	solver.setupDeformableSolve(true);
 	solver.solveDeformableConstraints(dt);
 	EXPECT_FALSE(force.m_implicitCacheReady);
-
+	const btDeformableSolverPerformance& perf = solver.m_objective->m_performance;
+	ASSERT_GT(perf.linearRecords.size(), 0);
+	ASSERT_EQ(perf.newton, perf.newtonRecords.size());
+	for (int i = 0; i < perf.newtonRecords.size(); ++i)
+	{
+		EXPECT_STRNE("pending", perf.newtonRecords[i].outcome);
+		EXPECT_TRUE(std::isfinite(perf.newtonRecords[i].inputForceL2));
+	}
+	for (int i = 0; i < perf.linearRecords.size(); ++i)
+	{
+		const btDeformableSolverPerformance::LinearRecord& record = perf.linearRecords[i];
+		EXPECT_GE(record.iterations, 0);
+		EXPECT_LE(record.iterations, record.budget);
+		EXPECT_STRNE("not_run", record.stop);
+		EXPECT_TRUE(std::isfinite(record.momentum));
+		EXPECT_TRUE(std::isfinite(record.constraint));
+	}
 }
 
 TEST_F(DeformableBlockPreconditioner, InvertsNodeBlocksAndScalesContactSchurDiagonal)
@@ -556,6 +572,7 @@ TEST(DeformableCRConvergence, WeightedResidualRetainsUsefulStepRejectedByInfinit
 	btConjugateResidual<Matrix> legacy(1), weighted(1);
 	legacy.solveWithConvergencePolicy(matrix,oldX,rhs,false,true,false);
 	weighted.solveWithConvergencePolicy(matrix,newX,rhs,false,true,true);
+	EXPECT_STREQ("iteration_limit", weighted.getStopReason());
 	EXPECT_EQ(btScalar(0),oldX[0].length2());
 	EXPECT_NEAR((double)newX[0].x(),9.0/101,1e-6);
 	EXPECT_NEAR((double)newX[0].y(),9.0/101,1e-6);
@@ -595,6 +612,7 @@ TEST(DeformableCRContinuation, PhysicalTargetIgnoresMisleadingPreconditionedTole
 	btConjugateResidual<Matrix> cr(300);
 	const int iterations=cr.solveWithConvergencePolicy(matrix,x,rhs,false,false,true,1200,btScalar(1e-5));
 	matrix.multiply(x,product);
+	EXPECT_STREQ("verified_physical_target", cr.getStopReason());
 	EXPECT_GT(iterations,0);EXPECT_LT(iterations,300);
 	EXPECT_LE((rhs[0]-product[0]).length(),btScalar(1e-5));
 	EXPECT_EQ(300,cr.m_maxIterations); // Per-call limit must not leak to explicit solves.
@@ -627,6 +645,19 @@ TEST(DeformableCRContinuation, PreservesDirectionsBeyondDefaultBudget)
 	for(int n=0;n<x.size();++n)error+=(rhs[n]-product[n]).length2();
 	EXPECT_GT(iterations,300);EXPECT_LT(iterations,1200);
 	EXPECT_LE(btSqrt(error),btScalar(1e-5));
+	Vectors diagnosed;
+	diagnosed.resize(x.size(), btVector3(0,0,0));
+	btConjugateResidual<Matrix> instrumented(300);
+	instrumented.configureProgress(true, rhs.size());
+	EXPECT_EQ(iterations, instrumented.solveWithConvergencePolicy(matrix, diagnosed, rhs, false, false, true, 1200, btScalar(1e-5)));
+	ASSERT_GE(instrumented.m_progress.size(), 4);
+	EXPECT_EQ(25, instrumented.m_progress[0].iteration);
+	for (int n = 0; n < x.size(); ++n) EXPECT_EQ(btScalar(0), (x[n] - diagnosed[n]).length2());
+	for (int n = 0; n < instrumented.m_progress.size(); ++n)
+	{
+		EXPECT_TRUE(std::isfinite(instrumented.m_progress[n].trueMomentumL2));
+		EXPECT_LT(instrumented.m_progress[n].residualGapL2, 1e-4);
+	}
 }
 
 
