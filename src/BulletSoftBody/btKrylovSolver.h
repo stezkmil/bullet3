@@ -15,6 +15,7 @@
 
 #ifndef BT_KRYLOV_SOLVER_H
 #define BT_KRYLOV_SOLVER_H
+
 #include <iostream>
 #include <cmath>
 #include <limits>
@@ -55,6 +56,15 @@ public:
 		return c;
 	}
 
+	// result = a - b. Reuses capacity; result may alias either input.
+	SIMD_FORCE_INLINE void subtractInto(const TVStack& a, const TVStack& b, TVStack& result)
+	{
+		btAssert(a.size() == b.size());
+		result.resize(a.size());
+		for (int i = 0; i < a.size(); ++i)
+			result[i] = a[i] - b[i];
+	}
+
 	virtual SIMD_FORCE_INLINE btScalar squaredNorm(const TVStack& a)
 	{
 		return dot(a, a);
@@ -87,6 +97,15 @@ public:
 		btAssert(a.size() == result.size());
 		for (int i = 0; i < a.size(); ++i)
 			result[i] += s * a[i];
+	}
+
+	// result = s * result + b, reusing the destination storage.
+	// Both arrays must already have equal sizes; existing result values are inputs.
+	SIMD_FORCE_INLINE void scaleAndAddInPlace(btScalar s, const TVStack& b, TVStack& result)
+	{
+		btAssert(b.size() == result.size());
+		for (int i = 0; i < result.size(); ++i)
+			result[i] = s * result[i] + b[i];
 	}
 
 	virtual SIMD_FORCE_INLINE TVStack multAndAdd(btScalar s, const TVStack& a, const TVStack& b)

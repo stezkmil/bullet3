@@ -97,7 +97,7 @@ public:
 			}
 
 			btScalar beta = r_dot_z_new / r_dot_z;
-			p = this->multAndAdd(beta, p, z);
+			this->scaleAndAddInPlace(beta, z, p);
 		}
 		if (verbose)
 		{

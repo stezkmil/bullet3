@@ -65,7 +65,7 @@ public:
 		if (trueResidualTarget > 0) useWeightedResidual = true;
 		// r = b - A * x --with assigned dof zeroed out
 		A.multiply(x, temp_r);  // borrow temp_r here to store A*x
-		r = this->sub(b, temp_r);
+		this->subtractInto(b, temp_r, r);
 		if (useWeightedResidual) rawResidual = r;
 		// z = M^(-1) * r
 		A.precondition(r, z);  // borrow z to store preconditioned r
@@ -157,9 +157,9 @@ public:
 			btScalar beta = r_dot_Ar_new / r_dot_Ar;
 			r_dot_Ar = r_dot_Ar_new;
 			// p = beta*p + r;
-			p = this->multAndAdd(beta, p, r);
+			this->scaleAndAddInPlace(beta, r, p);
 			// temp_p = beta*temp_p + temp_r;
-			temp_p = this->multAndAdd(beta, temp_p, temp_r);
+			this->scaleAndAddInPlace(beta, temp_r, temp_p);
 		}
 		if (verbose)
 		{
@@ -199,6 +199,7 @@ public:
 	{
 		return m_initialResidual > btScalar(0) ? m_finalResidual / m_initialResidual : btScalar(0);
 	}
+
 
 	bool getStagnated() const
 	{

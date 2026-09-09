@@ -444,9 +444,62 @@ public:
 		}
 	}
 
+	struct CachedImplicitTetra
+	{
+		btMatrix3x3 gradients; // Rows are R * grad(N_1..3), expressed in world space.
+		btScalar muWeight, lambdaWeight;
+		bool usable;
+	};
+	btAlignedObjectArray<CachedImplicitTetra> m_implicitTetraCache;
+	bool m_implicitCacheReady = false;
+	btScalar m_implicitCacheDt = 0;
+
+	virtual void prepareImplicitForceDifferential(btScalar dt)
+	{
+		m_implicitCacheReady = false;
+		int count = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b)
+			if (m_softBodies[b]->isActive() && !m_softBodies[b]->isStaticObject())
+				count += m_softBodies[b]->m_tetras.size();
+		m_implicitTetraCache.resize(count);
+		int index = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b)
+		{
+			const btSoftBody& body = *m_softBodies[b];
+			if (!body.isActive() || body.isStaticObject()) continue;
+			for (int t = 0; t < body.m_tetras.size(); ++t, ++index)
+			{
+				CachedImplicitTetra& entry = m_implicitTetraCache[index];
+				const btSoftBody::Tetra& tetra = body.m_tetras[t];
+				const btSoftBody::TetraScratch& scratch = body.m_tetraScratches[t];
+				// World-frame isotropic stress needs an orthogonal corotation.
+				// Preserve the original path for flat or non-orthogonal scratch states.
+				const btMatrix3x3 metric = scratch.m_corotation * scratch.m_corotation.transpose();
+				entry.usable = scratch.m_J >= TETRA_FLAT_THRESHOLD;
+				for (int i = 0; i < 3; ++i)
+					for (int j = 0; j < 3; ++j)
+						entry.usable = entry.usable && btFabs(metric[i][j] - (i == j ? btScalar(1) : btScalar(0))) <= btScalar(64) * SIMD_EPSILON;
+				if (!entry.usable) continue;
+				entry.gradients = tetra.m_Dm_inverse * scratch.m_corotation.transpose();
+				const btScalar weight = (dt * dt + dt * m_damping_beta) * tetra.m_element_measure;
+				entry.muWeight = weight * m_mu;
+				entry.lambdaWeight = weight * m_lambda;
+			}
+		}
+		m_implicitCacheDt = dt;
+		m_implicitCacheReady = true;
+	}
+
+	virtual void finishImplicitForceDifferential()
+	{
+		m_implicitCacheReady = false;
+	}
+
 	// Non-flat stiffness damping is beta times the frozen-rotation elastic tangent.
 	virtual void addImplicitForceDifferential(btScalar dt, const TVStack& dx, TVStack& df)
 	{
+		int cacheIndex = 0;
+		const bool useCache = m_implicitCacheReady && dt == m_implicitCacheDt;
 		const btScalar dampingScale = -dt * m_damping_beta;
 		const btScalar elasticScale = -dt * dt;
 		int numNodes = getNumNodes();
@@ -459,7 +512,7 @@ public:
 			{
 				continue;
 			}
-			for (int j = 0; j < psb->m_tetras.size(); ++j)
+			for (int j = 0; j < psb->m_tetras.size(); ++j, ++cacheIndex)
 			{
 				btSoftBody::Tetra& tetra = psb->m_tetras[j];
 				btSoftBody::Node* node0 = tetra.m_n[0];
@@ -470,6 +523,21 @@ public:
 				size_t id1 = node1->index;
 				size_t id2 = node2->index;
 				size_t id3 = node3->index;
+				if (useCache && cacheIndex < m_implicitTetraCache.size() && m_implicitTetraCache[cacheIndex].usable)
+				{
+					const CachedImplicitTetra& entry = m_implicitTetraCache[cacheIndex];
+					// G = sum_j (dx_j-dx_0) (R*gradN_j)^T.
+					// R*dP*R^T = mu*(G+G^T) + lambda*trace(G)*I.
+					const btMatrix3x3 G = Ds(id0, id1, id2, id3, dx) * entry.gradients;
+					const btMatrix3x3 stress = (G + G.transpose()) * entry.muWeight +
+						btMatrix3x3::getIdentity() * (entry.lambdaWeight * (G[0][0] + G[1][1] + G[2][2]));
+					const btMatrix3x3 contributions = stress * entry.gradients.transpose();
+					df[id0] += contributions * grad_N_hat_1st_col;
+					df[id1] += contributions.getColumn(0);
+					df[id2] += contributions.getColumn(1);
+					df[id3] += contributions.getColumn(2);
+					continue;
+				}
 				btMatrix3x3 dF = psb->m_tetraScratches[j].m_corotation.transpose() * Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;
 				btMatrix3x3 dP;
 				firstPiolaDifferential(psb->m_tetraScratches[j], dF, dP);

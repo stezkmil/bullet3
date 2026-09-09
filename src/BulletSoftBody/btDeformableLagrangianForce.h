@@ -16,6 +16,7 @@
 #ifndef BT_DEFORMABLE_LAGRANGIAN_FORCE_H
 #define BT_DEFORMABLE_LAGRANGIAN_FORCE_H
 
+
 #include "btSoftBody.h"
 #include <LinearMath/btHashMap.h>
 #include <iostream>
@@ -74,6 +75,11 @@ public:
 		addScaledDampingForceDifferential(-dt, x, df);
 		addScaledElasticForceDifferential(-dt * dt, x, df);
 	}
+
+	// The caller must keep geometry, topology, activity and material fixed until finish.
+	// Direct differential calls outside this scope retain their uncached behavior.
+	virtual void prepareImplicitForceDifferential(btScalar dt) {}
+	virtual void finishImplicitForceDifferential() {}
 
 	// add all forces that are explicit in explicit solve
 	virtual void addScaledExplicitForce(btScalar scale, TVStack& force) = 0;

@@ -19,6 +19,29 @@
 #include "LinearMath/btQuickprof.h"
 static const int kMaxConjugateGradientIterations = 300;
 
+namespace
+{
+class ImplicitOperatorCacheScope
+{
+	btDeformableBackwardEulerObjective& m_objective;
+	bool m_enabled;
+public:
+	explicit ImplicitOperatorCacheScope(btDeformableBackwardEulerObjective& objective)
+		: m_objective(objective), m_enabled(objective.m_implicit)
+	{
+		if (!m_enabled) return;
+		for (int f = 0; f < objective.m_lf.size(); ++f)
+			objective.m_lf[f]->prepareImplicitForceDifferential(objective.m_dt);
+	}
+	~ImplicitOperatorCacheScope()
+	{
+		if (!m_enabled) return;
+		for (int f = 0; f < m_objective.m_lf.size(); ++f)
+			m_objective.m_lf[f]->finishImplicitForceDifferential();
+	}
+};
+}
+
 btDeformableBodySolver::btDeformableBodySolver()
 	: m_numNodes(0), m_cg(kMaxConjugateGradientIterations), m_cr(kMaxConjugateGradientIterations), m_maxNewtonIterations(1), m_newtonTolerance(1e-4), m_lineSearch(false), m_useProjection(false)
 {
@@ -211,6 +234,7 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 	btScalar inner_product = 0;
 	if (m_useProjection)
 	{
+		ImplicitOperatorCacheScope cacheScope(*m_objective);
 		m_cg.solve(*m_objective, ddv, residual, false);
 		inner_product = m_cg.dot(residual, m_ddv);
 	}
@@ -336,6 +360,7 @@ void btDeformableBodySolver::measureImplicitLinearResidual(const TVStack& x, con
 
 void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 {
+	ImplicitOperatorCacheScope cacheScope(*m_objective);
 	m_objective->m_preconditioner->reinitialize(true);
 	const bool translation = m_objective->setupTranslationCorrection();
 	m_objective->correctTranslation(x, rhs);
@@ -366,6 +391,7 @@ void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
 {
 	if (m_useProjection)
 	{
+		ImplicitOperatorCacheScope cacheScope(*m_objective);
 		m_cg.solve(*m_objective, ddv, residual, false);
 	}
 	else

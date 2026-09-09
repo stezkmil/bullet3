@@ -97,11 +97,66 @@ TEST_F(DeformableBlockPreconditioner, CombinedDifferentialMatchesSeparatePasses)
 		force.addScaledDampingForceDifferential(-dt, x, reference);
 		force.addScaledElasticForceDifferential(-dt * dt, x, reference);
 		force.addImplicitForceDifferential(dt, x, combined);
+		Vectors cached;
+		cached.resize(4, btVector3(btScalar(0.1), btScalar(-0.2), btScalar(0.3)));
+		force.prepareImplicitForceDifferential(dt);
+		force.addImplicitForceDifferential(dt, x, cached);
+		force.finishImplicitForceDifferential();
+		for (int n = 0; n < 4; ++n)
+		for (int d = 0; d < 3; ++d)
+			EXPECT_NEAR(double(reference[n][d]), double(cached[n][d]),
+				256 * SIMD_EPSILON * btMax(btScalar(1), btFabs(reference[n][d])));
 		for (int n = 0; n < 4; ++n)
 		for (int d = 0; d < 3; ++d)
 			EXPECT_NEAR(double(reference[n][d]), double(combined[n][d]),
 				128 * SIMD_EPSILON * btMax(btScalar(1), btFabs(reference[n][d])));
 	}
+}
+
+
+TEST_F(DeformableBlockPreconditioner, CachedOperatorRefreshAndFallback)
+{
+	Vectors x, expected, actual;
+	x.resize(4); expected.resize(4); actual.resize(4);
+	for (int n = 0; n < 4; ++n) x[n] = btVector3(n - 2, n * n, 3 - n);
+	for (int state = 0; state < 4; ++state)
+	{
+		body->m_tetraScratches[0].m_corotation = btMatrix3x3(btQuaternion(btVector3(2,1,3).normalized(), btScalar(0.3 * state)));
+		if (state == 3) body->m_tetraScratches[0].m_corotation[0][0] += btScalar(0.1);
+		force.setLameParameters(1000 + state * 700, 2000 + state * 900);
+		const btScalar dt = btScalar(0.003) * (state + 1);
+		for (int n = 0; n < 4; ++n) { expected[n].setZero(); actual[n].setZero(); }
+		force.addImplicitForceDifferential(dt, x, expected);
+		force.prepareImplicitForceDifferential(dt);
+		ASSERT_EQ(1, force.m_implicitTetraCache.size());
+		EXPECT_EQ(state != 3, force.m_implicitTetraCache[0].usable);
+		force.addImplicitForceDifferential(dt, x, actual);
+		force.finishImplicitForceDifferential();
+		EXPECT_FALSE(force.m_implicitCacheReady);
+		for (int n = 0; n < 4; ++n)
+		for (int d = 0; d < 3; ++d)
+			EXPECT_NEAR(double(expected[n][d]), double(actual[n][d]),
+				256 * SIMD_EPSILON * btMax(btScalar(1), btFabs(expected[n][d])));
+	}
+}
+
+TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveClosesCache)
+{
+	btDeformableBodySolver solver;
+	solver.setImplicit(true);
+	solver.setMaxNewtonIterations(3);
+	solver.m_objective->m_lf.push_back(&force);
+	const btScalar dt = btScalar(0.0002);
+	solver.reinitialize(bodies, dt);
+	for (int n = 0; n < 4; ++n)
+	{
+		body->m_nodes[n].m_vn.setZero();
+		body->m_nodes[n].m_v = btVector3(btScalar(0.1 * n), 0, 0);
+	}
+	solver.setupDeformableSolve(true);
+	solver.solveDeformableConstraints(dt);
+	EXPECT_FALSE(force.m_implicitCacheReady);
+
 }
 
 TEST_F(DeformableBlockPreconditioner, InvertsNodeBlocksAndScalesContactSchurDiagonal)
