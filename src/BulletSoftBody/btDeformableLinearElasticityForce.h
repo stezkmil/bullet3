@@ -444,6 +444,70 @@ public:
 		}
 	}
 
+	// Non-flat stiffness damping is beta times the frozen-rotation elastic tangent.
+	virtual void addImplicitForceDifferential(btScalar dt, const TVStack& dx, TVStack& df)
+	{
+		const btScalar dampingScale = -dt * m_damping_beta;
+		const btScalar elasticScale = -dt * dt;
+		int numNodes = getNumNodes();
+		btAssert(numNodes <= df.size());
+		btVector3 grad_N_hat_1st_col = btVector3(-1, -1, -1);
+		for (int i = 0; i < m_softBodies.size(); ++i)
+		{
+			btSoftBody* psb = m_softBodies[i];
+			if (!psb->isActive() || psb->isStaticObject())
+			{
+				continue;
+			}
+			for (int j = 0; j < psb->m_tetras.size(); ++j)
+			{
+				btSoftBody::Tetra& tetra = psb->m_tetras[j];
+				btSoftBody::Node* node0 = tetra.m_n[0];
+				btSoftBody::Node* node1 = tetra.m_n[1];
+				btSoftBody::Node* node2 = tetra.m_n[2];
+				btSoftBody::Node* node3 = tetra.m_n[3];
+				size_t id0 = node0->index;
+				size_t id1 = node1->index;
+				size_t id2 = node2->index;
+				size_t id3 = node3->index;
+				btMatrix3x3 dF = psb->m_tetraScratches[j].m_corotation.transpose() * Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;
+				btMatrix3x3 dP;
+				firstPiolaDifferential(psb->m_tetraScratches[j], dF, dP);
+				//                btVector3 df_on_node0 = dP * (tetra.m_Dm_inverse.transpose()*grad_N_hat_1st_col);
+				btMatrix3x3 df_on_node123 = psb->m_tetraScratches[j].m_corotation * dP * tetra.m_Dm_inverse.transpose();
+				btVector3 df_on_node0 = df_on_node123 * grad_N_hat_1st_col;
+
+				// elastic force differential
+				const bool flat = psb->m_tetraScratches[j].m_J < TETRA_FLAT_THRESHOLD;
+				btScalar scale1 = (elasticScale + (flat ? btScalar(0) : dampingScale)) * tetra.m_element_measure;
+				df[id0] -= scale1 * df_on_node0;
+				df[id1] -= scale1 * df_on_node123.getColumn(0);
+				df[id2] -= scale1 * df_on_node123.getColumn(1);
+				df[id3] -= scale1 * df_on_node123.getColumn(2);
+				if (flat && m_damping_beta != 0)
+				{
+					// Nearly flat elements retain the original unrotated damping tangent.
+					const btMatrix3x3 dampingF = Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;
+					btMatrix3x3 dampingP;
+					firstPiolaDifferential(psb->m_tetraScratches[j], dampingF, dampingP);
+					const btMatrix3x3 dampingNodes = dampingP * tetra.m_Dm_inverse.transpose();
+					const btScalar dampingWeight = dampingScale * tetra.m_element_measure;
+					df[id0] -= dampingWeight * (dampingNodes * grad_N_hat_1st_col);
+					df[id1] -= dampingWeight * dampingNodes.getColumn(0);
+					df[id2] -= dampingWeight * dampingNodes.getColumn(1);
+					df[id3] -= dampingWeight * dampingNodes.getColumn(2);
+				}
+			}
+			if (m_damping_alpha != 0)
+				for (int n = 0; n < psb->m_nodes.size(); ++n)
+				{
+					const btSoftBody::Node& node = psb->m_nodes[n];
+					if (node.m_frozen <= 0 && node.m_im > 0)
+						df[node.index] -= (-dt) * dx[node.index] / node.m_im * m_damping_alpha;
+				}
+		}
+	}
+
 	void firstPiola(const btSoftBody::TetraScratch& s, btMatrix3x3& P)
 	{
 		btMatrix3x3 corotated_F = s.m_corotation.transpose() * s.m_F;

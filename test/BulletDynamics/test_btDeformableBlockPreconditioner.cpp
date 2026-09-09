@@ -69,6 +69,41 @@ TEST_F(DeformableBlockPreconditioner, MatchesForceDifferentialForRotatedAndFlatE
 	compareBlocksToOperator(0, false);
 }
 
+
+TEST_F(DeformableBlockPreconditioner, CombinedDifferentialMatchesSeparatePasses)
+{
+	Vectors x, reference, combined;
+	x.resize(4); reference.resize(4); combined.resize(4);
+	const btScalar timesteps[] = {0, btScalar(0.0002), btScalar(0.02)};
+	for (int flat = 0; flat < 2; ++flat)
+	for (int damping = 0; damping < 4; ++damping)
+	for (int fixed = 0; fixed < 2; ++fixed)
+	for (int inactive = 0; inactive < 2; ++inactive)
+	for (int t = 0; t < 3; ++t)
+	for (int basis = 0; basis < 12; ++basis)
+	{
+		body->m_tetraScratches[0].m_J = flat ? btScalar(0.001) : btScalar(1);
+		force.setDamping(damping & 1 ? btScalar(0.12) : 0, damping & 2 ? btScalar(0.04) : 0);
+		body->m_nodes[0].m_frozen = fixed;
+		body->m_nodes[1].m_im = fixed ? btScalar(0) : btScalar(0.5);
+		body->forceActivationState(inactive ? ISLAND_SLEEPING : ACTIVE_TAG);
+		for (int n = 0; n < 4; ++n)
+		{
+			x[n].setZero();
+			reference[n] = combined[n] = btVector3(btScalar(0.1), btScalar(-0.2), btScalar(0.3));
+		}
+		x[basis / 3][basis % 3] = 1;
+		const btScalar dt = timesteps[t];
+		force.addScaledDampingForceDifferential(-dt, x, reference);
+		force.addScaledElasticForceDifferential(-dt * dt, x, reference);
+		force.addImplicitForceDifferential(dt, x, combined);
+		for (int n = 0; n < 4; ++n)
+		for (int d = 0; d < 3; ++d)
+			EXPECT_NEAR(double(reference[n][d]), double(combined[n][d]),
+				128 * SIMD_EPSILON * btMax(btScalar(1), btFabs(reference[n][d])));
+	}
+}
+
 TEST_F(DeformableBlockPreconditioner, InvertsNodeBlocksAndScalesContactSchurDiagonal)
 {
 	btScalar dt = btScalar(0.02);

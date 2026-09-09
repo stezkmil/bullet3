@@ -68,6 +68,13 @@ public:
 	// add elastic df
 	virtual void addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df) = 0;
 
+	// Add -dt*dF/dv*x - dt^2*dF/dx*x. Forces may share work between terms.
+	virtual void addImplicitForceDifferential(btScalar dt, const TVStack& x, TVStack& df)
+	{
+		addScaledDampingForceDifferential(-dt, x, df);
+		addScaledElasticForceDifferential(-dt * dt, x, df);
+	}
+
 	// add all forces that are explicit in explicit solve
 	virtual void addScaledExplicitForce(btScalar scale, TVStack& force) = 0;
 
