@@ -534,6 +534,11 @@ void btDeformableMultiBodyDynamicsWorld::setMaxNewtonIterations(int maxNewtonIte
 	m_deformableBodySolver->setMaxNewtonIterations(maxNewtonIterations);
 }
 
+void btDeformableMultiBodyDynamicsWorld::setNewtonTolerance(btScalar tolerance)
+{
+	m_deformableBodySolver->setNewtonTolerance(tolerance);
+}
+
 int btDeformableMultiBodyDynamicsWorld::getMaxNewtonIterations() const
 {
 	return m_deformableBodySolver->getMaxNewtonIterations();

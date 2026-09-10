@@ -178,6 +178,8 @@ public:
 
 	void setMaxNewtonIterations(int maxNewtonIterations);
 
+	void setNewtonTolerance(btScalar tolerance);
+
 	int getMaxNewtonIterations() const;
 
 	void setUseProjection(bool useProjection)

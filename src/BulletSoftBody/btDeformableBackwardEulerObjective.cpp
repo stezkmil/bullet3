@@ -68,7 +68,6 @@ void btDeformableBackwardEulerObjective::setDt(btScalar dt)
 
 void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) const
 {
-	btDeformablePerformanceScope perf(m_performance.multiply, m_performance.active);
 	BT_PROFILE("multiply");
 	// add in the mass term
 	size_t counter = 0;
@@ -87,19 +86,14 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 	{
 		if (m_implicit)
 		{
-			btDeformablePerformanceScope perf(m_performance.combined, m_performance.active);
 			m_lf[i]->addImplicitForceDifferential(m_dt, x, b);
 		}
 		else
 		{
-			{
-				btDeformablePerformanceScope perf(m_performance.damping, m_performance.active);
-				m_lf[i]->addScaledDampingForceDifferential(-m_dt, x, b);
-			}
+			m_lf[i]->addScaledDampingForceDifferential(-m_dt, x, b);
 			// Always integrate picking force implicitly for stability.
 			if (m_lf[i]->getForceType() == BT_MOUSE_PICKING_FORCE)
 			{
-				btDeformablePerformanceScope perf(m_performance.elastic, m_performance.active);
 				m_lf[i]->addScaledElasticForceDifferential(-m_dt * m_dt, x, b);
 			}
 		}
@@ -185,7 +179,6 @@ void btDeformableBackwardEulerObjective::applyForce(TVStack& force, bool setZero
 
 void btDeformableBackwardEulerObjective::computeResidual(btScalar dt, TVStack& residual)
 {
-	btDeformablePerformanceScope perf(m_performance.residual, m_performance.active);
 	BT_PROFILE("computeResidual");
 	// add implicit force
 	for (int i = 0; i < m_lf.size(); ++i)
@@ -215,7 +208,6 @@ btScalar btDeformableBackwardEulerObjective::computeNorm(const TVStack& residual
 
 btScalar btDeformableBackwardEulerObjective::totalEnergy(btScalar dt)
 {
-	btDeformablePerformanceScope perf(m_performance.energy, m_performance.active);
 	btScalar e = 0;
 	for (int i = 0; i < m_lf.size(); ++i)
 	{
@@ -319,7 +311,6 @@ void btDeformableBackwardEulerObjective::applyDynamicFriction(TVStack& r)
 
 bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 {
-	btDeformablePerformanceScope perf(m_performance.translationSetup, m_performance.active);
 	m_translationCorrection = false;
 	m_translationBodies.clear();
 	if (!m_implicit) return false;
@@ -386,7 +377,6 @@ bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 
 void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack& b)
 {
-	btDeformablePerformanceScope perf(m_performance.precondition, m_performance.active);
 	if (!m_translationCorrection) { m_preconditioner->operator()(x, b); return; }
 	// B = Q + (I-Q*A)*D*(I-A*Q), with three coarse modes per free body.
 	// Constrained bodies and multiplier entries keep the original D action.
@@ -414,7 +404,6 @@ void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack&
 
 btScalar btDeformableBackwardEulerObjective::correctTranslation(TVStack& x, const TVStack& rhs)
 {
-	btDeformablePerformanceScope perf(m_performance.translationCorrect, m_performance.active);
 	if (!m_translationCorrection) return 0;
 	multiply(x, m_translationWork);
 	btScalar largestCorrection = 0;

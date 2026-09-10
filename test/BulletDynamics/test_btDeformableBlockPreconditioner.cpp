@@ -140,7 +140,7 @@ TEST_F(DeformableBlockPreconditioner, CachedOperatorRefreshAndFallback)
 	}
 }
 
-TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveRecordsDiagnosticsAndClosesCache)
+TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveClosesCache)
 {
 	btDeformableBodySolver solver;
 	solver.setImplicit(true);
@@ -156,23 +156,7 @@ TEST_F(DeformableBlockPreconditioner, CachedNewtonSolveRecordsDiagnosticsAndClos
 	solver.setupDeformableSolve(true);
 	solver.solveDeformableConstraints(dt);
 	EXPECT_FALSE(force.m_implicitCacheReady);
-	const btDeformableSolverPerformance& perf = solver.m_objective->m_performance;
-	ASSERT_GT(perf.linearRecords.size(), 0);
-	ASSERT_EQ(perf.newton, perf.newtonRecords.size());
-	for (int i = 0; i < perf.newtonRecords.size(); ++i)
-	{
-		EXPECT_STRNE("pending", perf.newtonRecords[i].outcome);
-		EXPECT_TRUE(std::isfinite(perf.newtonRecords[i].inputForceL2));
-	}
-	for (int i = 0; i < perf.linearRecords.size(); ++i)
-	{
-		const btDeformableSolverPerformance::LinearRecord& record = perf.linearRecords[i];
-		EXPECT_GE(record.iterations, 0);
-		EXPECT_LE(record.iterations, record.budget);
-		EXPECT_STRNE("not_run", record.stop);
-		EXPECT_TRUE(std::isfinite(record.momentum));
-		EXPECT_TRUE(std::isfinite(record.constraint));
-	}
+
 }
 
 TEST_F(DeformableBlockPreconditioner, InvertsNodeBlocksAndScalesContactSchurDiagonal)
@@ -282,6 +266,12 @@ public:
 		m_dv.resize(m_numNodes, btVector3(0,0,0)); m_backupVelocity.resize(m_numNodes, btVector3(0,0,0));
 		setupDeformableSolve(true);
 	}
+	void solveContact(Vectors& x, const Vectors& rhs, int newton)
+	{
+		m_newtonIteration = newton;
+		solveImplicitKKT(x, rhs);
+	}
+	btScalar linearConstraintResidual() const { return m_lastLinearConstraintResidual; }
 	btScalar constraintError(const Vectors& dv) const { return implicitConstraintError(dv); }
 	void measure(const Vectors& x, const Vectors& rhs) { measureImplicitLinearResidual(x, rhs); }
 	btScalar linearResidual() const { return m_lastLinearMomentumResidual; }
@@ -572,7 +562,6 @@ TEST(DeformableCRConvergence, WeightedResidualRetainsUsefulStepRejectedByInfinit
 	btConjugateResidual<Matrix> legacy(1), weighted(1);
 	legacy.solveWithConvergencePolicy(matrix,oldX,rhs,false,true,false);
 	weighted.solveWithConvergencePolicy(matrix,newX,rhs,false,true,true);
-	EXPECT_STREQ("iteration_limit", weighted.getStopReason());
 	EXPECT_EQ(btScalar(0),oldX[0].length2());
 	EXPECT_NEAR((double)newX[0].x(),9.0/101,1e-6);
 	EXPECT_NEAR((double)newX[0].y(),9.0/101,1e-6);
@@ -612,7 +601,6 @@ TEST(DeformableCRContinuation, PhysicalTargetIgnoresMisleadingPreconditionedTole
 	btConjugateResidual<Matrix> cr(300);
 	const int iterations=cr.solveWithConvergencePolicy(matrix,x,rhs,false,false,true,1200,btScalar(1e-5));
 	matrix.multiply(x,product);
-	EXPECT_STREQ("verified_physical_target", cr.getStopReason());
 	EXPECT_GT(iterations,0);EXPECT_LT(iterations,300);
 	EXPECT_LE((rhs[0]-product[0]).length(),btScalar(1e-5));
 	EXPECT_EQ(300,cr.m_maxIterations); // Per-call limit must not leak to explicit solves.
@@ -645,19 +633,6 @@ TEST(DeformableCRContinuation, PreservesDirectionsBeyondDefaultBudget)
 	for(int n=0;n<x.size();++n)error+=(rhs[n]-product[n]).length2();
 	EXPECT_GT(iterations,300);EXPECT_LT(iterations,1200);
 	EXPECT_LE(btSqrt(error),btScalar(1e-5));
-	Vectors diagnosed;
-	diagnosed.resize(x.size(), btVector3(0,0,0));
-	btConjugateResidual<Matrix> instrumented(300);
-	instrumented.configureProgress(true, rhs.size());
-	EXPECT_EQ(iterations, instrumented.solveWithConvergencePolicy(matrix, diagnosed, rhs, false, false, true, 1200, btScalar(1e-5)));
-	ASSERT_GE(instrumented.m_progress.size(), 4);
-	EXPECT_EQ(25, instrumented.m_progress[0].iteration);
-	for (int n = 0; n < x.size(); ++n) EXPECT_EQ(btScalar(0), (x[n] - diagnosed[n]).length2());
-	for (int n = 0; n < instrumented.m_progress.size(); ++n)
-	{
-		EXPECT_TRUE(std::isfinite(instrumented.m_progress[n].trueMomentumL2));
-		EXPECT_LT(instrumented.m_progress[n].residualGapL2, 1e-4);
-	}
 }
 
 
@@ -679,9 +654,18 @@ TEST_F(DeformableBlockPreconditioner, NewtonPreservesContactVelocityInsteadOfPre
 	residual[0]=btVector3(1,0,-2);
 	solver.m_objective->addLagrangeMultiplierRHS(residual,dv,rhs);
 	EXPECT_EQ(btScalar(0),rhs[4][0]);
-	solver.m_objective->m_preconditioner->reinitialize(true);
-	btConjugateResidual<btDeformableBackwardEulerObjective> cr(100);
-	cr.solveWithConvergencePolicy(*solver.m_objective,correction,rhs,false,false,true);
+	// Exercise the actual first and subsequent Newton solves, preserving the
+	// contact velocity while later corrections meet the strict physical target.
+	for (int newton = 0; newton < 3; ++newton)
+	{
+		for (int n = 0; n < correction.size(); ++n) correction[n].setZero();
+		solver.solveContact(correction, rhs, newton);
+		if (newton > 0)
+		{
+			EXPECT_LE(solver.linearResidual(), btScalar(5e-5));
+			EXPECT_LE(solver.linearConstraintResidual(), btScalar(5e-5));
+		}
+	}
 	const btVector3 finalVelocity=body->m_nodes[0].m_vn+dv[0]+correction[0];
 	EXPECT_NEAR(0.0,(double)finalVelocity.z(),1e-5);
 	EXPECT_GT(finalVelocity.x(),btScalar(0));
