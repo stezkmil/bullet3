@@ -130,7 +130,7 @@ public:
 	void getAabb(const btTransform& t, btVector3& aabbMin, btVector3& aabbMax) const
 	{
 		btAABB transformedbox = m_localAABB;
-		transformedbox.appy_transform(t);
+		transformedbox.apply_transform(t);
 		aabbMin = transformedbox.m_min;
 		aabbMax = transformedbox.m_max;
 	}
@@ -247,7 +247,7 @@ public:
 	{
 		btAABB child_aabb;
 		getPrimitiveManager()->get_primitive_box(child_index, child_aabb);
-		child_aabb.appy_transform(t);
+		child_aabb.apply_transform(t);
 		aabbMin = child_aabb.m_min;
 		aabbMax = child_aabb.m_max;
 	}

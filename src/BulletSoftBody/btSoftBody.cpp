@@ -576,6 +576,12 @@ void btSoftBody::appendAnchor(int node, btRigidBody* body, const btVector3& loca
 //
 void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t userIndex)
 {
+	appendDeformableAnchor(node, body, userIndex, btScalar(0));
+}
+
+//
+void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t userIndex, btScalar compliance)
+{
 	DeformableNodeRigidAnchor c;
 	btSoftBody::Node& n = m_nodes[node];
 	const btScalar ima = n.m_im;
@@ -608,6 +614,7 @@ void btSoftBody::appendDeformableAnchor(int node, btRigidBody* body, uint32_t us
 	c.m_local = body->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
 	c.m_userIndex = userIndex;
+	c.m_compliance = btMax(compliance, btScalar(0));
 
 	m_deformableAnchors.push_back(c);
 	body->addAnchorRef(this);
@@ -692,6 +699,12 @@ std::vector<int> btSoftBody::getDeformableAnchorByUserIndex(int userIndex) const
 //
 void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex)
 {
+	appendDeformableAnchor(node, link, userIndex, btScalar(0));
+}
+
+//
+void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link, uint32_t userIndex, btScalar compliance)
+{
 	DeformableNodeRigidAnchor c;
 	btSoftBody::Node& n = m_nodes[node];
 	const btScalar ima = n.m_im;
@@ -744,6 +757,7 @@ void btSoftBody::appendDeformableAnchor(int node, btMultiBodyLinkCollider* link,
 	c.m_local = link->getWorldTransform().inverse() * m_nodes[node].m_x;
 	c.m_node->m_battach = 1;
 	c.m_userIndex = userIndex;
+	c.m_compliance = btMax(compliance, btScalar(0));
 	m_deformableAnchors.push_back(c);
 }
 //
@@ -1036,6 +1050,8 @@ void btSoftBody::freezeNode(int node, bool freeze)
 		++m_nodes[node].m_frozen;
 		m_nodes[node].m_v = btVector3(0, 0, 0);
 		m_nodes[node].m_vn = btVector3(0, 0, 0);
+		m_nodes[node].m_splitv.setZero();
+		m_nodes[node].m_q = m_nodes[node].m_x;
 	}
 	else
 	{
@@ -1050,6 +1066,13 @@ void btSoftBody::freezeNode(int node, bool freeze)
 void btSoftBody::setMass(int node, btScalar mass)
 {
 	m_nodes[node].m_im = mass > 0 ? 1 / mass : 0;
+	if (mass <= 0)
+	{
+		m_nodes[node].m_v.setZero();
+		m_nodes[node].m_vn.setZero();
+		m_nodes[node].m_splitv.setZero();
+		m_nodes[node].m_q = m_nodes[node].m_x;
+	}
 	m_bUpdateRtCst = true;
 }
 

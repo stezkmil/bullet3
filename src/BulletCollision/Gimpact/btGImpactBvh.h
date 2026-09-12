@@ -244,7 +244,7 @@ public:
 										 const btTransform& transform, btAlignedObjectArray<int>& collided_results) const
 	{
 		btAABB transbox = box;
-		transbox.appy_transform(transform);
+		transbox.apply_transform(transform);
 		return boxQuery(transbox, collided_results);
 	}
 

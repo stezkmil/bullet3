@@ -14,14 +14,109 @@
  */
 
 #include "btDeformableContactConstraint.h"
+#include <cstdio>
+
+namespace
+{
+btMatrix3x3 getAnchorVelocityResponse(const btSoftBody::DeformableNodeRigidAnchor& anchor)
+{
+	const btRigidBody* rigidBody = btRigidBody::upcast(anchor.m_cti.m_colObj);
+	if (rigidBody)
+	{
+		btMatrix3x3 velocityResponse(0, 0, 0,
+									 0, 0, 0,
+									 0, 0, 0);
+		for (int column = 0; column < 3; ++column)
+		{
+			btVector3 unitImpulse(0, 0, 0);
+			unitImpulse[column] = 1;
+			const btVector3 factoredImpulse = unitImpulse * rigidBody->getLinearFactor();
+			const btVector3 angularVelocity =
+				(rigidBody->getInvInertiaTensorWorld() * anchor.m_c1.cross(factoredImpulse)) *
+				rigidBody->getAngularFactor();
+			const btVector3 pointVelocityResponse =
+				unitImpulse * anchor.m_node->m_im +
+				factoredImpulse * rigidBody->getInvMass() +
+				angularVelocity.cross(anchor.m_c1);
+			velocityResponse[0][column] = pointVelocityResponse.x();
+			velocityResponse[1][column] = pointVelocityResponse.y();
+			velocityResponse[2][column] = pointVelocityResponse.z();
+		}
+		return velocityResponse;
+	}
+
+	// The multibody impulse matrix and Jacobians are refreshed together by the
+	// deformable solver. m_c0 stores its inverse velocity response.
+	return anchor.m_c0.inverse();
+}
+
+btScalar getAnchorRegularization(const btSoftBody::DeformableNodeRigidAnchor& anchor,
+								 const btContactSolverInfo& infoGlobal)
+{
+	if (anchor.m_compliance <= 0 || infoGlobal.m_timeStep <= SIMD_EPSILON)
+	{
+		return 0;
+	}
+	return anchor.m_compliance / (infoGlobal.m_timeStep * infoGlobal.m_timeStep);
+}
+
+btMatrix3x3 getAnchorImpulseMatrix(const btSoftBody::DeformableNodeRigidAnchor& anchor,
+								  btScalar regularization)
+{
+	btMatrix3x3 velocityResponse = getAnchorVelocityResponse(anchor);
+	velocityResponse[0][0] += regularization;
+	velocityResponse[1][1] += regularization;
+	velocityResponse[2][2] += regularization;
+	return velocityResponse.inverse();
+}
+
+void applyAnchorImpulseToMultiBody(const btSoftBody::DeformableNodeRigidAnchor& anchor,
+								   const btVector3& impulse,
+								   bool splitImpulse)
+{
+	btMultiBodyLinkCollider* collider = btMultiBodyLinkCollider::upcast(
+		const_cast<btCollisionObject*>(anchor.m_cti.m_colObj));
+	if (!collider)
+	{
+		return;
+	}
+
+	const btScalar normalImpulse = impulse.dot(anchor.m_cti.m_normal);
+	const btScalar tangentImpulse1 = impulse.dot(anchor.t1);
+	const btScalar tangentImpulse2 = impulse.dot(anchor.t2);
+	const btScalar* deltaVNormal = &anchor.jacobianData_normal.m_deltaVelocitiesUnitImpulse[0];
+	const btScalar* deltaVTangent1 = &anchor.jacobianData_t1.m_deltaVelocitiesUnitImpulse[0];
+	const btScalar* deltaVTangent2 = &anchor.jacobianData_t2.m_deltaVelocitiesUnitImpulse[0];
+
+	if (splitImpulse)
+	{
+		collider->m_multiBody->applyDeltaSplitVeeMultiDof(deltaVNormal, normalImpulse);
+		collider->m_multiBody->applyDeltaSplitVeeMultiDof(deltaVTangent1, tangentImpulse1);
+		collider->m_multiBody->applyDeltaSplitVeeMultiDof(deltaVTangent2, tangentImpulse2);
+	}
+	else
+	{
+		collider->m_multiBody->applyDeltaVeeMultiDof2(deltaVNormal, normalImpulse);
+		collider->m_multiBody->applyDeltaVeeMultiDof2(deltaVTangent1, tangentImpulse1);
+		collider->m_multiBody->applyDeltaVeeMultiDof2(deltaVTangent2, tangentImpulse2);
+	}
+}
+}  // namespace
+
 /* ================   Deformable Node Anchor   =================== */
 btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(const btSoftBody::DeformableNodeRigidAnchor& a, const btContactSolverInfo& infoGlobal)
-	: m_anchor(&a), btDeformableContactConstraint(a.m_cti.m_normal, infoGlobal)
+	: m_anchor(&a),
+	  m_totalImpulse(0, 0, 0),
+	  m_totalSplitImpulse(0, 0, 0),
+	  btDeformableContactConstraint(a.m_cti.m_normal, infoGlobal)
 {
 }
 
 btDeformableNodeAnchorConstraint::btDeformableNodeAnchorConstraint(const btDeformableNodeAnchorConstraint& other)
-	: m_anchor(other.m_anchor), btDeformableContactConstraint(other)
+	: m_anchor(other.m_anchor),
+	  m_totalImpulse(other.m_totalImpulse),
+	  m_totalSplitImpulse(other.m_totalSplitImpulse),
+	  btDeformableContactConstraint(other)
 {
 }
 
@@ -29,7 +124,7 @@ btVector3 btDeformableNodeAnchorConstraint::getVa() const
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
 	btVector3 va(0, 0, 0);
-	if (cti.m_colObj->hasContactResponse())
+	if (cti.m_colObj)
 	{
 		btRigidBody* rigidCol = 0;
 		btMultiBodyLinkCollider* multibodyLinkCol = 0;
@@ -81,69 +176,70 @@ btVector3 btDeformableNodeAnchorConstraint::getVa() const
 btScalar btDeformableNodeAnchorConstraint::solveConstraint(const btContactSolverInfo& infoGlobal)
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
-	btScalar residualSquare = 0.0;
-
-	if (!m_anchor->m_body->isStaticOrKinematicObject() && m_anchor->m_body->isActive())
+	if (!cti.m_colObj ||
+		(m_anchor->m_compliance > 0 && infoGlobal.m_timeStep <= SIMD_EPSILON))
 	{
-		btVector3 va = getVa();
-		btVector3 vb = getVb();
-		btVector3 vr = (vb - va);
-		residualSquare = btDot(vr, vr);
-
-		const btScalar misconvergenceRelaxationFactor = 0.5;
-		const btScalar convergenceRelaxationFactor = 1.1;
-
-		// If the current residual is larger than the last one, we are heading towards an explosion. We use this information as a hint that impulse magnitudes should be dampened.
-		// This greatly improves convergence.
-		if (m_previous_residual_velocity_match != -1.0)
-			if (residualSquare > m_previous_residual_velocity_match)
-				m_convergence_based_relaxation_velocity_match = std::max(0.1, m_convergence_based_relaxation_velocity_match * misconvergenceRelaxationFactor);
-			else
-				m_convergence_based_relaxation_velocity_match = std::min(1.0, m_convergence_based_relaxation_velocity_match * convergenceRelaxationFactor);
-		m_previous_residual_velocity_match = residualSquare;
-
-		// dn is the normal component of velocity diffrerence. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
-		btVector3 impulse = (m_anchor->m_c0 * vr) * m_convergence_based_relaxation_velocity_match;
-
-		// TODO impulses applied in iteration 0 can be way off. Warmstart the first impulse. It should work similar to the way the m_appliedImpulse works. This should reduce the iteration count somewhat.
-		// TODO still some instabilities were observed when the bodies have 3 orders of magnitude mass difference. To be investigated later. Maybe a mass ratio based clamping of the impulse is needed.
-
-		// apply impulse to deformable nodes involved and change their velocities
-		applyImpulse(impulse);
-
-		// apply impulse to the rigid/multibodies involved and change their velocities
-		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
-		{
-			btRigidBody* rigidCol = 0;
-			rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
-			if (rigidCol)
-			{
-				rigidCol->applyImpulse(impulse, m_anchor->m_c1);
-			}
-		}
-		else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
-		{
-			btMultiBodyLinkCollider* multibodyLinkCol = 0;
-			multibodyLinkCol = (btMultiBodyLinkCollider*)btMultiBodyLinkCollider::upcast(cti.m_colObj);
-			if (multibodyLinkCol)
-			{
-				const btScalar* deltaV_normal = &m_anchor->jacobianData_normal.m_deltaVelocitiesUnitImpulse[0];
-				// apply normal component of the impulse
-				multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_normal, impulse.dot(cti.m_normal));
-				// apply tangential component of the impulse
-				const btScalar* deltaV_t1 = &m_anchor->jacobianData_t1.m_deltaVelocitiesUnitImpulse[0];
-				multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t1, impulse.dot(m_anchor->t1));
-				const btScalar* deltaV_t2 = &m_anchor->jacobianData_t2.m_deltaVelocitiesUnitImpulse[0];
-				multibodyLinkCol->m_multiBody->applyDeltaVeeMultiDof2(deltaV_t2, impulse.dot(m_anchor->t2));
-			}
-		}
-
-		//fprintf(stderr, "btDeformableNodeAnchorConstraint::solveConstraint m_convergence_based_relaxation %f va %f %f %f vb %f %f %f residual %f\n", m_convergence_based_relaxation, va.x(), va.y(), va.z(), vb.x(), vb.y(), vb.z(),
-		//		residualSquare);
+		return 0;
 	}
-	// If the rigid is static, we freeze the soft node.
 
-	return residualSquare;
+	// The hard bilateral anchor has three rows v_soft - v_rigid = 0. A
+	// compliant anchor is an implicit spring: C / dt is added to the velocity
+	// row and compliance / dt^2 regularizes its accumulated impulse. At rest,
+	// this gives C = compliance * force. The resulting impulse is distributed
+	// according to the complete soft/rigid mass and inertia.
+	const btScalar regularization = getAnchorRegularization(*m_anchor, infoGlobal);
+	const btVector3 positionError =
+		m_anchor->m_node->m_x - cti.m_colObj->getWorldTransform() * m_anchor->m_local;
+	const btVector3 relativeVelocity = getVb() - getVa();
+	const btVector3 positionVelocity = m_anchor->m_compliance > 0
+									   ? positionError / infoGlobal.m_timeStep
+									   : btVector3(0, 0, 0);
+	const btVector3 residual = relativeVelocity + positionVelocity - m_totalImpulse * regularization;
+	const btMatrix3x3 impulseMatrix = getAnchorImpulseMatrix(*m_anchor, regularization);
+	const btVector3 previousTotalImpulse = m_totalImpulse;
+	const btVector3 impulse = impulseMatrix * residual * infoGlobal.m_sor;
+	m_totalImpulse += impulse;
+
+	applyImpulse(impulse);
+	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
+	{
+		btRigidBody* rigidBody = btRigidBody::upcast(const_cast<btCollisionObject*>(cti.m_colObj));
+		if (rigidBody)
+		{
+			rigidBody->applyImpulse(impulse, m_anchor->m_c1);
+		}
+	}
+	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
+	{
+		applyAnchorImpulseToMultiBody(*m_anchor, impulse, false);
+	}
+
+	if (m_anchor->m_compliance > 0)
+	{
+		const btVector3 postRelativeVelocity = getVb() - getVa();
+		std::fprintf(stderr,
+					 "[BT_ANCHOR_DEBUG] velocity user=%u node=%d anchor=%p body=%p "
+					 "dt=%.9g compliance=%.9g alpha=%.9g sor=%.9g "
+					 "position=(%.9g %.9g %.9g) relative=(%.9g %.9g %.9g) "
+					 "lambda0=(%.9g %.9g %.9g) residual=(%.9g %.9g %.9g) "
+					 "K=(%.9g %.9g %.9g) delta=(%.9g %.9g %.9g) "
+					 "lambda1=(%.9g %.9g %.9g) postRelative=(%.9g %.9g %.9g)\n",
+					 static_cast<unsigned>(m_anchor->m_userIndex), m_anchor->m_node->index,
+					 const_cast<void*>(static_cast<const void*>(m_anchor)),
+					 const_cast<void*>(static_cast<const void*>(cti.m_colObj)),
+					 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(m_anchor->m_compliance),
+					 static_cast<double>(regularization), static_cast<double>(infoGlobal.m_sor),
+					 static_cast<double>(positionError.x()), static_cast<double>(positionError.y()), static_cast<double>(positionError.z()),
+					 static_cast<double>(relativeVelocity.x()), static_cast<double>(relativeVelocity.y()), static_cast<double>(relativeVelocity.z()),
+					 static_cast<double>(previousTotalImpulse.x()), static_cast<double>(previousTotalImpulse.y()), static_cast<double>(previousTotalImpulse.z()),
+					 static_cast<double>(residual.x()), static_cast<double>(residual.y()), static_cast<double>(residual.z()),
+					 static_cast<double>(impulseMatrix[0][0]), static_cast<double>(impulseMatrix[1][1]), static_cast<double>(impulseMatrix[2][2]),
+					 static_cast<double>(impulse.x()), static_cast<double>(impulse.y()), static_cast<double>(impulse.z()),
+					 static_cast<double>(m_totalImpulse.x()), static_cast<double>(m_totalImpulse.y()), static_cast<double>(m_totalImpulse.z()),
+					 static_cast<double>(postRelativeVelocity.x()), static_cast<double>(postRelativeVelocity.y()), static_cast<double>(postRelativeVelocity.z()));
+	}
+
+	return residual.length2();
 }
 
 btVector3 btDeformableNodeAnchorConstraint::getVb() const
@@ -162,14 +258,38 @@ btVector3 btDeformableNodeAnchorConstraint::getSplitVa() const
 {
 	const btSoftBody::sCti& cti = m_anchor->m_cti;
 	btVector3 va(0, 0, 0);
-	if (cti.m_colObj->hasContactResponse())
+	if (cti.m_colObj)
 	{
 		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
 		{
 			btRigidBody* rigidCol = (btRigidBody*)btRigidBody::upcast(cti.m_colObj);
 			va = rigidCol ? rigidCol->getPushVelocityInLocalPoint(m_anchor->m_c1) : btVector3(0, 0, 0);
 		}
-		// TODO feather
+		else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
+		{
+			btMultiBodyLinkCollider* collider = btMultiBodyLinkCollider::upcast(
+				const_cast<btCollisionObject*>(cti.m_colObj));
+			if (collider)
+			{
+				const int ndof = collider->m_multiBody->getNumDofs() + 6;
+				const btScalar* splitVelocity = collider->m_multiBody->getSplitVelocityVector();
+				const btScalar* normalJacobian = &m_anchor->jacobianData_normal.m_jacobians[0];
+				const btScalar* tangentJacobian1 = &m_anchor->jacobianData_t1.m_jacobians[0];
+				const btScalar* tangentJacobian2 = &m_anchor->jacobianData_t2.m_jacobians[0];
+				btScalar normalVelocity = 0;
+				btScalar tangentVelocity1 = 0;
+				btScalar tangentVelocity2 = 0;
+				for (int k = 0; k < ndof; ++k)
+				{
+					normalVelocity += splitVelocity[k] * normalJacobian[k];
+					tangentVelocity1 += splitVelocity[k] * tangentJacobian1[k];
+					tangentVelocity2 += splitVelocity[k] * tangentJacobian2[k];
+				}
+				va = cti.m_normal * normalVelocity +
+					 m_anchor->t1 * tangentVelocity1 +
+					 m_anchor->t2 * tangentVelocity2;
+			}
+		}
 	}
 	return va;
 }
@@ -191,103 +311,82 @@ void btDeformableNodeAnchorConstraint::applySplitImpulse(const btVector3& impuls
 // btDeformableNodeAnchorConstraint::solveConstraint.
 btScalar btDeformableNodeAnchorConstraint::solveSplitImpulse(const btContactSolverInfo& infoGlobal)
 {
-	btScalar residualSquare = 0.0;
-	if (!m_anchor->m_body->isStaticOrKinematicObject() && m_anchor->m_body->isActive())
+	const btSoftBody::sCti& cti = m_anchor->m_cti;
+	if (infoGlobal.m_timeStep <= SIMD_EPSILON || !cti.m_colObj)
 	{
-		const btSoftBody::sCti& cti = m_anchor->m_cti;
-		auto va = getSplitVa() + getVa();
-		// Why is m_vn (previous velocity) here? m_v could not be used, because at this stage it contains only the explicit forces (like mouse drag) applied but not the implicit forces like the linear elasticity.
-		// To predict the the position of the deformable node, we use vn as an approximation of the velocity at the end of the time step, which includes the effect of both explicit and implicit forces. It is not perfectly
-		// accurate, but it works reasonably well due to time coherence. To get perfect velocity, this solve would have to be moved after the implicit forces are calculated. This could be a future TODO - not sure if easy.
-		const auto vb = m_anchor->m_node->m_vn + m_anchor->m_node->m_splitv;
+		return 0;
+	}
+	if (m_anchor->m_compliance > 0)
+	{
+		// The compliant anchor's position error is part of its physical implicit
+		// spring row in solveConstraint. A second split-impulse multiplier would
+		// duplicate that correction and would not represent the spring force.
+		std::fprintf(stderr,
+					 "[BT_ANCHOR_DEBUG] split-disabled user=%u node=%d anchor=%p body=%p "
+					 "dt=%.9g compliance=%.9g\n",
+					 static_cast<unsigned>(m_anchor->m_userIndex), m_anchor->m_node->index,
+					 const_cast<void*>(static_cast<const void*>(m_anchor)),
+					 const_cast<void*>(static_cast<const void*>(cti.m_colObj)),
+					 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(m_anchor->m_compliance));
+		return 0;
+	}
 
-		//auto rigid_pt = (cti.m_colObj->getWorldTransform() * m_anchor->m_local);
-		//fprintf(stderr, "m_anchor->m_node->m_x %f %f %f cti.m_colObj->getWorldTransform() * m_anchor->m_local %f %f %f diff %f %f %f\n", m_anchor->m_node->m_x.x(), m_anchor->m_node->m_x.y(), m_anchor->m_node->m_x.z(), rigid_pt.x(), rigid_pt.y(), rigid_pt.z(), trigger.x(), trigger.y(), trigger.z());
+	// Split impulse removes positional drift without injecting kinetic energy.
+	// Physical velocities do not belong in this row; solveConstraint handles
+	// them independently. C is the current world-space anchor separation.
+	const btVector3 positionError =
+		m_anchor->m_node->m_x - cti.m_colObj->getWorldTransform() * m_anchor->m_local;
+	const btVector3 relativePushVelocity = getSplitVb() - getSplitVa();
+	const btScalar regularization = getAnchorRegularization(*m_anchor, infoGlobal);
+	const btVector3 constraintError = relativePushVelocity +
+									  positionError * (infoGlobal.m_deformable_erp / infoGlobal.m_timeStep) -
+									  m_totalSplitImpulse * regularization;
+	const btMatrix3x3 impulseMatrix = getAnchorImpulseMatrix(*m_anchor, regularization);
+	const btVector3 previousTotalSplitImpulse = m_totalSplitImpulse;
+	const btVector3 impulse = impulseMatrix * constraintError * infoGlobal.m_sor;
+	m_totalSplitImpulse += impulse;
 
-		// Predicted anchor poisitions for both the rigid and soft are calculated in this part.
-		auto anchor_soft_predicted = (m_anchor->m_node->m_x + vb * infoGlobal.m_timeStep);
-
-		btTransform rigid_tr = cti.m_colObj->getWorldTransform();
-		btTransform tr_predicted;
-		btTransformUtil::integrateTransform(
-			rigid_tr,
-			m_anchor->m_body->getLinearVelocity() + m_anchor->m_body->getPushVelocity(),
-			m_anchor->m_body->getAngularVelocity() + m_anchor->m_body->getTurnVelocity() * infoGlobal.m_splitImpulseTurnErp,
-			infoGlobal.m_timeStep,
-			tr_predicted);
-		btVector3 anchor_rigid_predicted = tr_predicted * m_anchor->m_local;
-
-		btVector3 pos_diff = anchor_soft_predicted - anchor_rigid_predicted;
-
-		residualSquare = btDot(pos_diff, pos_diff);
-
-		// Maybe this early return would prevent some slight overshoot?
-		//if (residualSquare < infoGlobal.m_leastSquaresResidualThreshold)
-		//	return residualSquare;
-
-		/*fprintf(stderr, "anchor_rigid_predicted %f %f %f anchor_soft_predicted %f %f %f pos_diff %f %f %f va %f %f %f vb %f %f %f residual %f\n",
-			anchor_rigid_predicted.x(), anchor_rigid_predicted.y(), anchor_rigid_predicted.z(),
-			anchor_soft_predicted.x(), anchor_soft_predicted.y(), anchor_soft_predicted.z(),
-			pos_diff.x(), pos_diff.y(), pos_diff.z(),
-			va.x(), va.y(), va.z(),
-			vb.x(), vb.y(), vb.z(),
-			residualSquare);*/
-
-		auto rigid_impulse_fraction = 0.5;
-		auto soft_impulse_fraction = 0.5;
-		// About this heuristic. When there are penetrations, there is this fight between the solver body push velocity and the regular body push velocity (same applies for turn velocities naturally).
-		// This results in bad penetration resolve when the anchored rigid is penetrating. One solution is to make this method be solver body based too. It was actually implemented on commit c619f118e060011efd3892b41f09851253a98f04
-		// but there were problems. There was still a fight between solver body push velocities for unstuck and for anchor solve when they were acting against each other. For example the unstuck added positive X direction to the
-		// push velocity, but the anchor solve subtracted from the X direction to maintain the anchorage. In worst case, this resulted in explosive growth of push velocities. One workaround would be to remeber the applied
-		// push veloities from resolveSplitPenetrationImpulse and also add them to the soft anchor nodes here. This would ease the work for the solver tremendously. It still has to be tried if the solver body based solution
-		// becomes unavoidable for some reason. Alternative workaround is the heuristic below. Instead of fighting against the solver body push velocity, we just give up and make the anchor solve be fully soft body based when
-		// there are penetrations. This workaround can also be implemented on the solver body based solution, but obsoletes the solver body based solution because then there is no push velocities fight at all.
-		if (m_anchor_rigid_penetration)
+	applySplitImpulse(impulse);
+	if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
+	{
+		btRigidBody* rigidBody = btRigidBody::upcast(const_cast<btCollisionObject*>(cti.m_colObj));
+		if (rigidBody)
 		{
-			rigid_impulse_fraction = 0.0;
-			soft_impulse_fraction = 1.0;
-		}
-
-		const btScalar misconvergenceRelaxationFactor = 0.5;
-		const btScalar convergenceRelaxationFactor = 1.1;
-
-		// If the current residual is larger than the last one, we are heading towards an explosion. We use this information as a hint that impulse magnitudes should be dampened.
-		// This greatly improves convergence.
-		if (m_previous_residual_position_drift != -1.0)
-			if (residualSquare > m_previous_residual_position_drift)
-				m_convergence_based_relaxation_position_drift = std::max(0.1, m_convergence_based_relaxation_position_drift * misconvergenceRelaxationFactor);
-			else
-				m_convergence_based_relaxation_position_drift = std::min(1.0, m_convergence_based_relaxation_position_drift * convergenceRelaxationFactor);
-		m_previous_residual_position_drift = residualSquare;
-
-		btVector3 rigid_impulse = (pos_diff * rigid_impulse_fraction * m_convergence_based_relaxation_position_drift) / infoGlobal.m_timeStep;
-		btVector3 soft_impulse = (pos_diff * soft_impulse_fraction * m_convergence_based_relaxation_position_drift) / infoGlobal.m_timeStep;
-
-		// Applies velocity to the rigid body, to minimize the gap between rigid and soft anchor positions.
-		if (cti.m_colObj->getInternalType() == btCollisionObject::CO_RIGID_BODY)
-		{
-			if (m_anchor->m_body)
-			{
-				// UPDATE: If direct velocity manipulation turns out to be problematic for any reason (which it did), we can again try with regular impulses, but also with the impulse warmstarting
-				// (see the comment about m_appliedImpulse in btDeformableNodeAnchorConstraint::solveConstraint) and similar m_previous_residual logic like in btDeformableNodeAnchorConstraint::solveConstraint
-
-				m_anchor->m_body->applyPushImpulse((rigid_impulse / m_anchor->m_body->getInvMass()), m_anchor->m_c1);
-
-				// I thought that I could do it by only pushing the rigid body, but there are problems with that. If soft and rigid are connected by many anchors, then the soft anchored nodes might get slightly squashed
-				// by elasticity and the rigid will then never be able to reach all anchor positions with sufficient accuracy, so it will never converge and will run full iteration count (slow).
-				// To counter that, the soft must also contribute by being pushed.
-				applySplitImpulse(soft_impulse / m_anchor->m_c2);
-
-				//fprintf(stderr, "regular m_anchor->m_node->m_v %f %f %f m_convergence_based_relaxation_position_drift %f\n", m_anchor->m_node->m_v.x(), m_anchor->m_node->m_v.y(), m_anchor->m_node->m_v.z(), m_convergence_based_relaxation_position_drift);
-			}
+			rigidBody->applyPushImpulse(impulse, m_anchor->m_c1);
 		}
 	}
-	// If the rigid is static, we freeze the soft node. In this case there is nothing to iterate to, which makes the normal drift correction unusable in this case.
+	else if (cti.m_colObj->getInternalType() == btCollisionObject::CO_FEATHERSTONE_LINK)
+	{
+		applyAnchorImpulseToMultiBody(*m_anchor, impulse, true);
+	}
 
-	// Another pitfall here is to try to perform a final prediction here and return a residual based on that. Not only would that be a redundant code duplication, because that same functionality
-	// would be done at the start of the next solveSplitImpulse, but it also causes partial mis-convergence.
+	if (m_anchor->m_compliance > 0)
+	{
+		const btVector3 postRelativePushVelocity = getSplitVb() - getSplitVa();
+		std::fprintf(stderr,
+					 "[BT_ANCHOR_DEBUG] split user=%u node=%d anchor=%p body=%p "
+					 "dt=%.9g compliance=%.9g alpha=%.9g erp=%.9g sor=%.9g "
+					 "position=(%.9g %.9g %.9g) relativePush=(%.9g %.9g %.9g) "
+					 "lambda0=(%.9g %.9g %.9g) residual=(%.9g %.9g %.9g) "
+					 "K=(%.9g %.9g %.9g) delta=(%.9g %.9g %.9g) "
+					 "lambda1=(%.9g %.9g %.9g) postRelativePush=(%.9g %.9g %.9g)\n",
+					 static_cast<unsigned>(m_anchor->m_userIndex), m_anchor->m_node->index,
+					 const_cast<void*>(static_cast<const void*>(m_anchor)),
+					 const_cast<void*>(static_cast<const void*>(cti.m_colObj)),
+					 static_cast<double>(infoGlobal.m_timeStep), static_cast<double>(m_anchor->m_compliance),
+					 static_cast<double>(regularization), static_cast<double>(infoGlobal.m_deformable_erp),
+					 static_cast<double>(infoGlobal.m_sor),
+					 static_cast<double>(positionError.x()), static_cast<double>(positionError.y()), static_cast<double>(positionError.z()),
+					 static_cast<double>(relativePushVelocity.x()), static_cast<double>(relativePushVelocity.y()), static_cast<double>(relativePushVelocity.z()),
+					 static_cast<double>(previousTotalSplitImpulse.x()), static_cast<double>(previousTotalSplitImpulse.y()), static_cast<double>(previousTotalSplitImpulse.z()),
+					 static_cast<double>(constraintError.x()), static_cast<double>(constraintError.y()), static_cast<double>(constraintError.z()),
+					 static_cast<double>(impulseMatrix[0][0]), static_cast<double>(impulseMatrix[1][1]), static_cast<double>(impulseMatrix[2][2]),
+					 static_cast<double>(impulse.x()), static_cast<double>(impulse.y()), static_cast<double>(impulse.z()),
+					 static_cast<double>(m_totalSplitImpulse.x()), static_cast<double>(m_totalSplitImpulse.y()), static_cast<double>(m_totalSplitImpulse.z()),
+					 static_cast<double>(postRelativePushVelocity.x()), static_cast<double>(postRelativePushVelocity.y()), static_cast<double>(postRelativePushVelocity.z()));
+	}
 
-	return residualSquare;
+	return constraintError.length2();
 }
 
 /* ================   Deformable vs. Rigid   =================== */

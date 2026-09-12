@@ -25,9 +25,11 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #pragma unmanaged
 #endif
 
-#include <math.h>
-#include <stdlib.h>  //size_t for MSVC 6.0
-#include <float.h>
+#include <cstdlib>
+#include <cstdint>
+#include <cstddef>
+#include <cmath>
+#include <cfloat>
 
 /* SVN $Revision$ on $Date$ from http://bullet.googlecode.com*/
 #define BT_BULLET_VERSION 326
