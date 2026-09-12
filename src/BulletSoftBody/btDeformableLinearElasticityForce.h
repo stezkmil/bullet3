@@ -16,6 +16,8 @@
 #ifndef BT_LINEAR_ELASTICITY_H
 #define BT_LINEAR_ELASTICITY_H
 
+#include "btCachedElasticKernel.h"
+#include "btDeformableOptimizationConfig.h"
 #include "btDeformableLagrangianForce.h"
 #include "LinearMath/btQuickprof.h"
 #include "LinearMath/btImplicitQRSVD.h"
@@ -528,6 +530,10 @@ public:
 					const CachedImplicitTetra& entry = m_implicitTetraCache[cacheIndex];
 					// G = sum_j (dx_j-dx_0) (R*gradN_j)^T.
 					// R*dP*R^T = mu*(G+G^T) + lambda*trace(G)*I.
+#if (BT_DEFORMABLE_OPTIMIZATION_MASK & 2) && defined(BT_USE_DOUBLE_PRECISION) && defined(__AVX2__)
+					btApplyCachedElasticTetra(entry.gradients, entry.muWeight, entry.lambdaWeight,
+						dx[id0], dx[id1], dx[id2], dx[id3], df[id0], df[id1], df[id2], df[id3]);
+#else
 					const btMatrix3x3 G = Ds(id0, id1, id2, id3, dx) * entry.gradients;
 					const btMatrix3x3 stress = (G + G.transpose()) * entry.muWeight +
 						btMatrix3x3::getIdentity() * (entry.lambdaWeight * (G[0][0] + G[1][1] + G[2][2]));
@@ -536,6 +542,7 @@ public:
 					df[id1] += contributions.getColumn(0);
 					df[id2] += contributions.getColumn(1);
 					df[id3] += contributions.getColumn(2);
+#endif
 					continue;
 				}
 				btMatrix3x3 dF = psb->m_tetraScratches[j].m_corotation.transpose() * Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;

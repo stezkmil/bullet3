@@ -419,8 +419,14 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	btVector3 vb = getVb();
 	btVector3 vr = vb - va;
 	btScalar dn = btDot(vr, cti.m_normal) + m_total_normal_dv.dot(cti.m_normal) * infoGlobal.m_deformable_cfm;
-	// TODO add some comments trying to describe the m_penetration logic. Maybe there should not be any m_penetration handling if infoGlobal.m_splitImpulse is true? Because then penetrations are completely handled in btDeformableRigidContactConstraint::solveSplitImpulse?
-	if (m_penetration < 0)
+	// Implicit contact recovery belongs in split velocity to avoid injecting
+	// depth/dt into physical velocity (violent peg-in-hole response).
+	// TODO: Explicit integration currently relies on the legacy physical bias:
+	// removing it alone caused violent pipe-on-ground contact in scene tests (cd_debug7).
+	// Resolve its contact activation/force-solve coupling before unifying these
+	// paths; merely enabling split impulse is not sufficient for explicit.
+	const bool splitRecoveryOnly = infoGlobal.m_deformable_implicit && infoGlobal.m_splitImpulse;
+	if (!splitRecoveryOnly && m_penetration < 0)
 	{
 		dn += m_penetration / infoGlobal.m_timeStep;
 	}
@@ -431,7 +437,7 @@ btScalar btDeformableRigidContactConstraint::solveConstraint(const btContactSolv
 	// dn is the normal component of velocity difference. Approximates the residual. // todo xuchenhan@: this prob needs to be scaled by dt
 	btVector3 impulse = m_contact->m_c0 * (vr +
 										   m_total_normal_dv * infoGlobal.m_deformable_cfm +
-										   ((m_penetration < 0) ? m_penetration / infoGlobal.m_timeStep * cti.m_normal : btVector3(0, 0, 0)));
+										   ((!splitRecoveryOnly && m_penetration < 0) ? m_penetration / infoGlobal.m_timeStep * cti.m_normal : btVector3(0, 0, 0)));
 
 	if (!infoGlobal.m_splitImpulse && m_penetration < 0)
 	{

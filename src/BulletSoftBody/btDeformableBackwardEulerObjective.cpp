@@ -15,6 +15,10 @@
 
 #include "btDeformableBackwardEulerObjective.h"
 #include "btPreconditioner.h"
+#include "btTranslationInputKernel.h"
+#include "btTranslationCouplingKernel.h"
+#include "btMassKernel.h"
+#include "btDeformableOptimizationConfig.h"
 #include "LinearMath/btQuickprof.h"
 
 btDeformableBackwardEulerObjective::btDeformableBackwardEulerObjective(btAlignedObjectArray<btSoftBody*>& softBodies, const TVStack& backup_v)
@@ -71,17 +75,27 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 	BT_PROFILE("multiply");
 	// add in the mass term
 	size_t counter = 0;
+	{
 	for (int i = 0; i < m_softBodies.size(); ++i)
 	{
 		btSoftBody* psb = m_softBodies[i];
+#if (BT_DEFORMABLE_OPTIMIZATION_MASK & 16)
+		const int count = psb->m_nodes.size();
+		if (count > 0)
+			btApplyNodeMass(count, &psb->m_nodes[0], &x[counter], &b[counter]);
+		counter += count;
+#else
 		for (int j = 0; j < psb->m_nodes.size(); ++j)
 		{
 			const btSoftBody::Node& node = psb->m_nodes[j];
 			b[counter] = (node.m_frozen > 0) ? btVector3(0, 0, 0) : x[counter] / node.m_im;
 			++counter;
 		}
+#endif
 	}
 
+	}
+	{
 	for (int i = 0; i < m_lf.size(); ++i)
 	{
 		if (m_implicit)
@@ -98,6 +112,8 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 			}
 		}
 	}
+	}
+	{
 	int offset = m_nodes.size();
 	for (int i = offset; i < b.size(); ++i)
 	{
@@ -124,6 +140,7 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 				b[offset + c][d] += lm.m_weights[i] * x[lm.m_indices[i]].dot(lm.m_dirs[d]);
 			}
 		}
+	}
 	}
 }
 
@@ -377,28 +394,59 @@ bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 
 void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack& b)
 {
-	if (!m_translationCorrection) { m_preconditioner->operator()(x, b); return; }
+	if (!m_translationCorrection)
+	{
+		m_preconditioner->operator()(x, b);
+		return;
+	}
 	// B = Q + (I-Q*A)*D*(I-A*Q), with three coarse modes per free body.
 	// Constrained bodies and multiplier entries keep the original D action.
-	m_translationWork = x;
+	{
+		m_translationWork = x;
+	}
 	for (int body = 0; body < m_translationBodies.size(); ++body)
 	{
 		TranslationBody& entry = m_translationBodies[body];
-		btVector3 sum(0, 0, 0);
-		for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += x[n];
-		entry.coarse = entry.inverse * sum;
-		for (int n = entry.offset; n < entry.offset + entry.count; ++n)
-			for (int d = 0; d < 3; ++d) m_translationWork[n] -= m_translationAZ[d][n] * entry.coarse[d];
+		{
+			btVector3 sum(0, 0, 0);
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += x[n];
+			entry.coarse = entry.inverse * sum;
+		}
+		{
+#if (BT_DEFORMABLE_OPTIMIZATION_MASK & 4)
+			if (entry.count > 0)
+				btApplyTranslationInput(entry.count, &m_translationWork[entry.offset],
+					&m_translationAZ[0][entry.offset], &m_translationAZ[1][entry.offset],
+					&m_translationAZ[2][entry.offset], entry.coarse);
+#else
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 3; ++d) m_translationWork[n] -= m_translationAZ[d][n] * entry.coarse[d];
+#endif
+		}
 	}
-	m_preconditioner->operator()(m_translationWork, b);
+	{
+		m_preconditioner->operator()(m_translationWork, b);
+	}
 	for (int body = 0; body < m_translationBodies.size(); ++body)
 	{
 		const TranslationBody& entry = m_translationBodies[body];
-		btVector3 coupling(0, 0, 0);
-		for (int n = entry.offset; n < entry.offset + entry.count; ++n)
-			for (int d = 0; d < 3; ++d) coupling[d] += m_translationAZ[d][n].dot(b[n]);
-		const btVector3 translation = entry.coarse - entry.inverse * coupling;
-		for (int n = entry.offset; n < entry.offset + entry.count; ++n) b[n] += translation;
+		btVector3 translation;
+		{
+			btVector3 coupling(0, 0, 0);
+#if (BT_DEFORMABLE_OPTIMIZATION_MASK & 8)
+			if (entry.count > 0)
+				coupling = btComputeTranslationCoupling(entry.count, &b[entry.offset],
+					&m_translationAZ[0][entry.offset], &m_translationAZ[1][entry.offset],
+					&m_translationAZ[2][entry.offset]);
+#else
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 3; ++d) coupling[d] += m_translationAZ[d][n].dot(b[n]);
+#endif
+			translation = entry.coarse - entry.inverse * coupling;
+		}
+		{
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n) b[n] += translation;
+		}
 	}
 }
 

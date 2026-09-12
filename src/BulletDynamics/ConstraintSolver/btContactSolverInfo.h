@@ -80,6 +80,10 @@ struct btContactSolverInfoData
 
 struct btContactSolverInfo : public btContactSolverInfoData
 {
+	// Runtime integration context, supplied by the deformable world each step.
+	// Kept outside the serialized solver-info data layout.
+	bool m_deformable_implicit = false;
+
 	inline btContactSolverInfo()
 	{
 		m_tau = btScalar(0.6);

@@ -1,6 +1,6 @@
 /*
  Written by Xuchen Han <xuchenhan2015@u.northwestern.edu>
- 
+
  Bullet Continuous Collision Detection and Physics Library
  Copyright (c) 2019 Google Inc. http://bulletphysics.org
  This software is provided 'as-is', without any express or implied warranty.
@@ -23,6 +23,10 @@
 #include <LinearMath/btVector3.h>
 #include <LinearMath/btScalar.h>
 #include "LinearMath/btQuickprof.h"
+#include "btDeformableOptimizationConfig.h"
+#if defined(BT_USE_DOUBLE_PRECISION) && defined(__AVX2__)
+#include <immintrin.h>
+#endif
 
 template <class MatrixX>
 class btKrylovSolver
@@ -93,19 +97,75 @@ public:
 
 	virtual SIMD_FORCE_INLINE void multAndAddTo(btScalar s, const TVStack& a, TVStack& result)
 	{
+#if (BT_DEFORMABLE_OPTIMIZATION_MASK & 32)
+
+		//        result += s*a
+		btAssert(a.size() == result.size());
+		const int n = a.size();
+		if (n == 0) return;
+		const btVector3* const src = &a[0];
+		btVector3* const dst = &result[0];
+#if defined(BT_USE_DOUBLE_PRECISION) && defined(__AVX2__)
+		const __m256d scale = _mm256_set1_pd(s);
+		const __m256d zero = _mm256_setzero_pd();
+		for (int i = 0; i < n; ++i)
+		{
+			const __m256d old = _mm256_loadu_pd(&dst[i][0]);
+			const __m256d input = _mm256_blend_pd(_mm256_loadu_pd(&src[i][0]), zero, 8);
+			const __m256d value = _mm256_add_pd(_mm256_blend_pd(old, zero, 8),
+				_mm256_mul_pd(scale, input));
+			// Unlike assignment arithmetic, operator+= preserves the fourth lane.
+			_mm256_storeu_pd(&dst[i][0], _mm256_blend_pd(value, old, 8));
+		}
+#else
+		for (int i = 0; i < n; ++i) dst[i] += s * src[i];
+#endif
+
+#else
+
 		//        result += s*a
 		btAssert(a.size() == result.size());
 		for (int i = 0; i < a.size(); ++i)
 			result[i] += s * a[i];
+
+#endif
 	}
 
 	// result = s * result + b, reusing the destination storage.
 	// Both arrays must already have equal sizes; existing result values are inputs.
 	SIMD_FORCE_INLINE void scaleAndAddInPlace(btScalar s, const TVStack& b, TVStack& result)
 	{
+#if (BT_DEFORMABLE_OPTIMIZATION_MASK & 1)
+
+		btAssert(b.size() == result.size());
+		const int n = result.size();
+		if (n == 0) return;
+		btVector3* const dst = &result[0];
+		const btVector3* const src = &b[0];
+#if defined(BT_USE_DOUBLE_PRECISION) && defined(__AVX2__)
+		const __m256d scale = _mm256_set1_pd(s);
+		const __m256d zero = _mm256_setzero_pd();
+		for (int i = 0; i < n; ++i)
+		{
+			// btVector3 guarantees only 16-byte alignment. Ignore its fourth
+			// component on input and clear it on output, like vector arithmetic.
+			const __m256d x = _mm256_blend_pd(_mm256_loadu_pd(&dst[i][0]), zero, 8);
+			const __m256d y = _mm256_blend_pd(_mm256_loadu_pd(&src[i][0]), zero, 8);
+			const __m256d value = _mm256_add_pd(_mm256_mul_pd(scale, x), y);
+			_mm256_storeu_pd(&dst[i][0], _mm256_blend_pd(value, zero, 8));
+		}
+#else
+		for (int i = 0; i < n; ++i)
+			dst[i] = s * dst[i] + src[i];
+#endif
+
+#else
+
 		btAssert(b.size() == result.size());
 		for (int i = 0; i < result.size(); ++i)
 			result[i] = s * result[i] + b[i];
+
+#endif
 	}
 
 	virtual SIMD_FORCE_INLINE TVStack multAndAdd(btScalar s, const TVStack& a, const TVStack& b)

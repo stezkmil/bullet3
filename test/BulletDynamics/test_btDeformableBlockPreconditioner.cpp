@@ -680,6 +680,36 @@ TEST_F(DeformableBlockPreconditioner, NewtonPreservesContactVelocityInsteadOfPre
 	EXPECT_EQ(btScalar(12),solver.m_objective->m_implicitConstraintDv[0].z());
 }
 
+
+class IntegrationRecoveryProbe : public btDeformableRigidContactConstraint
+{
+public:
+ btVector3 velocity=btVector3(0,0,0), split=btVector3(0,0,0);
+ IntegrationRecoveryProbe(const btSoftBody::DeformableRigidContact& c,const btContactSolverInfo& info):btDeformableRigidContactConstraint(c,info){}
+ btVector3 getVb() const override{return velocity;}
+ btVector3 getSplitVb() const override{return split;}
+ btVector3 getDv(const btSoftBody::Node*) const override{return velocity;}
+ void applyImpulse(const btVector3& impulse) override{velocity-=impulse;}
+ void applySplitImpulse(const btVector3& impulse) override{split-=impulse;}
+};
+TEST(ContactRecovery, IntegrationModePreservesExplicitLegacyResponse)
+{
+ btCollisionObject rigid;rigid.setCollisionFlags(btCollisionObject::CF_STATIC_OBJECT);
+ btSoftBody::DeformableRigidContact c;
+ c.m_cti.m_colObj=&rigid;c.m_cti.m_normal=btVector3(1,0,0);c.m_cti.m_offset=-2;c.m_cti.m_contact_point_impulse_magnitude=nullptr;
+ c.m_c0.setIdentity();c.m_c5.setIdentity();c.m_c3=0;
+ btContactSolverInfo info;EXPECT_FALSE(info.m_deformable_implicit);
+ info.m_timeStep=btScalar(.002);info.m_deformable_cfm=0;
+ for(int implicit=0;implicit<2;++implicit)
+  for(int split=0;split<2;++split)
+  {
+   info.m_deformable_implicit=implicit!=0;info.m_splitImpulse=split!=0;
+   IntegrationRecoveryProbe probe(c,info);probe.solveConstraint(info);
+   const btScalar expected=implicit&&split?btScalar(0):btScalar(2)/info.m_timeStep*(split?btScalar(1):btScalar(1)+info.m_deformable_erp);
+   EXPECT_NEAR(double(probe.velocity.x()),double(expected),1e-4);
+   if(split){probe.solveSplitImpulse(info);EXPECT_GT(probe.split.x(),btScalar(0));EXPECT_NEAR(double(probe.velocity.x()),double(expected),1e-4);}
+  }
+}
 }  // namespace
 
 int main(int argc, char** argv)

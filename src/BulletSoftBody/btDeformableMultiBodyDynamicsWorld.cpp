@@ -547,6 +547,7 @@ int btDeformableMultiBodyDynamicsWorld::getMaxNewtonIterations() const
 void btDeformableMultiBodyDynamicsWorld::reinitialize(btScalar timeStep)
 {
 	m_internalTime += timeStep;
+	m_solverInfo.m_deformable_implicit = m_implicit;
 	m_deformableBodySolver->setImplicit(m_implicit);
 	m_deformableBodySolver->setLineSearch(m_lineSearch);
 	m_deformableBodySolver->reinitialize(m_softBodies, timeStep);
