@@ -459,6 +459,11 @@ public:
 		return isLimited(3) || isLimited(4) || isLimited(5);
 	}
 
+	bool hasLimitedAxis() const
+	{
+		return isLimited(0) || isLimited(1) || isLimited(2) || hasLimitedAngularAxis();
+	}
+
 	void setRotationOrder(RotateOrder order) { m_rotateOrder = order; }
 	RotateOrder getRotationOrder() { return m_rotateOrder; }
 

@@ -18,6 +18,10 @@ ADD_EXECUTABLE(Test_btKinematicCharacterController test_btKinematicCharacterCont
 
 ADD_TEST(Test_btKinematicCharacterController_PASS Test_btKinematicCharacterController)
 
+ADD_EXECUTABLE(Test_btUnitMassConstraints test_btUnitMassConstraints.cpp)
+SET_TARGET_PROPERTIES(Test_btUnitMassConstraints PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
+ADD_TEST(Test_btUnitMassConstraints_PASS Test_btUnitMassConstraints)
+
 IF (INTERNAL_ADD_POSTFIX_EXECUTABLE_NAMES)
 			SET_TARGET_PROPERTIES(Test_btKinematicCharacterController PROPERTIES  DEBUG_POSTFIX "_Debug")
 			SET_TARGET_PROPERTIES(Test_btKinematicCharacterController PROPERTIES  MINSIZEREL_POSTFIX "_MinsizeRel")

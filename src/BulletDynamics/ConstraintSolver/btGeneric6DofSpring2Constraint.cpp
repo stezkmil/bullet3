@@ -50,7 +50,7 @@ http://gimpact.sf.net
 
 static bool btUseAsIfUnitMass(const btGeneric6DofSpring2Constraint& constraint, const btTypedConstraint::btConstraintInfo2* info)
 {
-	return info && (info->m_solverMode & SOLVER_AS_IF_UNIT_MASS) != 0 && constraint.hasLimitedAngularAxis();
+	return info && (info->m_solverMode & SOLVER_AS_IF_UNIT_MASS) != 0 && constraint.hasLimitedAxis();
 }
 
 static btScalar btSolverInvMass(const btRigidBody& body, bool useAsIfUnitMass)
