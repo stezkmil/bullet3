@@ -867,15 +867,6 @@ int btGeneric6DofSpring2Constraint::get_limit_motor_info2(
 		const btScalar invMassB = btSolverInvMass(m_rbB, useAsIfUnitMass);
 		btScalar mA = invMassA > btScalar(0) ? BT_ONE / invMassA : BT_ZERO;
 		btScalar mB = invMassB > btScalar(0) ? BT_ONE / invMassB : BT_ZERO;
-		if (rotational)
-		{
-			btScalar rrA = (m_calculatedTransformA.getOrigin() - transA.getOrigin()).length2();
-			btScalar rrB = (m_calculatedTransformB.getOrigin() - transB.getOrigin()).length2();
-			const btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_A = btSolverInvInertiaTensorWorld(m_rbA, useAsIfUnitMass);
-			const btMatrix3x3 invInertiaTensorWorldAsIfUnitMass_B = btSolverInvInertiaTensorWorld(m_rbB, useAsIfUnitMass);
-			if (invMassA > btScalar(0)) mA = mA * rrA + 1 / (invInertiaTensorWorldAsIfUnitMass_A * ax1).length();
-			if (invMassB > btScalar(0)) mB = mB * rrB + 1 / (invInertiaTensorWorldAsIfUnitMass_B * ax1).length();
-		}
 		btScalar m;
 		if (invMassA == btScalar(0))
 			m = mB;
@@ -883,6 +874,18 @@ int btGeneric6DofSpring2Constraint::get_limit_motor_info2(
 			m = mA;
 		else
 			m = mA * mB / (mA + mB);
+		if (rotational)
+		{
+			// Angular rows have J = (0, axis, 0, -axis): their effective inertia is
+			// 1 / (J M^-1 J^T), exactly as in convertJoint. Anchor offsets do not
+			// enter this row. The old parallel-axis estimate could overestimate
+			// inertia by an order of magnitude and defeat the damping/stiffness caps.
+			const btMatrix3x3 invIA = btSolverInvInertiaTensorWorld(m_rbA, useAsIfUnitMass);
+			const btMatrix3x3 invIB = btSolverInvInertiaTensorWorld(m_rbB, useAsIfUnitMass);
+			const btScalar inverseInertia = ax1.dot(invIA * ax1) + ax1.dot(invIB * ax1);
+			// A zero-response row is also disabled by convertJoint's diagonal check.
+			m = inverseInertia > SIMD_EPSILON ? BT_ONE / inverseInertia : btScalar(1);
+		}
 		btScalar angularfreq = btSqrt(ks / m);
 
 		//limit stiffness (the spring should not be sampled faster that the quarter of its angular frequency)
