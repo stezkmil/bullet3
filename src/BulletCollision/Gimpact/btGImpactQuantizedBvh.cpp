@@ -255,6 +255,7 @@ void btQuantizedBvhTree::build_tree(
 
 void btGImpactQuantizedBvh::refit()
 {
+	btPrimitiveGeometryQuery geometryQuery(m_primitive_manager);
 	int nodecount = getNodeCount();
 	while (nodecount--)
 	{
@@ -299,6 +300,7 @@ void btGImpactQuantizedBvh::refit_core(int nodeIndex)
 
 void btGImpactQuantizedBvh::refit_parallel()
 {
+	btPrimitiveGeometryQuery geometryQuery(m_primitive_manager);
 	const auto& indicesPerLevel = getStoreIndicesPerLevel();
 
 	for (auto levelIter = indicesPerLevel.rbegin(); levelIter != indicesPerLevel.rend(); ++levelIter)
@@ -319,6 +321,7 @@ void btGImpactQuantizedBvh::refit_parallel()
 //! this rebuild the entire set
 void btGImpactQuantizedBvh::buildSet()
 {
+	btPrimitiveGeometryQuery geometryQuery(m_primitive_manager);
 	//obtain primitive boxes
 	GIM_BVH_DATA_ARRAY primitive_boxes;
 	primitive_boxes.resize(m_primitive_manager->get_primitive_count());

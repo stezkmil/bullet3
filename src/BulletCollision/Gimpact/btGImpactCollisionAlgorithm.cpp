@@ -581,9 +581,6 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_pre(const btCollisionObj
 		grpParams.previouslyConsumedTime = std::get<0>(timeIter->second);
 	else
 		grpParams.previouslyConsumedTime = 0;
-
-	shape0->lockChildShapes();
-	shape1->lockChildShapes();
 }
 
 void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGImpactResult* perThreadIntermediateResults,
@@ -677,9 +674,34 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_post(const ThreadLocalGI
 							ir.unmodified_depth, 10);
 		}
 	}
+}
 
-	shape0->unlockChildShapes();
-	shape1->unlockChildShapes();
+namespace
+{
+class MeshPartGeometryQuery
+{
+	const btGImpactShapeInterface* m_shape;
+	MeshPartGeometryQuery(const MeshPartGeometryQuery&) = delete;
+	MeshPartGeometryQuery& operator=(const MeshPartGeometryQuery&) = delete;
+public:
+	explicit MeshPartGeometryQuery(const btGImpactShapeInterface* shape)
+		: m_shape(shape->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART ? shape : 0)
+	{
+		if (m_shape)
+		{
+			m_shape->lockChildShapes();
+			m_shape->getPrimitiveManager()->begin_geometry_query();
+		}
+	}
+	~MeshPartGeometryQuery()
+	{
+		if (m_shape)
+		{
+			m_shape->getPrimitiveManager()->end_geometry_query();
+			m_shape->unlockChildShapes();
+		}
+	}
+};
 }
 
 void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObjectWrapper* body0Wrap,
@@ -690,6 +712,7 @@ void btGImpactCollisionAlgorithm::collide_sat_triangles_aux(const btCollisionObj
 															bool findAllContacts,
 															bool findOnlyContactCounts)
 {
+	MeshPartGeometryQuery geometry0(shape0), geometry1(shape1);
 	btGimpactVsGimpactGroupedParams grpParams;
 	collide_sat_triangles_pre(body0Wrap, body1Wrap, shape0, shape1, grpParams);
 
@@ -791,6 +814,7 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	m_auxPairSet.clear();                    // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean. UPDATE: surprisingly not superfluous - initial tolerances were broken after a reset without this. Investigate.
 	m_perThreadIntermediateResults.clear();  // Most likely superflous, every pair has its own copy of the GImpact algorithm, so there is nothing to clean. UPDATE: surprisingly not superfluous - initial tolerances were broken after a reset without this. Investigate.
 
+	MeshPartGeometryQuery geometry0(shape0), geometry1(shape1);
 	btGimpactVsGimpactGroupedParams grpParams;
 
 	if (shape0->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART &&

@@ -16,6 +16,12 @@
 #include <limits>
 #include "btDeformableBodySolver.h"
 #include "btSoftBodyInternals.h"
+#include "btDeformableDiagnostics.h"
+#include "btDeformableVolumeBarrierForce.h"
+#include "btDeformableContactForce.h"
+#include "btDeformableNewtonSnapshot.h"
+#include "btDeformableEnergyChange.h"
+#include <string>
 #include "LinearMath/btQuickprof.h"
 static const int kMaxConjugateGradientIterations = 300;
 
@@ -57,6 +63,41 @@ btDeformableBodySolver::~btDeformableBodySolver()
 void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 {
 	BT_PROFILE("solveDeformableConstraints");
+	m_lastSolveConverged = false;
+	m_lastSolveInvalidPredictor = false;
+	for (int j = 0; j < m_numNodes; ++j) { m_ddv[j].setZero(); m_residual[j].setZero(); }
+	const bool diagnose = btDeformableDiagnostics::enabled();
+	btDeformableVolumeBarrierForce* barrier = nullptr;
+	m_contactWeightedTarget = 0;
+	if (m_implicit && !m_useProjection && m_objective->m_preconditioner == m_objective->m_KKTPreconditioner &&
+		!m_objective->m_projection.m_lagrangeMultipliers.size())
+		for (int f = 0; f < m_objective->m_lf.size(); ++f)
+			if (m_objective->m_lf[f]->getForceType() == BT_CONTACT_FORCE)
+			{
+				const auto& contacts = static_cast<btDeformableContactForce*>(m_objective->m_lf[f])->contacts;
+				for (int c = 0; c < contacts.size(); ++c)
+				{
+					// rho = 10/compliance. Reserve a tenth of the outer velocity tolerance.
+					const btScalar target = btScalar(0.0001) * btSqrt(btMin(contacts[c].rho, contacts[c].tangentRho) / 10);
+					if (target > 0 && (m_contactWeightedTarget == 0 || target < m_contactWeightedTarget)) m_contactWeightedTarget = target;
+				}
+			}
+	for (int f = 0; f < m_objective->m_lf.size(); ++f)
+		if (m_objective->m_lf[f]->getForceType() == BT_VOLUME_BARRIER_FORCE)
+			barrier = static_cast<btDeformableVolumeBarrierForce*>(m_objective->m_lf[f]);
+	if (diagnose)
+	{
+		btDeformableDiagnostics::write("SOLVER", "implicit=%d projection=%d line_search=%d max_newton=%d tolerance=%.9g multipliers=%d",
+			int(m_implicit), int(m_useProjection), int(m_lineSearch), m_maxNewtonIterations, double(m_newtonTolerance), m_objective->m_projection.m_lagrangeMultipliers.size());
+		if (btDeformableDiagnostics::current()->step % 1000 == 0)
+			for (int f = 0; f < m_objective->m_lf.size(); ++f)
+			{
+				auto& force = *m_objective->m_lf[f];
+				for (int b = 0; b < force.m_softBodies.size(); ++b)
+					btDeformableDiagnostics::write("MATERIAL", "id=%d force_type=%d young=%.9g poisson=%.9g",
+						force.m_softBodies[b]->getUserIndex(), int(force.getForceType()), double(force.getYoungsModulus()), double(force.getPoissonRatio()));
+			}
+	}
 	if (!m_implicit)
 	{
 		m_objective->computeResidual(solverdt, m_residual);
@@ -84,10 +125,19 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 	else
 	{
 		m_implicitRecoveryUsed = false;
+		const char* diagnosticExit = "iteration_limit";
+		int diagnosticIterations = 0;
 		for (int i = 0; i < m_maxNewtonIterations; ++i)
 		{
+			diagnosticIterations = i + 1;
 			m_newtonIteration = i;
 			updateState();
+			if (barrier && !barrier->admissible())
+			{
+				m_lastSolveInvalidPredictor = true;
+				diagnosticExit = "volume_predictor_invalid";
+				break;
+			}
 			// add the inertia term in the residual
 			int counter = 0;
 			for (int k = 0; k < m_softBodies.size(); ++k)
@@ -106,33 +156,85 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			m_objective->computeResidual(solverdt, m_residual);
 			const btScalar residualNorm = m_objective->computeNorm(m_residual);
 			const btScalar constraintError = implicitConstraintError(m_dv);
-			if (residualNorm < m_newtonTolerance && constraintError <= m_newtonTolerance && i > 0)
+			bool contactAccurate = true;
+			if (m_contactWeightedTarget > 0)
 			{
+				m_objective->m_KKTPreconditioner->reinitialize(true);
+				btScalar squared = 0;
+				for (int n = 0; n < m_numNodes; ++n)
+					squared += m_residual[n].dot(m_objective->m_KKTPreconditioner->applyInverseNodeBlock(n, m_residual[n]));
+				const btScalar weighted = squared >= 0 && std::isfinite(double(squared)) ? btSqrt(squared) : SIMD_INFINITY;
+				contactAccurate = weighted <= m_contactWeightedTarget;
+				if (diagnose) btDeformableDiagnostics::write("CONTACT_ACCURACY", "iteration=%d weighted_residual=%.9g target=%.9g accurate=%d",
+					i, double(weighted), double(m_contactWeightedTarget), int(contactAccurate));
+			}
+			if (diagnose) btDeformableDiagnostics::write("NEWTON_STATE", "iteration=%d residual=%.9g constraint_error=%.9g",
+				i, double(residualNorm), double(constraintError));
+			if (contactAccurate && residualNorm < m_newtonTolerance && constraintError <= m_newtonTolerance && i > 0)
+			{
+				m_lastSolveConverged = true;
+				diagnosticExit = "residual_tolerance";
 				break;
 			}
 			// todo xuchenhan@: this really only needs to be calculated once
 			m_objective->applyDynamicFriction(m_residual);
 			if (m_lineSearch)
 			{
-				btScalar inner_product = computeDescentStep(m_ddv, m_residual);
+				const bool linearRecoveryBefore = m_implicitRecoveryUsed;
+				btScalar inner_product;
+				if (barrier) { computeStep(m_ddv, m_residual); inner_product = m_cg.dot(m_residual, m_ddv); }
+				else inner_product = computeDescentStep(m_ddv, m_residual);
 				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
 				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
 				const bool accurateLinearStep = !m_useProjection &&
 					m_lastLinearMomentumResidual <= m_newtonTolerance &&
 					m_lastLinearConstraintResidual <= m_newtonTolerance;
-				const bool stepConverged = accurateLinearStep &&
+				const bool stepConverged = contactAccurate && accurateLinearStep &&
 					m_lastStationarityResidual <= m_newtonTolerance && constraintError <= m_newtonTolerance;
+				if (diagnose) btDeformableDiagnostics::write("NEWTON_LINEAR", "iteration=%d step_norm=%.9g step_tolerance=%.9g accurate=%d converged=%d momentum_residual=%.9g constraint_residual=%.9g stationarity=%.9g recovery=%d",
+					i, double(stepNorm), double(relativeStepTolerance), int(accurateLinearStep), int(stepConverged), double(m_lastLinearMomentumResidual), double(m_lastLinearConstraintResidual), double(m_lastStationarityResidual), int(m_implicitRecoveryUsed));
 				if (i > 0 && stepNorm <= relativeStepTolerance && (stepConverged || !accurateLinearStep))
 				{
+					m_lastSolveConverged = stepConverged;
+					diagnosticExit = stepConverged ? "small_step_verified" : "small_step_unverified";
 					// Check stationarity at the accepted state, not just the solved
 					// linear system. Otherwise apply a small but accurate correction.
 					break;
 				}
 				btScalar alpha = 0.01, beta = 0.5;  // Boyd & Vandenberghe suggested alpha between 0.01 and 0.3, beta between 0.1 to 0.8
-				btScalar scale = 2;
+				btScalar scale = 2 * (barrier ? barrier->safeStep(solverdt, m_ddv) : btScalar(1));
+				const btScalar initialScale = scale * btScalar(.5);
+				const bool captureCandidate = diagnose && btDeformableDiagnostics::current()->step != m_lastCapturedStep &&
+					double(solverdt) <= btDeformableDiagnostics::current()->dt / 256 * 1.001;
+				btAlignedObjectArray<btScalar> trialScales, trialEnergies;
 				btScalar f0 = m_objective->totalEnergy(solverdt) + kineticEnergy(), f1, f2;
+				const char* requestedCapture = std::getenv("BULLET_DEFORMABLE_CAPTURE_SOLVER_STEP");
+				if (diagnose && requestedCapture && i == m_maxNewtonIterations - 1 &&
+					btDeformableDiagnostics::current()->step != m_lastCapturedStep)
+				{
+					char* end = nullptr;
+					const long long requestedStep = std::strtoll(requestedCapture, &end, 10);
+					const char* logPath = std::getenv("BULLET_DEFORMABLE_DIAGNOSTICS");
+					if (end != requestedCapture && *end == '\0' && requestedStep >= 0 &&
+						requestedStep == btDeformableDiagnostics::current()->step && logPath && *logPath)
+					{
+						m_lastCapturedStep = requestedStep;
+						const std::string path = std::string(logPath) + ".step-" + std::to_string(requestedStep) + ".newton.bin";
+						btDeformableNewtonSnapshot snapshot;
+						snapshot.dt=solverdt;snapshot.step=requestedStep;snapshot.baselineEnergy=f0;
+						snapshot.slope=inner_product;snapshot.initialScale=initialScale;snapshot.linearRecoveryBefore=linearRecoveryBefore;
+						const bool saved=snapshot.save(path.c_str(),*this);
+						btDeformableDiagnostics::write("NEWTON_CAPTURE", "success=%d kind=iteration_limit_probe path=%s h=%.17g",
+							int(saved), path.c_str(), double(solverdt));
+					}
+				}
 				bool lineSearchFailed = false;
+				bool sufficientDecrease = false;
 				backupDv();
+				const char* stableValue = std::getenv("BULLET_DEFORMABLE_STABLE_ENERGY");
+				std::unique_ptr<btDeformableEnergyChange> energyChange;
+				if (m_contactWeightedTarget > 0 && stableValue && stableValue[0] == '1')
+					energyChange.reset(new btDeformableEnergyChange(*m_objective, m_dv, solverdt));
 				do
 				{
 					scale *= beta;
@@ -142,16 +244,62 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 						break;
 					}
 					updateEnergy(scale);
-					f1 = m_objective->totalEnergy(solverdt) + kineticEnergy();
+					if (!energyChange) f1 = m_objective->totalEnergy(solverdt) + kineticEnergy();
+					const double energyDelta = energyChange ? energyChange->difference(m_dv) : double(f1 - f0);
+					if (energyChange) f1 = f0 + energyDelta;
 					f2 = f0 - alpha * scale * inner_product;
-				} while (!(f1 < f2 + SIMD_EPSILON));  // if anything here is nan then the search continues
+					sufficientDecrease = energyChange ? energyDelta < -double(alpha * scale * inner_product) : f1 < f2 + SIMD_EPSILON;
+					const btScalar roundoff = btScalar(8) * std::numeric_limits<btScalar>::epsilon() * btMax(btScalar(1), btFabs(f0));
+					if (!sufficientDecrease && m_contactWeightedTarget > 0 && inner_product > 0 &&
+						alpha * scale * inner_product <= roundoff && std::abs(energyDelta) <= roundoff)
+					{
+						// Absolute potential offsets can hide a valid decrease. In that
+						// roundoff band, require progress in the fixed weighted residual.
+						TVStack trialResidual; trialResidual.resize(m_numNodes, btVector3(0,0,0));
+						for (int n = 0; n < m_numNodes; ++n)
+						{
+							const auto* node = m_objective->m_nodes[n];
+							if (node->m_im > 0 && node->m_frozen <= 0) trialResidual[n] = -m_dv[n] / node->m_im;
+						}
+						m_objective->computeResidual(solverdt, trialResidual);
+						btScalar before = 0, after = 0;
+						for (int n = 0; n < m_numNodes; ++n)
+						{
+							before += m_residual[n].dot(m_objective->m_KKTPreconditioner->applyInverseNodeBlock(n, m_residual[n]));
+							after += trialResidual[n].dot(m_objective->m_KKTPreconditioner->applyInverseNodeBlock(n, trialResidual[n]));
+						}
+						sufficientDecrease = std::isfinite(double(before)) && std::isfinite(double(after)) &&
+							after >= 0 && after < before * (1 - btScalar(.0001) * scale);
+						if (diagnose && sufficientDecrease) btDeformableDiagnostics::write("LINE_SEARCH_ROUNDOFF",
+							"scale=%.9g energy_delta=%.17g allowance=%.9g residual_before=%.9g residual_after=%.9g",
+							double(scale), energyDelta, double(roundoff), double(btSqrt(before)), double(btSqrt(after)));
+					}
+					if (captureCandidate) { trialScales.push_back(scale); trialEnergies.push_back(f1); }
+				} while (!sufficientDecrease);
 				if (lineSearchFailed)
 				{
+					diagnosticExit = "line_search_failed";
 					// The trial evaluations modified m_dv, node velocities, temporary
 					// positions, and deformation scratch data. Restore the accepted
 					// iterate before terminating this Newton solve.
 					revertDv();
 					updateState();
+					if (captureCandidate)
+					{
+						m_lastCapturedStep = btDeformableDiagnostics::current()->step;
+						const char* logPath = std::getenv("BULLET_DEFORMABLE_DIAGNOSTICS");
+						if (logPath && *logPath)
+						{
+							const std::string path = std::string(logPath) + ".step-" + std::to_string(m_lastCapturedStep) + ".newton.bin";
+							btDeformableNewtonSnapshot snapshot;
+							snapshot.dt=solverdt;snapshot.step=m_lastCapturedStep;snapshot.baselineEnergy=f0;
+							snapshot.slope=inner_product;snapshot.initialScale=initialScale;
+							snapshot.linearRecoveryBefore=linearRecoveryBefore;
+							snapshot.scales=trialScales;snapshot.energies=trialEnergies;
+							const bool saved=snapshot.save(path.c_str(),*this);
+							btDeformableDiagnostics::write("NEWTON_CAPTURE", "success=%d path=%s trials=%d h=%.17g", int(saved), path.c_str(), trialScales.size(), double(solverdt));
+						}
+					}
 					break;
 				}
 				revertDv();
@@ -165,15 +313,23 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 				const bool accurateLinearStep = !m_useProjection &&
 					m_lastLinearMomentumResidual <= m_newtonTolerance &&
 					m_lastLinearConstraintResidual <= m_newtonTolerance;
-				const bool stepConverged = accurateLinearStep &&
+				const bool stepConverged = contactAccurate && accurateLinearStep &&
 					m_lastStationarityResidual <= m_newtonTolerance && constraintError <= m_newtonTolerance;
+				if (diagnose) btDeformableDiagnostics::write("NEWTON_LINEAR", "iteration=%d step_norm=%.9g step_tolerance=%.9g accurate=%d converged=%d momentum_residual=%.9g constraint_residual=%.9g stationarity=%.9g recovery=%d",
+					i, double(stepNorm), double(relativeStepTolerance), int(accurateLinearStep), int(stepConverged), double(m_lastLinearMomentumResidual), double(m_lastLinearConstraintResidual), double(m_lastStationarityResidual), int(m_implicitRecoveryUsed));
 				if (i > 0 && stepNorm <= relativeStepTolerance && (stepConverged || !accurateLinearStep))
 				{
+					m_lastSolveConverged = stepConverged;
+					diagnosticExit = stepConverged ? "small_step_verified" : "small_step_unverified";
 					// Check stationarity at the accepted state, not just the solved
 					// linear system. Otherwise apply a small but accurate correction.
 					break;
 				}
-				updateDv();
+				const btScalar scale = barrier ? barrier->safeStep(solverdt, m_ddv) : btScalar(1);
+				if (barrier && scale < 1)
+					btDeformableDiagnostics::write("VOLUME_STEP_LIMIT", "iteration=%d scale=%.12g", i, double(scale));
+				if (scale < btScalar(1e-8)) { diagnosticExit = "volume_step_stalled"; break; }
+				updateDv(scale);
 			}
 			for (int j = 0; j < m_numNodes; ++j)
 			{
@@ -181,7 +337,26 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 				m_residual[j].setZero();
 			}
 		}
+		if (m_contactWeightedTarget > 0 && diagnosticExit == std::string("iteration_limit"))
+		{
+			// The last allowed update deserves the same residual check as every other iterate.
+			updateState();
+			bool admissible = !barrier || barrier->admissible();
+			for (int n = 0; n < m_numNodes; ++n)
+			{
+				const auto* node = m_objective->m_nodes[n];
+				m_residual[n] = node->m_im > 0 && node->m_frozen <= 0 ? -m_dv[n] / node->m_im : btVector3(0,0,0);
+			}
+			m_objective->computeResidual(solverdt, m_residual);
+			m_objective->m_KKTPreconditioner->reinitialize(true);
+			btScalar squared = 0;
+			for (int n = 0; n < m_numNodes; ++n) squared += m_residual[n].dot(m_objective->m_KKTPreconditioner->applyInverseNodeBlock(n, m_residual[n]));
+			if (admissible && std::isfinite(double(squared)) && squared >= 0 && btSqrt(squared) <= m_contactWeightedTarget &&
+				m_objective->computeNorm(m_residual) < m_newtonTolerance && implicitConstraintError(m_dv) <= m_newtonTolerance)
+			{ m_lastSolveConverged = true; diagnosticExit = "final_residual_tolerance"; }
+		}
 		updateVelocity();
+		if (diagnose) btDeformableDiagnostics::write("NEWTON_EXIT", "reason=%s iterations=%d", diagnosticExit, diagnosticIterations);
 	}
 }
 
@@ -280,6 +455,33 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 	return inner_product;
 }
 
+bool btDeformableBodySolver::setImplicitVelocityGuess(const btAlignedObjectArray<btVector3>& velocity)
+{
+	if (!m_implicit || m_useProjection || m_objective->m_projection.m_lagrangeMultipliers.size() || velocity.size() != m_numNodes) return false;
+	TVStack guess = m_dv;
+	int index = 0;
+	for (int b = 0; b < m_softBodies.size(); ++b)
+	{
+		const btSoftBody& body = *m_softBodies[b];
+		for (int n = 0; n < body.m_nodes.size(); ++n, ++index)
+		{
+			if (!body.isActive() || body.isStaticObject() || body.m_nodes[n].m_im <= 0 || body.m_nodes[n].m_frozen > 0) continue;
+			guess[index] = velocity[index] - m_backupVelocity[index];
+			for (int d = 0; d < 3; ++d) if (!std::isfinite(double(guess[index][d]))) return false;
+		}
+	}
+	const TVStack original = m_dv;
+	m_dv = guess; updateState();
+	for (int f = 0; f < m_objective->m_lf.size(); ++f)
+		if (m_objective->m_lf[f]->getForceType() == BT_VOLUME_BARRIER_FORCE &&
+			!static_cast<btDeformableVolumeBarrierForce*>(m_objective->m_lf[f])->admissible())
+		{
+			m_dv = original; updateState(); return false;
+		}
+	// The beginning-of-step velocity and constraint targets remain unchanged.
+	return true;
+}
+
 void btDeformableBodySolver::updateState()
 {
 	updateVelocity();
@@ -367,10 +569,13 @@ void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 	// Keep the first Newton correction cheap. Later corrections retain Krylov
 	// directions until a verified physical target or the per-call budget.
 	const bool constrained = m_objective->m_projection.m_lagrangeMultipliers.size() > 0;
-	const bool continued = m_newtonIteration > 0 && (constrained || translation);
+	const bool continued = m_newtonIteration > 0 && (constrained || translation || m_contactWeightedTarget > 0);
 	const int linearBudget = continued ? (constrained ? 2400 : 1200) : kMaxConjugateGradientIterations;
-	const btScalar physicalTarget = continued ? btScalar(0.5) * m_newtonTolerance : btScalar(0);
-	m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, !continued, true, linearBudget, physicalTarget);
+	const btScalar physicalTarget = continued && m_contactWeightedTarget == 0 ? btScalar(0.5) * m_newtonTolerance : btScalar(0);
+	const int iterations = m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, !continued, true, linearBudget, physicalTarget, btScalar(.5) * m_contactWeightedTarget);
+	btDeformableDiagnostics::write("KRYLOV_SOLVE", "newton=%d iterations=%d budget=%d initial=%.9g final=%.9g target=%.9g stagnated=%d",
+		m_newtonIteration, iterations, linearBudget, double(m_cr.getInitialResidual()), double(m_cr.getFinalResidual()),
+		double(m_cr.getTargetResidual()), int(m_cr.getStagnated()));
 	m_objective->correctTranslation(x, rhs);
 	measureImplicitLinearResidual(x, rhs);
 	btScalar stepSquared = 0;
@@ -381,7 +586,7 @@ void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 	{
 		// One full-budget restart per timestep for an inaccurate, tiny step.
 		m_implicitRecoveryUsed = true;
-		m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false, true);
+		m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false, true, 0, 0, btScalar(.5) * m_contactWeightedTarget);
 		m_objective->correctTranslation(x, rhs);
 		measureImplicitLinearResidual(x, rhs);
 	}
@@ -805,6 +1010,32 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, const btColl
 	{
 		resultOut->getPersistentManifold()->m_responseProcessedEarly = true;
 		auto& cp = resultOut->getPersistentManifold()->getContactPoint(resultOut->contactIndex);
+		if (softBody->m_useSurfaceContact && btDeformableDiagnostics::enabled() &&
+			(cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING) && btDeformableDiagnostics::current()->rigidSurfaceSamples++ < 8)
+		{
+			const auto point = resultOut->swapped ? cp.getPositionWorldOnB() - cp.m_normalWorldOnB * cp.getUnmodifiedDistance() : cp.getPositionWorldOnB();
+			const auto normal = resultOut->swapped ? -cp.m_normalWorldOnB : cp.m_normalWorldOnB;
+			btAlignedObjectArray<btSoftBody::ContactNode> stencil;
+			const bool mapped = softBody->appendSurfaceContactNodes(resultOut->getPartId0(), resultOut->getIndex0(), point, 1, stencil);
+			btVector3 surfaceVelocity(0,0,0), surfaceSplit(0,0,0);
+			for (int n = 0; n < stencil.size(); ++n)
+			{
+				surfaceVelocity += stencil[n].jacobian * stencil[n].node->m_v;
+				surfaceSplit += stencil[n].jacobian * stencil[n].node->m_splitv;
+			}
+			btDeformableDiagnostics::write("RIGID_SURFACE_SAMPLE", "body=%d other=%d part=%d triangle=%d swapped=%d mapped=%d nodes=%d point_source=legacy_recovery modified_distance=%.12g recovery_distance=%.12g normal_velocity=%.12g split_normal_velocity=%.12g point=%.12g,%.12g,%.12g normal=%.12g,%.12g,%.12g",
+				softBody->getUserIndex(), collisionObjectWrap->getCollisionObject()->getUserIndex(), resultOut->getPartId0(), resultOut->getIndex0(), int(resultOut->swapped), int(mapped), stencil.size(),
+				double(cp.getDistance()), double(cp.getUnmodifiedDistance()), double(normal.dot(surfaceVelocity)), double(normal.dot(surfaceSplit)),
+				double(point.x()), double(point.y()), double(point.z()), double(normal.x()), double(normal.y()), double(normal.z()));
+		}
+		if (softBody->m_useSurfaceContact)
+		{
+			const auto point = resultOut->swapped ? cp.getPositionWorldOnB() - cp.m_normalWorldOnB * cp.getUnmodifiedDistance() : cp.getPositionWorldOnB();
+			const auto normal = resultOut->swapped ? -cp.m_normalWorldOnB : cp.m_normalWorldOnB;
+			softBody->skinSoftStaticCollisionHandler(collisionObjectWrap, resultOut->getPartId0(), resultOut->getIndex0(), resultOut->getPartId1(), resultOut->getIndex1(),
+				point, normal, cp.getUnmodifiedDistance(), (cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING) != 0, &cp.m_appliedImpulse);
+			return;
+		}
 		softBody->skinSoftRigidCollisionHandler(collisionObjectWrap, resultOut->getPartId0(), resultOut->getIndex0(),
 												resultOut->swapped ? (/*not using cp.getPositionWorldOnA on purpose because it is calculated using wrong depth at the moment.
                                                     See the comment in btManifoldResult::addContactPoint (the one which starts "Ideally there should be this commented out...") */
@@ -830,5 +1061,5 @@ void btDeformableBodySolver::processCollision(btSoftBody* softBody, btSoftBody* 
 										   : cp.getPositionWorldOnB();  // Not sure that this is correct. I am sure that I have seen it swapped once, but was not able to reproduce it since.
 	auto normal = resultOut->swapped ? cp.m_normalWorldOnB : -cp.m_normalWorldOnB;
 	softBody->skinSoftSoftCollisionHandler(otherSoftBody, resultOut->getPartId0(), resultOut->getIndex0(), resultOut->getPartId1(), resultOut->getIndex1(), contactPoint, normal, cp.getDistance(), cp.m_contactPointFlags & BT_CONTACT_FLAG_PENETRATING,
-										   &cp.m_appliedImpulse);
+										   &cp.m_appliedImpulse, cp.getUnmodifiedDistance());
 }

@@ -29,7 +29,9 @@ enum btDeformableLagrangianForceType
 	BT_NEOHOOKEAN_FORCE = 4,
 	BT_LINEAR_ELASTICITY_FORCE = 5,
 	BT_MOUSE_PICKING_FORCE = 6,
-	BT_NODAL_FORCE = 7
+	BT_NODAL_FORCE = 7,
+	BT_CONTACT_FORCE = 8,
+	BT_VOLUME_BARRIER_FORCE = 9
 };
 
 static inline double randomDouble(double low, double high)
@@ -390,6 +392,8 @@ public:
 	}
 
 	// total Energy takes dt as input because certain energies depend on dt
+	// Optional exact change for linear potentials, without their absolute position offset.
+	virtual bool linearEnergyChange(btScalar dt, const TVStack& deltaVelocity, double& change) { return false; }
 	virtual double totalEnergy(btScalar dt)
 	{
 		return totalElasticEnergy(dt) + totalDampingEnergy(dt);

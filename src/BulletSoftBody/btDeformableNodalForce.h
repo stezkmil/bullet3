@@ -68,6 +68,8 @@ class btDeformableNodalForce : public btDeformableLagrangianForce
 	}
 
 public:
+	const btAlignedObjectArray<int>& nodeIndices() const { return m_nodeIndices; }
+	const btVector3& totalForce() const { return m_totalForce; }
 	btDeformableNodalForce(btSoftBody* softBody, const btAlignedObjectArray<int>& nodeIndices, const btVector3& totalForce)
 		: m_nodeIndices(nodeIndices), m_totalForce(totalForce)
 	{
@@ -89,6 +91,25 @@ public:
 	void addScaledDampingForceDifferential(btScalar, const TVStack&, TVStack&) override {}
 	void buildDampingForceDifferentialDiagonal(btScalar, TVStack&) override {}
 	void addScaledElasticForceDifferential(btScalar, const TVStack&, TVStack&) override {}
+
+	bool linearEnergyChange(btScalar dt, const TVStack& deltaVelocity, double& change) override
+	{
+		change = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b)
+		{
+			const auto* body = m_softBodies[b];
+			if (!body || !body->isActive() || body->isStaticObject()) continue;
+			const int count = getAffectedNodeCount(*body); if (!count) continue;
+			const btVector3 force = m_totalForce / btScalar(count);
+			for (int i = 0; i < m_nodeIndices.size(); ++i)
+			{
+				const int n = m_nodeIndices[i];
+				if (n >= 0 && n < body->m_nodes.size() && canApplyForce(body->m_nodes[n]))
+					change -= double(dt * force.dot(deltaVelocity[body->m_nodes[n].index]));
+			}
+		}
+		return true;
+	}
 
 	double totalElasticEnergy(btScalar) override
 	{

@@ -17,6 +17,9 @@
 #define BT_LINEAR_ELASTICITY_H
 
 #include "btCachedElasticKernel.h"
+#include <algorithm>
+#include <cstdlib>
+#include <vector>
 #include "btDeformableOptimizationConfig.h"
 #include "btDeformableLagrangianForce.h"
 #include "LinearMath/btQuickprof.h"
@@ -173,7 +176,7 @@ public:
 		return energy;
 	}
 
-	// The damping energy is formulated as in https://www.math.ucla.edu/~jteran/papers/GSSJT15.pdf to allow line search
+	// Newton solves for velocity: the energy gradient must equal -dt * dampingForce.
 	virtual double totalDampingEnergy(btScalar dt)
 	{
 		double energy = 0;
@@ -205,7 +208,7 @@ public:
 			for (int j = 0; j < psb->m_nodes.size(); ++j)
 			{
 				const btSoftBody::Node& node = psb->m_nodes[j];
-				energy -= dampingForce[node.index].dot(node.m_v) / dt;
+				energy -= dampingForce[node.index].dot(node.m_v) * dt;
 			}
 		}
 		return energy;
@@ -453,12 +456,29 @@ public:
 		bool usable;
 	};
 	btAlignedObjectArray<CachedImplicitTetra> m_implicitTetraCache;
+	struct ImplicitBlock
+	{
+		int row, column;
+		btMatrix3x3 value;
+	};
+	std::vector<ImplicitBlock> m_implicitBlocks;
+	std::vector<int> m_implicitTopology, m_implicitBlockSlots;
+	bool m_assembledImplicitReady = false;
+	bool m_implicitHasFallback = false;
+	bool m_useAssembledImplicit = []()
+	{
+		const char* value = std::getenv("BULLET_DEFORMABLE_ASSEMBLED_ELASTIC");
+		return !value || value[0] != '0';
+	}();
 	bool m_implicitCacheReady = false;
 	btScalar m_implicitCacheDt = 0;
 
 	virtual void prepareImplicitForceDifferential(btScalar dt)
 	{
 		m_implicitCacheReady = false;
+		m_assembledImplicitReady = false;
+		m_implicitHasFallback = false;
+		std::vector<int> topology;
 		int count = 0;
 		for (int b = 0; b < m_softBodies.size(); ++b)
 			if (m_softBodies[b]->isActive() && !m_softBodies[b]->isStaticObject())
@@ -481,12 +501,68 @@ public:
 				for (int i = 0; i < 3; ++i)
 					for (int j = 0; j < 3; ++j)
 						entry.usable = entry.usable && btFabs(metric[i][j] - (i == j ? btScalar(1) : btScalar(0))) <= btScalar(64) * SIMD_EPSILON;
-				if (!entry.usable) continue;
+				if (m_useAssembledImplicit)
+				{
+					for (int n = 0; n < 4; ++n) topology.push_back(tetra.m_n[n]->index);
+					topology.push_back(entry.usable ? 1 : 0);
+				}
+				if (!entry.usable) { m_implicitHasFallback = true; continue; }
 				entry.gradients = tetra.m_Dm_inverse * scratch.m_corotation.transpose();
 				const btScalar weight = (dt * dt + dt * m_damping_beta) * tetra.m_element_measure;
 				entry.muWeight = weight * m_mu;
 				entry.lambdaWeight = weight * m_lambda;
+
 			}
+		}
+		if (m_useAssembledImplicit)
+		{
+			// Only connectivity is retained across solves, validated by exact indices and eligibility.
+			if (topology != m_implicitTopology)
+			{
+				struct Location { int row, column, slot; };
+				std::vector<Location> locations;
+				locations.reserve(count * 12);
+				m_implicitBlockSlots.assign(count * 12, -1);
+				for (int t = 0; t < count; ++t)
+				{
+					if (!topology[t * 5 + 4]) continue;
+					int slot = t * 12;
+					for (int a = 0; a < 4; ++a) for (int b = 0; b < 4; ++b)
+						if (a != b) locations.push_back({topology[t * 5 + a], topology[t * 5 + b], slot++});
+				}
+				std::sort(locations.begin(), locations.end(), [](const Location& a, const Location& b)
+				{
+					return a.row < b.row || (a.row == b.row && a.column < b.column);
+				});
+				m_implicitBlocks.clear();
+				for (const Location& location : locations)
+				{
+					if (m_implicitBlocks.empty() || m_implicitBlocks.back().row != location.row || m_implicitBlocks.back().column != location.column)
+						m_implicitBlocks.push_back({location.row, location.column, btMatrix3x3::getIdentity() * btScalar(0)});
+					m_implicitBlockSlots[location.slot] = static_cast<int>(m_implicitBlocks.size()) - 1;
+				}
+				m_implicitTopology.swap(topology);
+			}
+			for (ImplicitBlock& block : m_implicitBlocks) block.value = btMatrix3x3::getIdentity() * btScalar(0);
+			for (int t = 0; t < count; ++t)
+			{
+				const CachedImplicitTetra& entry = m_implicitTetraCache[t];
+				if (!entry.usable) continue;
+				const btVector3 gradients[4] = {-(entry.gradients[0] + entry.gradients[1] + entry.gradients[2]),
+					entry.gradients[0], entry.gradients[1], entry.gradients[2]};
+				int slot = t * 12;
+				for (int a = 0; a < 4; ++a) for (int b = 0; b < 4; ++b)
+				{
+					if (a == b) continue;
+					btMatrix3x3& block = m_implicitBlocks[m_implicitBlockSlots[slot++]].value;
+					const btScalar diagonal = entry.muWeight * gradients[a].dot(gradients[b]);
+					for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c)
+						block[r][c] += (r == c ? diagonal : btScalar(0)) +
+							entry.muWeight * gradients[b][r] * gradients[a][c] +
+							entry.lambdaWeight * gradients[a][r] * gradients[b][c];
+				}
+			}
+			m_assembledImplicitReady = true;
 		}
 		m_implicitCacheDt = dt;
 		m_implicitCacheReady = true;
@@ -494,6 +570,7 @@ public:
 
 	virtual void finishImplicitForceDifferential()
 	{
+		m_assembledImplicitReady = false;
 		m_implicitCacheReady = false;
 	}
 
@@ -502,6 +579,11 @@ public:
 	{
 		int cacheIndex = 0;
 		const bool useCache = m_implicitCacheReady && dt == m_implicitCacheDt;
+		const bool assembled = useCache && m_assembledImplicitReady;
+		if (assembled)
+			for (const ImplicitBlock& block : m_implicitBlocks)
+				// Relative displacements preserve rigid translation without diagonal cancellation.
+				df[block.row] += block.value * (dx[block.column] - dx[block.row]);
 		const btScalar dampingScale = -dt * m_damping_beta;
 		const btScalar elasticScale = -dt * dt;
 		int numNodes = getNumNodes();
@@ -514,7 +596,7 @@ public:
 			{
 				continue;
 			}
-			for (int j = 0; j < psb->m_tetras.size(); ++j, ++cacheIndex)
+			for (int j = 0; (!assembled || m_implicitHasFallback) && j < psb->m_tetras.size(); ++j, ++cacheIndex)
 			{
 				btSoftBody::Tetra& tetra = psb->m_tetras[j];
 				btSoftBody::Node* node0 = tetra.m_n[0];
@@ -527,6 +609,7 @@ public:
 				size_t id3 = node3->index;
 				if (useCache && cacheIndex < m_implicitTetraCache.size() && m_implicitTetraCache[cacheIndex].usable)
 				{
+					if (assembled) continue;
 					const CachedImplicitTetra& entry = m_implicitTetraCache[cacheIndex];
 					// G = sum_j (dx_j-dx_0) (R*gradN_j)^T.
 					// R*dP*R^T = mu*(G+G^T) + lambda*trace(G)*I.

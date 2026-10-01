@@ -464,6 +464,12 @@ public:
 		const btCollisionObject* m_colObj;  // Collision object to collide with.
 	};
 
+	struct ContactNode
+	{
+		Node* node;
+		btMatrix3x3 jacobian; // Maps node motion to relative surface motion.
+	};
+
 	struct DeformableNodeNodeContact
 	{
 		Node* m_node0;       // Node0
@@ -474,6 +480,26 @@ public:
 		const btCollisionObject* m_colObj;  // Collision object to collide with.
 		btScalar* m_contact_point_impulse_magnitude = nullptr;
 		int m_count = 0;
+		btAlignedObjectArray<ContactNode> m_surfaceNodes;
+		bool m_surfaceInvalid = false;
+		const btCollisionObject* m_surfaceObjects[2] = {nullptr, nullptr};
+		int m_surfaceParts[2] = {-1, -1}, m_surfaceTriangles[2] = {-1, -1};
+		bool sameSurfaceFeature(const DeformableNodeNodeContact& other) const
+		{
+			if (!m_surfaceObjects[0] || !m_surfaceObjects[1] || m_surfaceTriangles[0] < 0 || m_surfaceTriangles[1] < 0) return false;
+			for (int flip = 0; flip < 2; ++flip)
+			{
+				bool same = true;
+				for (int side = 0; side < 2; ++side)
+				{
+					const int j = side ^ flip;
+					same = same && m_surfaceObjects[side] == other.m_surfaceObjects[j] &&
+						m_surfaceParts[side] == other.m_surfaceParts[j] && m_surfaceTriangles[side] == other.m_surfaceTriangles[j];
+				}
+				if (same) return true;
+			}
+			return false;
+		}
 	};
 
 	/* SContact		*/
@@ -928,6 +954,7 @@ public:
 	btAlignedObjectArray<btScalar> m_z;  // vertical distance used in extrapolation
 	bool m_useSelfCollision;
 	bool m_softSoftCollision;
+	bool m_useSurfaceContact = false;
 
 	btAlignedObjectArray<bool> m_clusterConnectivity;  //cluster connectivity, for self-collision
 
@@ -1188,7 +1215,11 @@ public:
 	void defaultCollisionHandler(const btCollisionObjectWrapper* pcoWrap);
 	void defaultCollisionHandler(btSoftBody* psb);
 	void skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* pcoWrap, int part0, int index0, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar penetrationDepth, const bool penetrating, btScalar* contactPointImpulseMagnitude);
-	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude);
+	void skinSoftStaticCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int softPart, int softTriangle, int rigidPart, int rigidTriangle,
+		const btVector3& softPoint, const btVector3& outwardNormal, btScalar geometricDistance, bool penetrating, btScalar* impulse);
+	bool appendSurfaceContactNodes(int part, int triangle, const btVector3& point, btScalar sign, btAlignedObjectArray<ContactNode>& nodes, btScalar* surfaceMargin = nullptr);
+
+	void skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude, btScalar unmodifiedDistance = -1);
 	std::vector<int> findNClosestNodesLinearComplexity(const btVector3& p, int N) const;
 	int findClosestNodeByMapping(int part, int triIndex, const btVector3& p) const;
 	void setSelfCollision(bool useSelfCollision);

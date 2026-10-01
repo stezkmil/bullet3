@@ -242,7 +242,7 @@ void btDeformableBackwardEulerObjective::applyExplicitForce(TVStack& force)
 	if (m_implicit)
 	{
 		// apply forces except gravity force
-		btVector3 gravity;
+		btVector3 gravity(0, 0, 0);
 		for (int i = 0; i < m_lf.size(); ++i)
 		{
 			if (m_lf[i]->getForceType() == BT_GRAVITY_FORCE)
@@ -326,17 +326,144 @@ void btDeformableBackwardEulerObjective::applyDynamicFriction(TVStack& r)
 	m_projection.applyDynamicFriction(r);
 }
 
+namespace
+{
+bool invertRigidCoarse(const btScalar matrix[6][6], btScalar inverse[6][6])
+{
+	btScalar scale[6], lower[6][6] = {};
+	for (int i = 0; i < 6; ++i)
+	{
+		if (!(matrix[i][i] > 0) || !std::isfinite(double(matrix[i][i]))) return false;
+		scale[i] = btSqrt(matrix[i][i]);
+	}
+	for (int i = 0; i < 6; ++i) for (int j = 0; j <= i; ++j)
+	{
+		btScalar value = ((matrix[i][j] + matrix[j][i]) * btScalar(.5)) / (scale[i] * scale[j]);
+		for (int k = 0; k < j; ++k) value -= lower[i][k] * lower[j][k];
+		if (!std::isfinite(double(value))) return false;
+		if (i == j)
+		{
+			// Dependent rotation modes (e.g. collinear bodies) keep translation-only correction.
+			if (value <= btScalar(256) * SIMD_EPSILON) return false;
+			lower[i][j] = btSqrt(value);
+		}
+		else lower[i][j] = value / lower[j][j];
+	}
+	for (int col = 0; col < 6; ++col)
+	{
+		btScalar y[6], x[6];
+		for (int i = 0; i < 6; ++i)
+		{
+			btScalar value = i == col ? btScalar(1) : btScalar(0);
+			for (int k = 0; k < i; ++k) value -= lower[i][k] * y[k];
+			y[i] = value / lower[i][i];
+		}
+		for (int i = 5; i >= 0; --i)
+		{
+			btScalar value = y[i];
+			for (int k = i + 1; k < 6; ++k) value -= lower[k][i] * x[k];
+			x[i] = value / lower[i][i];
+			inverse[i][col] = x[i] / (scale[i] * scale[col]);
+			if (!std::isfinite(double(inverse[i][col]))) return false;
+		}
+	}
+	return true;
+}
+void applyRigidInverse(const btScalar inverse[6][6], const btScalar input[6], btScalar output[6])
+{
+	for (int i = 0; i < 6; ++i)
+	{
+		output[i] = 0;
+		for (int j = 0; j < 6; ++j) output[i] += inverse[i][j] * input[j];
+	}
+}
+}
+
+bool btDeformableBackwardEulerObjective::setupContactCoarse()
+{
+	// Contact couples bodies: keep separate A*Z columns and one joint coarse solve.
+	// Bound dense storage for worlds with many independent bodies.
+	if (m_translationBodies.size() > 32) return false;
+	for (int attempt = 0; attempt < 2; ++attempt)
+	{
+		m_contactZ.clear(); m_contactAZ.clear(); m_contactZRows.clear(); m_contactAZRows.clear();
+		for (int b = 0; b < m_translationBodies.size(); ++b)
+		{
+			const TranslationBody& body = m_translationBodies[b];
+			for (int d = 0; d < (attempt ? 3 : body.modes); ++d)
+			{
+				TVStack z, az; z.resize(m_translationWork.size(), btVector3(0, 0, 0)); az.resize(z.size());
+				for (int n = body.offset; n < body.offset + body.count; ++n) z[n] = rigidMode(d, n);
+				multiply(z, az); m_contactZ.push_back(z); m_contactAZ.push_back(az);
+				std::vector<int> zr, ar;
+				for (int n = 0; n < z.size(); ++n)
+				{
+					if (z[n].length2() > 0) zr.push_back(n);
+					if (az[n].length2() > 0) ar.push_back(n);
+				}
+				m_contactZRows.push_back(zr); m_contactAZRows.push_back(ar);
+			}
+		}
+		const int k = int(m_contactZ.size());
+		std::vector<btScalar> matrix(k * k, 0);
+		for (int r = 0; r < k; ++r) for (int c = 0; c < k; ++c)
+			for (int n : m_contactZRows[r]) matrix[r*k+c] += m_contactZ[r][n].dot(m_contactAZ[c][n]);
+		m_contactScale.resize(k); m_contactFactor.assign(k*k, 0);
+		bool positive = true;
+		for (int r = 0; r < k; ++r)
+		{
+			const btScalar diagonal = matrix[r*k+r];
+			if (!(diagonal > 0) || !std::isfinite(double(diagonal))) { positive = false; break; }
+			m_contactScale[r] = btSqrt(diagonal);
+		}
+		for (int r = 0; r < k && positive; ++r) for (int c = 0; c <= r; ++c)
+		{
+			btScalar value = (matrix[r*k+c] + matrix[c*k+r]) * btScalar(.5) / (m_contactScale[r] * m_contactScale[c]);
+			for (int j = 0; j < c; ++j) value -= m_contactFactor[r*k+j] * m_contactFactor[c*k+j];
+			if (!std::isfinite(double(value)) || (r == c && value <= btScalar(64)*SIMD_EPSILON)) { positive = false; break; }
+			m_contactFactor[r*k+c] = r == c ? btSqrt(value) : value / m_contactFactor[c*k+c];
+		}
+		if (positive) { m_contactCoarse = m_translationCorrection = true; return true; }
+	}
+	// Degenerate rotations fall back to translations; nonpositive operators keep D.
+	return false;
+}
+
+void btDeformableBackwardEulerObjective::solveContactCoarse(std::vector<btScalar>& values) const
+{
+	const int k = int(values.size());
+	for (int r = 0; r < k; ++r)
+	{
+		values[r] /= m_contactScale[r];
+		for (int c = 0; c < r; ++c) values[r] -= m_contactFactor[r*k+c] * values[c];
+		values[r] /= m_contactFactor[r*k+r];
+	}
+	for (int r = k - 1; r >= 0; --r)
+	{
+		for (int c = r + 1; c < k; ++c) values[r] -= m_contactFactor[c*k+r] * values[c];
+		values[r] /= m_contactFactor[r*k+r];
+	}
+	for (int r = 0; r < k; ++r) values[r] /= m_contactScale[r];
+}
+
 bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 {
 	m_translationCorrection = false;
+	m_contactCoarse = false;
 	m_translationBodies.clear();
+	bool contact = false;
+	for (int f = 0; f < m_lf.size(); ++f)
+		if (m_lf[f]->getForceType() == BT_CONTACT_FORCE) contact = true;
+	if (contact && !m_contactCoarseEnabled) return false;
 	if (!m_implicit) return false;
-	// These validated force operators act independently on each body. This
-	// permits three shared A*Z products, rather than three per eligible body.
+	// Non-contact operators act independently on each body; only that path
+	// can share A*Z columns across bodies.
 	for (int f = 0; f < m_lf.size(); ++f)
 		if (m_lf[f]->getForceType() != BT_LINEAR_ELASTICITY_FORCE &&
 			m_lf[f]->getForceType() != BT_GRAVITY_FORCE &&
-			m_lf[f]->getForceType() != BT_NODAL_FORCE) return false;
+			m_lf[f]->getForceType() != BT_NODAL_FORCE &&
+			m_lf[f]->getForceType() != BT_CONTACT_FORCE &&
+			m_lf[f]->getForceType() != BT_VOLUME_BARRIER_FORCE) return false;
 	btAlignedObjectArray<int> constrained;
 	constrained.resize(m_nodes.size(), 0);
 	for (int c = 0; c < m_projection.m_lagrangeMultipliers.size(); ++c)
@@ -344,6 +471,8 @@ bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 		const LagrangeMultiplier& lm = m_projection.m_lagrangeMultipliers[c];
 		for (int n = 0; n < lm.m_num_nodes; ++n) constrained[lm.m_indices[n]] = 1;
 	}
+	if (m_rotationCorrectionEnabled)
+		for (int d = 0; d < 3; ++d) m_rotationZ[d].resize(m_nodes.size());
 	int offset = 0;
 	for (int b = 0; b < m_softBodies.size(); ++b)
 	{
@@ -356,19 +485,51 @@ bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 			TranslationBody entry;
 			entry.offset = offset; entry.count = body.m_nodes.size();
 			entry.inverse.setIdentity(); entry.coarse.setZero();
+			if (m_rotationCorrectionEnabled && entry.count >= 3)
+			{
+				const btVector3 origin = body.m_nodes[0].m_x;
+				btVector3 centerOffset(0, 0, 0);
+				btScalar totalMass = 0;
+				for (int n = 0; n < entry.count; ++n)
+				{
+					const btScalar mass = 1 / body.m_nodes[n].m_im;
+					totalMass += mass; centerOffset += (body.m_nodes[n].m_x - origin) * mass;
+				}
+				centerOffset /= totalMass;
+				btScalar radius = 0;
+				for (int n = 0; n < entry.count; ++n)
+					radius = btMax(radius, (body.m_nodes[n].m_x - origin - centerOffset).length());
+				if (radius > 0 && std::isfinite(double(radius)))
+				{
+					entry.modes = 6;
+					for (int n = 0; n < entry.count; ++n)
+					{
+						const btVector3 relative = (body.m_nodes[n].m_x - origin - centerOffset) / radius;
+						for (int d = 0; d < 3; ++d)
+						{
+							btVector3 axis(0, 0, 0); axis[d] = 1;
+							m_rotationZ[d][offset + n] = axis.cross(relative);
+						}
+					}
+				}
+			}
 			m_translationBodies.push_back(entry);
 		}
 		offset += body.m_nodes.size();
 	}
 	if (m_translationBodies.size() == 0) return false;
 	m_translationWork.resize(m_nodes.size() + m_projection.m_lagrangeMultipliers.size());
-	for (int d = 0; d < 3; ++d)
+	if (contact) return setupContactCoarse();
+	int modes = 3;
+	for (int b = 0; b < m_translationBodies.size(); ++b) modes = btMax(modes, m_translationBodies[b].modes);
+	for (int d = 0; d < modes; ++d)
 	{
 		for (int n = 0; n < m_translationWork.size(); ++n) m_translationWork[n].setZero();
 		for (int b = 0; b < m_translationBodies.size(); ++b)
 		{
 			const TranslationBody& entry = m_translationBodies[b];
-			for (int n = entry.offset; n < entry.offset + entry.count; ++n) m_translationWork[n][d] = 1;
+			if (d < entry.modes)
+				for (int n = entry.offset; n < entry.offset + entry.count; ++n) m_translationWork[n] = rigidMode(d, n);
 		}
 		m_translationAZ[d].resize(m_translationWork.size());
 		multiply(m_translationWork, m_translationAZ[d]);
@@ -376,6 +537,15 @@ bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 	for (int b = m_translationBodies.size() - 1; b >= 0; --b)
 	{
 		TranslationBody& entry = m_translationBodies[b];
+		if (entry.modes == 6)
+		{
+			btScalar coarse[6][6] = {};
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int r = 0; r < 6; ++r) for (int d = 0; d < 6; ++d)
+					coarse[r][d] += rigidMode(r, n).dot(m_translationAZ[d][n]);
+			if (invertRigidCoarse(coarse, entry.inverseRigid)) continue;
+			entry.modes = 3;
+		}
 		btMatrix3x3 coarse;
 		for (int d = 0; d < 3; ++d)
 		{
@@ -394,12 +564,30 @@ bool btDeformableBackwardEulerObjective::setupTranslationCorrection()
 
 void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack& b)
 {
+	if (m_translationCorrection && m_contactCoarse)
+	{
+		const int k = int(m_contactZ.size());
+		std::vector<btScalar> coarse(k, 0), coupling(k, 0);
+		m_translationWork = x;
+		for (int d = 0; d < k; ++d)
+			for (int n : m_contactZRows[d]) coarse[d] += m_contactZ[d][n].dot(x[n]);
+		solveContactCoarse(coarse);
+		for (int d = 0; d < k; ++d)
+			for (int n : m_contactAZRows[d]) m_translationWork[n] -= m_contactAZ[d][n] * coarse[d];
+		m_preconditioner->operator()(m_translationWork, b);
+		for (int d = 0; d < k; ++d)
+			for (int n : m_contactAZRows[d]) coupling[d] += m_contactAZ[d][n].dot(b[n]);
+		solveContactCoarse(coupling);
+		for (int d = 0; d < k; ++d)
+			for (int n : m_contactZRows[d]) b[n] += m_contactZ[d][n] * (coarse[d] - coupling[d]);
+		return;
+	}
 	if (!m_translationCorrection)
 	{
 		m_preconditioner->operator()(x, b);
 		return;
 	}
-	// B = Q + (I-Q*A)*D*(I-A*Q), with three coarse modes per free body.
+	// B = Q + (I-Q*A)*D*(I-A*Q), with rigid coarse modes per free body.
 	// Constrained bodies and multiplier entries keep the original D action.
 	{
 		m_translationWork = x;
@@ -407,6 +595,16 @@ void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack&
 	for (int body = 0; body < m_translationBodies.size(); ++body)
 	{
 		TranslationBody& entry = m_translationBodies[body];
+		if (entry.modes == 6)
+		{
+			btScalar sum[6] = {};
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 6; ++d) sum[d] += rigidMode(d, n).dot(x[n]);
+			applyRigidInverse(entry.inverseRigid, sum, entry.coarseRigid);
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 6; ++d) m_translationWork[n] -= m_translationAZ[d][n] * entry.coarseRigid[d];
+			continue;
+		}
 		{
 			btVector3 sum(0, 0, 0);
 			for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += x[n];
@@ -430,6 +628,16 @@ void btDeformableBackwardEulerObjective::precondition(const TVStack& x, TVStack&
 	for (int body = 0; body < m_translationBodies.size(); ++body)
 	{
 		const TranslationBody& entry = m_translationBodies[body];
+		if (entry.modes == 6)
+		{
+			btScalar coupling[6] = {}, correction[6];
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 6; ++d) coupling[d] += m_translationAZ[d][n].dot(b[n]);
+			applyRigidInverse(entry.inverseRigid, coupling, correction);
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 6; ++d) b[n] += rigidMode(d, n) * (entry.coarseRigid[d] - correction[d]);
+			continue;
+		}
 		btVector3 translation;
 		{
 			btVector3 coupling(0, 0, 0);
@@ -454,10 +662,39 @@ btScalar btDeformableBackwardEulerObjective::correctTranslation(TVStack& x, cons
 {
 	if (!m_translationCorrection) return 0;
 	multiply(x, m_translationWork);
+	if (m_contactCoarse)
+	{
+		std::vector<btScalar> coarse(m_contactZ.size(), 0);
+		for (int d = 0; d < int(coarse.size()); ++d)
+			for (int n = 0; n < x.size(); ++n) coarse[d] += m_contactZ[d][n].dot(rhs[n] - m_translationWork[n]);
+		solveContactCoarse(coarse);
+		btScalar largest = 0;
+		for (int n = 0; n < x.size(); ++n)
+		{
+			btVector3 delta(0, 0, 0);
+			for (int d = 0; d < int(coarse.size()); ++d) delta += m_contactZ[d][n] * coarse[d];
+			x[n] += delta; largest = btMax(largest, delta.length());
+		}
+		return largest;
+	}
 	btScalar largestCorrection = 0;
 	for (int b = 0; b < m_translationBodies.size(); ++b)
 	{
 		const TranslationBody& entry = m_translationBodies[b];
+		if (entry.modes == 6)
+		{
+			btScalar sum[6] = {}, correction[6];
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+				for (int d = 0; d < 6; ++d) sum[d] += rigidMode(d, n).dot(rhs[n] - m_translationWork[n]);
+			applyRigidInverse(entry.inverseRigid, sum, correction);
+			for (int n = entry.offset; n < entry.offset + entry.count; ++n)
+			{
+				btVector3 delta(0, 0, 0);
+				for (int d = 0; d < 6; ++d) delta += rigidMode(d, n) * correction[d];
+				x[n] += delta; largestCorrection = btMax(largestCorrection, delta.length());
+			}
+			continue;
+		}
 		btVector3 sum(0, 0, 0);
 		for (int n = entry.offset; n < entry.offset + entry.count; ++n) sum += rhs[n] - m_translationWork[n];
 		const btVector3 correction = entry.inverse * sum;

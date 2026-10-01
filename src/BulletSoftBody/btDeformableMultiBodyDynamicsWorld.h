@@ -50,6 +50,16 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_implicit;
 	bool m_lineSearch;
 	bool m_useProjection;
+	bool m_coupledContact = false;
+	bool m_coupledStepFailed = false;
+	bool m_coupledSolveConverged = false;
+	int m_coupledContactIterations = 0;
+	btAlignedObjectArray<btVector3> m_coupledRefreshVelocity;
+	bool m_adaptiveCoupledTimesteps = false;
+	int m_coupledSubdivision = 0;
+	btScalar m_coupledPreviousTimeStep = 0;
+	void coupledSingleStepSimulation(btScalar timeStep);
+	void refreshDeformableContacts();
 	DeformableBodyInplaceSolverIslandCallback* m_solverDeformableBodyIslandCallback;
 
 	typedef void (*btSolverCallback)(btScalar time, btDeformableMultiBodyDynamicsWorld* world);
@@ -74,6 +84,19 @@ protected:
 
 public:
 	btDeformableMultiBodyDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btDeformableMultiBodyConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration, btDeformableBodySolver* deformableBodySolver = 0);
+
+	// Experimental: implicit deformables against static rigid geometry only.
+	void setCoupledContact(bool enabled)
+	{
+		if (enabled != m_coupledContact || m_coupledStepFailed) m_coupledPreviousTimeStep = 0;
+		m_coupledContact = enabled; m_coupledStepFailed = false;
+		for (int b = 0; b < m_softBodies.size(); ++b) m_softBodies[b]->m_useSurfaceContact = enabled;
+	}
+	bool hasCoupledStepFailed() const { return m_coupledStepFailed; }
+	void setAdaptiveCoupledTimesteps(bool enabled)
+	{
+		m_adaptiveCoupledTimesteps = enabled; m_coupledPreviousTimeStep = 0;
+	}
 
 	virtual int stepSimulation(btScalar timeStep, int maxSubSteps = 1, btScalar fixedTimeStep = btScalar(1.) / btScalar(60.));
 

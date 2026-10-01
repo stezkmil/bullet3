@@ -22,6 +22,8 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "btSoftBodyInternals.h"
 #include "BulletSoftBody/btSoftBodySolvers.h"
 #include "btSoftBodyData.h"
+#include "btDeformableDiagnostics.h"
+#include "BulletCollision/Gimpact/btGImpactShape.h"
 #include "LinearMath/btSerializer.h"
 #include "LinearMath/btImplicitQRSVD.h"
 #include "LinearMath/btAlignedAllocator.h"
@@ -4619,9 +4621,129 @@ void btSoftBody::skinSoftRigidCollisionHandler(const btCollisionObjectWrapper* r
 //int cnt = 0;
 //int origsDrawn = false;
 
-void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude)
+void btSoftBody::skinSoftStaticCollisionHandler(const btCollisionObjectWrapper* rigidWrap, int softPart, int softTriangle, int rigidPart, int rigidTriangle,
+	const btVector3& softPoint, const btVector3& outwardNormal, btScalar geometricDistance, bool penetrating, btScalar* impulse)
+{
+	DeformableNodeNodeContact contact = {};
+	contact.m_node0 = m_nodes.size() ? &m_nodes[0] : nullptr;
+	contact.m_colObj = rigidWrap->getCollisionObject();
+	contact.m_surfaceObjects[0] = this; contact.m_surfaceObjects[1] = contact.m_colObj;
+	contact.m_surfaceParts[0] = softPart; contact.m_surfaceParts[1] = rigidPart;
+	contact.m_surfaceTriangles[0] = softTriangle; contact.m_surfaceTriangles[1] = rigidTriangle;
+	contact.m_normal = outwardNormal;
+	contact.m_friction = m_cfg.kDF * contact.m_colObj->getFriction();
+	contact.m_contact_point_impulse_magnitude = impulse;
+	btScalar softMargin = 0, rigidMargin = 0;
+	const auto* shape = rigidWrap->getCollisionShape();
+	bool supported = contact.m_colObj->isStaticObject() && !contact.m_colObj->isKinematicObject();
+	if (shape->getShapeType() == GIMPACT_SHAPE_PROXYTYPE)
+	{
+		const auto* impact = static_cast<const btGImpactShapeInterface*>(shape);
+		if (impact->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE)
+		{
+			const auto* mesh = static_cast<const btGImpactMeshShape*>(impact);
+			if (rigidPart >= 0 && rigidPart < mesh->getMeshPartCount()) rigidMargin = mesh->getMeshPart(rigidPart)->getMargin();
+			else supported = false;
+		}
+		else if (impact->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART) rigidMargin = impact->getMargin();
+		else supported = false;
+	}
+	else supported = false;
+	contact.m_surfaceInvalid = !supported || penetrating || !std::isfinite(double(geometricDistance)) || geometricDistance < 0
+		|| !appendSurfaceContactNodes(softPart, softTriangle, softPoint, 1, contact.m_surfaceNodes, &softMargin);
+	contact.m_offset = geometricDistance - (softMargin + rigidMargin) * btScalar(39.0 / 40.0);
+	// A static obstacle contributes no velocity DOFs; only the soft surface stencil enters J.
+	m_nodeNodeContacts.push_back(contact);
+}
+
+bool btSoftBody::appendSurfaceContactNodes(int part, int triangle, const btVector3& point, btScalar sign, btAlignedObjectArray<ContactNode>& nodes, btScalar* surfaceMargin)
+{
+	const auto* mapping = getCollisionShapeVertexToSimTetra();
+	if (!mapping || getCollisionShape()->getShapeType() != GIMPACT_SHAPE_PROXYTYPE) return false;
+	auto* shape = static_cast<btGImpactShapeInterface*>(getCollisionShape());
+	if (shape->getGImpactShapeType() != CONST_GIMPACT_TRIMESH_SHAPE) return false;
+	auto* mesh = static_cast<btGImpactMeshShape*>(shape);
+	if (part < 0 || part >= mesh->getMeshPartCount()) return false;
+	auto* piece = mesh->getMeshPart(part);
+	const auto* manager = piece->getPrimitiveManager();
+	piece->lockChildShapes();
+	if (triangle < 0 || triangle >= manager->get_primitive_count()) { piece->unlockChildShapes(); return false; }
+	unsigned int indices[3];
+	manager->get_primitive_indices(triangle, indices[0], indices[1], indices[2]);
+	btPrimitiveTriangle face;
+	manager->get_primitive_triangle(triangle, face, false);
+	if (surfaceMargin) *surfaceMargin = face.m_margin;
+	piece->unlockChildShapes();
+	btVector3 bary;
+	const btVector3 localPoint = getWorldTransform().invXform(point);
+	getBarycentric(localPoint, face.m_vertices[0], face.m_vertices[1], face.m_vertices[2], bary);
+	// An opposing surface point can project outside this triangle. Use its
+	// closest edge point instead of extrapolating the contact off the surface.
+	if (bary.x() < 0 || bary.y() < 0 || bary.z() < 0)
+	{
+		btScalar closest = SIMD_INFINITY;
+		for (int edge = 0; edge < 3; ++edge)
+		{
+			const int next = (edge + 1) % 3;
+			const btVector3 delta = face.m_vertices[next] - face.m_vertices[edge];
+			const btScalar t = delta.length2() > 0 ? btClamped((localPoint-face.m_vertices[edge]).dot(delta)/delta.length2(), btScalar(0), btScalar(1)) : btScalar(0);
+			const btScalar distance = (localPoint-face.m_vertices[edge]-t*delta).length2();
+			if (distance < closest) { closest = distance; bary.setZero(); bary[edge] = 1-t; bary[next] = t; }
+		}
+	}
+	const btScalar sum = bary.x() + bary.y() + bary.z();
+	if (!(sum > 0) || !std::isfinite(double(sum))) return false;
+	bary /= sum;
+	const btVector3 scale = piece->getLocalScaling();
+	const btMatrix3x3 map = getWorldTransform().getBasis() * btMatrix3x3(scale.x(),0,0,0,scale.y(),0,0,0,scale.z());
+	for (int v = 0; v < 3; ++v)
+	{
+		if (indices[v] >= mapping->size()) return false;
+		const btVertexToTetraMapping& entry = (*mapping)[indices[v]];
+		if (entry.vertexToTetra >= unsigned(m_tetras.size())) return false;
+		for (int n = 0; n < 4; ++n)
+		{
+			const btScalar weight = sign * bary[v] * entry.baryCoordInTetra[n];
+			if (!std::isfinite(double(weight))) return false;
+			if (weight == 0) continue;
+			Node* node = m_tetras[entry.vertexToTetra].m_n[n];
+			int found = -1;
+			for (int k = 0; k < nodes.size(); ++k) if (nodes[k].node == node) { found = k; break; }
+			if (found >= 0) nodes[found].jacobian += map * weight;
+			else { ContactNode c; c.node = node; c.jacobian = map * weight; nodes.push_back(c); }
+		}
+	}
+	return true;
+}
+
+void btSoftBody::skinSoftSoftCollisionHandler(btSoftBody* otherSoft, int part0, int index0, int part1, int index1, const btVector3& contactPointOnSoftCollisionMesh, btVector3 contactNormalOnSoftCollisionMesh, btScalar distance, const bool penetrating, btScalar* contactPointImpulseMagnitude, btScalar unmodifiedDistance)
 {
 	contactNormalOnSoftCollisionMesh = -contactNormalOnSoftCollisionMesh;
+	if (m_useSurfaceContact)
+	{
+		DeformableNodeNodeContact c;
+		c.m_node0 = m_nodes.size() ? &m_nodes[0] : nullptr;
+		c.m_node1 = otherSoft->m_nodes.size() ? &otherSoft->m_nodes[0] : nullptr;
+		c.m_normal = contactNormalOnSoftCollisionMesh; c.m_offset = distance;
+		c.m_colObj = otherSoft; c.m_friction = m_cfg.kDF * otherSoft->m_cfg.kDF;
+		c.m_surfaceObjects[0] = this; c.m_surfaceObjects[1] = otherSoft;
+		c.m_surfaceParts[0] = part0; c.m_surfaceParts[1] = part1;
+		c.m_surfaceTriangles[0] = index0; c.m_surfaceTriangles[1] = index1;
+		c.m_contact_point_impulse_magnitude = contactPointImpulseMagnitude;
+		// Unmodified distance is geometric only before intersection; recovery depths
+		// must never enter the coupled contact model.
+		btScalar margin0 = 0, margin1 = 0;
+		const btVector3 otherPoint = contactPointOnSoftCollisionMesh - c.m_normal * unmodifiedDistance;
+		c.m_surfaceInvalid = penetrating || !std::isfinite(double(unmodifiedDistance)) || unmodifiedDistance < 0
+			|| !appendSurfaceContactNodes(part0, index0, contactPointOnSoftCollisionMesh, 1, c.m_surfaceNodes, &margin0)
+			|| !otherSoft->appendSurfaceContactNodes(part1, index1, otherPoint, -1, c.m_surfaceNodes, &margin1);
+		// Match the existing margin-zone equilibrium without its pushback scaling.
+		const btScalar targetSeparation = (margin0 + margin1) * btScalar(39.0 / 40.0);
+		c.m_offset = unmodifiedDistance - targetSeparation;
+		m_nodeNodeContacts.push_back(c);
+		return;
+	}
+
 
 	/*fprintf(stderr, "drawpoint \"pt\" [%f,%f,%f]\n", contactPointOnSoftCollisionMesh.x(), contactPointOnSoftCollisionMesh.y(), contactPointOnSoftCollisionMesh.z());
 	auto lineStart = contactPointOnSoftCollisionMesh;
@@ -4771,6 +4893,8 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 	}
 
 	//fprintf(stderr, "m_nodeNodeContacts %d idx %d\n", m_nodeNodeContacts.size(), getUserIndex());
+	const bool diagnoseContacts = btDeformableDiagnostics::enabled();
+	btDeformableDiagnostics::ContactSummary contactDiagnostics;
 	for (int k = 0; k < m_nodeNodeContacts.size(); ++k)
 	{
 		//int idx = indices[k];
@@ -4807,6 +4931,12 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 		btScalar restitution = 0.0;  // TODO coefficient of restitution for soft bodies by mapping the value of btCollisionObject::m_restitution and using it here. Will have to be also done in btSoftBody::skinSoftRigidCollisionHandler.
 		btScalar jCollision = -(1.0 + restitution) * (vn + penetration) / invMassSum;
 		btScalar jTotal = jCollision;
+		btVector3 diagnosticV0, diagnosticV1;
+		if (diagnoseContacts)
+		{
+			diagnosticV0 = node0->m_v;
+			diagnosticV1 = node1->m_v;
+		}
 
 		if (c.m_contact_point_impulse_magnitude)
 			*c.m_contact_point_impulse_magnitude = std::abs(jTotal);
@@ -4867,7 +4997,9 @@ void btSoftBody::applyRepulsionForce(btScalar timeStep, bool applySpringForce)
 				node1->m_v -= delta;
 			}
 		}
+		if (diagnoseContacts) contactDiagnostics.add(c, diagnosticV0, diagnosticV1, jTotal, penetration);
 	}
+	if (diagnoseContacts) contactDiagnostics.report(*this);
 }
 
 void btSoftBody::geometricCollisionHandler(btSoftBody* psb)
@@ -5503,6 +5635,9 @@ void btSoftBody::applyLastSafeWorldTransform(
 		{
 			rollbackScale = maxNodeDisplacement / maxRequestedNodeDisplacement;
 		}
+		if (!nodesInCollision.empty())
+			btDeformableDiagnostics::write("ROLLBACK", "id=%d nodes=%zu requested_max_dx=%.9g scale=%.9g applied_max_dx=%.9g",
+				getUserIndex(), nodesInCollision.size(), double(maxRequestedNodeDisplacement), double(rollbackScale), double(maxRequestedNodeDisplacement * rollbackScale));
 
 		for (auto& [nodeInCollision, normals] : nodesInCollision)
 		{

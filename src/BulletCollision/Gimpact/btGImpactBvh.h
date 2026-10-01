@@ -161,6 +161,10 @@ public:
 	virtual ~btPrimitiveManagerBase() {}
 	virtual btPrimitiveManagerBase* clone() const = 0;
 
+	// Serial preparation/cleanup around a batch with immutable geometry and parallel readers.
+	virtual void begin_geometry_query() const {}
+	virtual void end_geometry_query() const {}
+
 	//! determines if this manager consist on only triangles, which special case will be optimized
 	virtual bool is_trimesh() const = 0;
 	virtual int get_primitive_count() const = 0;
@@ -177,6 +181,17 @@ public:
 		(void)prim_index1;
 		return false;
 	}
+};
+
+class btPrimitiveGeometryQuery
+{
+	const btPrimitiveManagerBase* m_manager;
+	btPrimitiveGeometryQuery(const btPrimitiveGeometryQuery&) = delete;
+	btPrimitiveGeometryQuery& operator=(const btPrimitiveGeometryQuery&) = delete;
+public:
+	explicit btPrimitiveGeometryQuery(const btPrimitiveManagerBase* manager) : m_manager(manager)
+	{ m_manager->begin_geometry_query(); }
+	~btPrimitiveGeometryQuery() { m_manager->end_geometry_query(); }
 };
 
 //! Structure for containing Boxes

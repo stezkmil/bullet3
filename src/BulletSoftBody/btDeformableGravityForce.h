@@ -78,6 +78,22 @@ public:
 	}
 
 	// the gravitational potential energy
+	bool linearEnergyChange(btScalar dt, const TVStack& deltaVelocity, double& change) override
+	{
+		change = 0;
+		for (int b = 0; b < m_softBodies.size(); ++b)
+		{
+			const auto* body = m_softBodies[b];
+			if (!body->isActive() || body->isStaticObject()) continue;
+			for (int n = 0; n < body->m_nodes.size(); ++n)
+			{
+				const auto& node = body->m_nodes[n];
+				if (node.m_im > 0 && node.m_frozen <= 0) change -= double(dt * m_gravity.dot(deltaVelocity[node.index]) / node.m_im);
+			}
+		}
+		return true;
+	}
+
 	virtual double totalEnergy(btScalar dt)
 	{
 		double e = 0;

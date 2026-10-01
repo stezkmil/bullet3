@@ -27,6 +27,8 @@
 #include "btPreconditioner.h"
 // #include "btDeformableMultiBodyDynamicsWorld.h"
 #include "LinearMath/btQuickprof.h"
+#include <cstdlib>
+#include <vector>
 
 class btDeformableBackwardEulerObjective
 {
@@ -101,15 +103,38 @@ public:
 	// perform precondition M^(-1) x = b
 	void precondition(const TVStack& x, TVStack& b);
 
-	// Balanced two-level preconditioning with the three uniform translations Z.
+	// Balanced two-level preconditioning with rigid translation/rotation modes Z.
 	// Built from A*Z, so heterogeneous masses and damping need no special case.
 	bool m_translationCorrection = false;
-	TVStack m_translationAZ[3], m_translationWork;
+	bool m_contactCoarse = false;
+	bool m_contactCoarseEnabled = []()
+	{
+		const char* value = std::getenv("BULLET_DEFORMABLE_CONTACT_COARSE");
+		return value && value[0] == '1';
+	}();
+	std::vector<TVStack> m_contactZ, m_contactAZ;
+	std::vector<std::vector<int> > m_contactZRows, m_contactAZRows;
+	std::vector<btScalar> m_contactFactor, m_contactScale;
+	bool setupContactCoarse();
+	void solveContactCoarse(std::vector<btScalar>& values) const;
+	TVStack m_translationAZ[6], m_rotationZ[3], m_translationWork;
+	bool m_rotationCorrectionEnabled = []()
+	{
+		const char* value = std::getenv("BULLET_DEFORMABLE_ROTATION_CORRECTION");
+		return !value || value[0] != '0';
+	}();
+	btVector3 rigidMode(int mode, int node) const
+	{
+		if (mode >= 3) return m_rotationZ[mode - 3][node];
+		btVector3 axis(0, 0, 0); axis[mode] = 1; return axis;
+	}
 	struct TranslationBody
 	{
 		int offset, count;
 		btMatrix3x3 inverse;
 		btVector3 coarse;
+		int modes = 3;
+		btScalar inverseRigid[6][6], coarseRigid[6];
 	};
 	btAlignedObjectArray<TranslationBody> m_translationBodies;
 	bool setupTranslationCorrection();
