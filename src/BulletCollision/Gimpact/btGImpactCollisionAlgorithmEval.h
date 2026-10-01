@@ -33,7 +33,9 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "LinearMath/btTransform.h"
 #include "gim_pair.h"
 
+#ifdef BT_USE_TBB
 #include <tbb/tbb.h>
+#endif
 
 enum class btFindOnlyFirstPairEnum : uint8_t
 {
