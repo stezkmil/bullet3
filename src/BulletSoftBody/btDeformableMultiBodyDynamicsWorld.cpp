@@ -53,6 +53,8 @@ btDeformableMultiBodyDynamicsWorld::btDeformableMultiBodyDynamicsWorld(btDispatc
 	  m_deformableBodySolver(deformableBodySolver),
 	  m_solverCallback(0)
 {
+	// TODO: Remove all environment-variable lookups across this feature before merging the feature branch.
+	// The final implementation must not read environment variables.
 	const char* coupled = std::getenv("BULLET_DEFORMABLE_COUPLED_CONTACT");
 	const char* adaptive = std::getenv("BULLET_DEFORMABLE_ADAPTIVE_TIMESTEP");
 	m_adaptiveCoupledTimesteps = adaptive && adaptive[0] == '1';

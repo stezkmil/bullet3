@@ -109,6 +109,8 @@ public:
 	bool m_contactCoarse = false;
 	bool m_contactCoarseEnabled = []()
 	{
+		// TODO: Remove all environment-variable lookups across this feature before merging the feature branch.
+		// The final implementation must not read environment variables.
 		const char* value = std::getenv("BULLET_DEFORMABLE_CONTACT_COARSE");
 		return value && value[0] == '1';
 	}();

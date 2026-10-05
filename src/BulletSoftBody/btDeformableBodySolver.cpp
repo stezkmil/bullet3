@@ -208,6 +208,8 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 					double(solverdt) <= btDeformableDiagnostics::current()->dt / 256 * 1.001;
 				btAlignedObjectArray<btScalar> trialScales, trialEnergies;
 				btScalar f0 = m_objective->totalEnergy(solverdt) + kineticEnergy(), f1, f2;
+				// TODO: Remove all environment-variable lookups across this feature before merging the feature branch.
+				// The final implementation must not read environment variables.
 				const char* requestedCapture = std::getenv("BULLET_DEFORMABLE_CAPTURE_SOLVER_STEP");
 				if (diagnose && requestedCapture && i == m_maxNewtonIterations - 1 &&
 					btDeformableDiagnostics::current()->step != m_lastCapturedStep)

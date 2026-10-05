@@ -19,6 +19,8 @@ struct Output
 	std::mutex mutex;
 	Output()
 	{
+		// TODO: Remove all environment-variable lookups across this feature before merging the feature branch.
+		// The final implementation must not read environment variables.
 		const char* path = std::getenv("BULLET_DEFORMABLE_DIAGNOSTICS");
 		if (!path || !*path) return;
 		file = std::fopen(path, "a");

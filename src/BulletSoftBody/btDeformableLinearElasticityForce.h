@@ -476,6 +476,8 @@ public:
 	bool m_implicitHasFallback = false;
 	bool m_useAssembledImplicit = []()
 	{
+		// TODO: Remove all environment-variable lookups across this feature before merging the feature branch.
+		// The final implementation must not read environment variables.
 		const char* value = std::getenv("BULLET_DEFORMABLE_ASSEMBLED_ELASTIC");
 		return !value || value[0] != '0';
 	}();

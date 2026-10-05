@@ -209,6 +209,8 @@ public:
 	bool save(const char* path, btDeformableBodySolver& source)
 	{
 		if(!supported(source))return false;
+		// TODO: Remove all environment-variable lookups across this feature before merging the feature branch.
+		// The final implementation must not read environment variables.
 		const char* assembly=std::getenv("BULLET_DEFORMABLE_ASSEMBLED_ELASTIC");
 		const char* rotation=std::getenv("BULLET_DEFORMABLE_ROTATION_CORRECTION");
 		assembledElastic=!(assembly && assembly[0]=='0');rotationCorrection=!(rotation && rotation[0]=='0');
