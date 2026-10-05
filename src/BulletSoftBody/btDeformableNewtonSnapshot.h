@@ -95,6 +95,7 @@ class btDeformableNewtonSnapshot
 			}
 			int nt=count(body.m_tetras.size());
 			if(reading){body.m_tetraScratches.resize(nt);body.m_tetraScratchesTn.resize(nt);}
+			bool completeTn = true;
 			for(int t=0;t<nt && good;++t)
 			{
 				int nodes[4]={};
@@ -109,10 +110,15 @@ class btDeformableNewtonSnapshot
 				matrix(tet.m_Dm_inverse);matrix(tet.m_F);value(tet.m_element_measure);value(tet.m_rv);
 				for(int j=0;j<3;++j)for(int k=0;k<4;++k)value(tet.m_P_inv[j][k]);
 				scratch(body.m_tetraScratches[t]);
-				// Tn is optional in some callers; linear elasticity uses the current scratch.
+				// Preserve the frozen damping state; direct callers may have no predictor.
 				int hasTn=reading?0:int(body.m_tetraScratchesTn.size()>t);value(hasTn);
-				if(hasTn)scratch(body.m_tetraScratchesTn[t]);
+				if (hasTn)
+					scratch(body.m_tetraScratchesTn[t]);
+				else
+					completeTn = false;
 			}
+			if (reading && !completeTn)
+				body.m_tetraScratchesTn.clear();
 		}
 		if(!good)return;
 		if(reading)

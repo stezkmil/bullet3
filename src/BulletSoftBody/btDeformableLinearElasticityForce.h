@@ -84,6 +84,12 @@ public:
 		updateYoungsModulusAndPoissonRatio();
 	}
 
+	// The predictor snapshot stays fixed through Newton/contact iterations and rollback.
+	static const btSoftBody::TetraScratch &dampingScratch(const btSoftBody &body, int t)
+	{
+		return body.m_tetraScratchesTn.size() == body.m_tetras.size() ? body.m_tetraScratchesTn[t] : body.m_tetraScratches[t];
+	}
+
 	virtual void addScaledForces(btScalar scale, TVStack& force)
 	{
 		addScaledDampingForce(scale, force);
@@ -112,7 +118,7 @@ public:
 			}
 			for (int j = 0; j < psb->m_tetras.size(); ++j)
 			{
-				bool close_to_flat = (psb->m_tetraScratches[j].m_J < TETRA_FLAT_THRESHOLD);
+				bool close_to_flat = (dampingScratch(*psb, j).m_J < TETRA_FLAT_THRESHOLD);
 				btSoftBody::Tetra& tetra = psb->m_tetras[j];
 				btSoftBody::Node* node0 = tetra.m_n[0];
 				btSoftBody::Node* node1 = tetra.m_n[1];
@@ -125,7 +131,7 @@ public:
 				btMatrix3x3 dF = DsFromVelocity(node0, node1, node2, node3) * tetra.m_Dm_inverse;
 				if (!close_to_flat)
 				{
-					dF = psb->m_tetraScratches[j].m_corotation.transpose() * dF;
+					dF = dampingScratch(*psb, j).m_corotation.transpose() * dF;
 				}
 				btMatrix3x3 I;
 				I.setIdentity();
@@ -133,7 +139,7 @@ public:
 				btMatrix3x3 df_on_node123 = dP * tetra.m_Dm_inverse.transpose();
 				if (!close_to_flat)
 				{
-					df_on_node123 = psb->m_tetraScratches[j].m_corotation * df_on_node123;
+					df_on_node123 = dampingScratch(*psb, j).m_corotation * df_on_node123;
 				}
 				btVector3 df_on_node0 = df_on_node123 * grad_N_hat_1st_col;
 				// damping force differential
@@ -330,7 +336,8 @@ public:
 					const btMatrix3x3 isotropic = identity * (m_mu * g.length2());
 					const btMatrix3x3 elastic = isotropic + OuterProduct(rotated, rotated) * (m_mu + m_lambda);
 					// Match the unrotated damping differential for nearly flat elements.
-					const btVector3 dampingGradient = scratch.m_J < TETRA_FLAT_THRESHOLD ? g : rotated;
+					const btVector3 dampingGradient =
+						dampingScratch(*body, t).m_J < TETRA_FLAT_THRESHOLD ? g : dampingScratch(*body, t).m_corotation * g;
 					const btMatrix3x3 damping = isotropic + OuterProduct(dampingGradient, dampingGradient) * (m_mu + m_lambda);
 					blocks[node.index] += (elastic * (dt * dt) + damping * (dt * m_damping_beta)) * tetra.m_element_measure;
 				}
@@ -365,7 +372,7 @@ public:
 			}
 			for (int j = 0; j < psb->m_tetras.size(); ++j)
 			{
-				bool close_to_flat = (psb->m_tetraScratches[j].m_J < TETRA_FLAT_THRESHOLD);
+				bool close_to_flat = (dampingScratch(*psb, j).m_J < TETRA_FLAT_THRESHOLD);
 				btSoftBody::Tetra& tetra = psb->m_tetras[j];
 				btSoftBody::Node* node0 = tetra.m_n[0];
 				btSoftBody::Node* node1 = tetra.m_n[1];
@@ -378,7 +385,7 @@ public:
 				btMatrix3x3 dF = Ds(id0, id1, id2, id3, dv) * tetra.m_Dm_inverse;
 				if (!close_to_flat)
 				{
-					dF = psb->m_tetraScratches[j].m_corotation.transpose() * dF;
+					dF = dampingScratch(*psb, j).m_corotation.transpose() * dF;
 				}
 				btMatrix3x3 I;
 				I.setIdentity();
@@ -386,7 +393,7 @@ public:
 				btMatrix3x3 df_on_node123 = dP * tetra.m_Dm_inverse.transpose();
 				if (!close_to_flat)
 				{
-					df_on_node123 = psb->m_tetraScratches[j].m_corotation * df_on_node123;
+					df_on_node123 = dampingScratch(*psb, j).m_corotation * df_on_node123;
 				}
 				btVector3 df_on_node0 = df_on_node123 * grad_N_hat_1st_col;
 
@@ -453,6 +460,8 @@ public:
 	{
 		btMatrix3x3 gradients; // Rows are R * grad(N_1..3), expressed in world space.
 		btScalar muWeight, lambdaWeight;
+		btMatrix3x3 dampingGradients;
+		btScalar dampingMuWeight, dampingLambdaWeight;
 		bool usable;
 	};
 	btAlignedObjectArray<CachedImplicitTetra> m_implicitTetraCache;
@@ -501,6 +510,15 @@ public:
 				for (int i = 0; i < 3; ++i)
 					for (int j = 0; j < 3; ++j)
 						entry.usable = entry.usable && btFabs(metric[i][j] - (i == j ? btScalar(1) : btScalar(0))) <= btScalar(64) * SIMD_EPSILON;
+				const auto &dampScratch = dampingScratch(body, t);
+				if (dampScratch.m_J >= TETRA_FLAT_THRESHOLD)
+				{
+					const btMatrix3x3 dampMetric = dampScratch.m_corotation * dampScratch.m_corotation.transpose();
+					for (int i = 0; i < 3; ++i)
+						for (int j = 0; j < 3; ++j)
+							entry.usable = entry.usable &&
+										   btFabs(dampMetric[i][j] - (i == j ? btScalar(1) : btScalar(0))) <= btScalar(64) * SIMD_EPSILON;
+				}
 				if (m_useAssembledImplicit)
 				{
 					for (int n = 0; n < 4; ++n) topology.push_back(tetra.m_n[n]->index);
@@ -508,7 +526,12 @@ public:
 				}
 				if (!entry.usable) { m_implicitHasFallback = true; continue; }
 				entry.gradients = tetra.m_Dm_inverse * scratch.m_corotation.transpose();
-				const btScalar weight = (dt * dt + dt * m_damping_beta) * tetra.m_element_measure;
+				const btScalar weight = dt * dt * tetra.m_element_measure;
+				const auto &damping = dampingScratch(body, t);
+				const btMatrix3x3 dampingRotation = damping.m_J < TETRA_FLAT_THRESHOLD ? btMatrix3x3::getIdentity() : damping.m_corotation;
+				entry.dampingGradients = tetra.m_Dm_inverse * dampingRotation.transpose();
+				entry.dampingMuWeight = dt * m_damping_beta * tetra.m_element_measure * m_mu;
+				entry.dampingLambdaWeight = dt * m_damping_beta * tetra.m_element_measure * m_lambda;
 				entry.muWeight = weight * m_mu;
 				entry.lambdaWeight = weight * m_lambda;
 
@@ -548,18 +571,25 @@ public:
 			{
 				const CachedImplicitTetra& entry = m_implicitTetraCache[t];
 				if (!entry.usable) continue;
-				const btVector3 gradients[4] = {-(entry.gradients[0] + entry.gradients[1] + entry.gradients[2]),
-					entry.gradients[0], entry.gradients[1], entry.gradients[2]};
-				int slot = t * 12;
-				for (int a = 0; a < 4; ++a) for (int b = 0; b < 4; ++b)
+				for (int term = 0; term < 2; ++term)
 				{
-					if (a == b) continue;
-					btMatrix3x3& block = m_implicitBlocks[m_implicitBlockSlots[slot++]].value;
-					const btScalar diagonal = entry.muWeight * gradients[a].dot(gradients[b]);
-					for (int r = 0; r < 3; ++r) for (int c = 0; c < 3; ++c)
-						block[r][c] += (r == c ? diagonal : btScalar(0)) +
-							entry.muWeight * gradients[b][r] * gradients[a][c] +
-							entry.lambdaWeight * gradients[a][r] * gradients[b][c];
+					const btMatrix3x3 &g = term ? entry.dampingGradients : entry.gradients;
+					const btScalar muWeight = term ? entry.dampingMuWeight : entry.muWeight;
+					const btScalar lambdaWeight = term ? entry.dampingLambdaWeight : entry.lambdaWeight;
+					const btVector3 gradients[4] = {-(g[0] + g[1] + g[2]), g[0], g[1], g[2]};
+					int slot = t * 12;
+					for (int a = 0; a < 4; ++a)
+						for (int b = 0; b < 4; ++b)
+						{
+							if (a == b)
+								continue;
+							btMatrix3x3 &block = m_implicitBlocks[m_implicitBlockSlots[slot++]].value;
+							const btScalar diagonal = muWeight * gradients[a].dot(gradients[b]);
+							for (int r = 0; r < 3; ++r)
+								for (int c = 0; c < 3; ++c)
+									block[r][c] += (r == c ? diagonal : btScalar(0)) + muWeight * gradients[b][r] * gradients[a][c] +
+												   lambdaWeight * gradients[a][r] * gradients[b][c];
+						}
 				}
 			}
 			m_assembledImplicitReady = true;
@@ -574,7 +604,7 @@ public:
 		m_implicitCacheReady = false;
 	}
 
-	// Non-flat stiffness damping is beta times the frozen-rotation elastic tangent.
+	// Elastic and damping tangents use their respective trial and predictor rotations.
 	virtual void addImplicitForceDifferential(btScalar dt, const TVStack& dx, TVStack& df)
 	{
 		int cacheIndex = 0;
@@ -611,21 +641,27 @@ public:
 				{
 					if (assembled) continue;
 					const CachedImplicitTetra& entry = m_implicitTetraCache[cacheIndex];
-					// G = sum_j (dx_j-dx_0) (R*gradN_j)^T.
-					// R*dP*R^T = mu*(G+G^T) + lambda*trace(G)*I.
+					for (int term = 0; term < 2; ++term)
+					{
+						const btMatrix3x3 &g = term ? entry.dampingGradients : entry.gradients;
+						const btScalar muWeight = term ? entry.dampingMuWeight : entry.muWeight;
+						const btScalar lambdaWeight = term ? entry.dampingLambdaWeight : entry.lambdaWeight;
+						// G = sum_j (dx_j-dx_0) (R*gradN_j)^T.
+						// R*dP*R^T = mu*(G+G^T) + lambda*trace(G)*I.
 #if (BT_DEFORMABLE_OPTIMIZATION_MASK & 2) && defined(BT_USE_DOUBLE_PRECISION) && defined(__AVX2__)
-					btApplyCachedElasticTetra(entry.gradients, entry.muWeight, entry.lambdaWeight,
-						dx[id0], dx[id1], dx[id2], dx[id3], df[id0], df[id1], df[id2], df[id3]);
+						btApplyCachedElasticTetra(g, muWeight, lambdaWeight, dx[id0], dx[id1], dx[id2], dx[id3], df[id0], df[id1], df[id2],
+												  df[id3]);
 #else
-					const btMatrix3x3 G = Ds(id0, id1, id2, id3, dx) * entry.gradients;
-					const btMatrix3x3 stress = (G + G.transpose()) * entry.muWeight +
-						btMatrix3x3::getIdentity() * (entry.lambdaWeight * (G[0][0] + G[1][1] + G[2][2]));
-					const btMatrix3x3 contributions = stress * entry.gradients.transpose();
-					df[id0] += contributions * grad_N_hat_1st_col;
-					df[id1] += contributions.getColumn(0);
-					df[id2] += contributions.getColumn(1);
-					df[id3] += contributions.getColumn(2);
+						const btMatrix3x3 G = Ds(id0, id1, id2, id3, dx) * g;
+						const btMatrix3x3 stress =
+							(G + G.transpose()) * muWeight + btMatrix3x3::getIdentity() * (lambdaWeight * (G[0][0] + G[1][1] + G[2][2]));
+						const btMatrix3x3 contributions = stress * g.transpose();
+						df[id0] += contributions * grad_N_hat_1st_col;
+						df[id1] += contributions.getColumn(0);
+						df[id2] += contributions.getColumn(1);
+						df[id3] += contributions.getColumn(2);
 #endif
+					}
 					continue;
 				}
 				btMatrix3x3 dF = psb->m_tetraScratches[j].m_corotation.transpose() * Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;
@@ -636,19 +672,20 @@ public:
 				btVector3 df_on_node0 = df_on_node123 * grad_N_hat_1st_col;
 
 				// elastic force differential
-				const bool flat = psb->m_tetraScratches[j].m_J < TETRA_FLAT_THRESHOLD;
-				btScalar scale1 = (elasticScale + (flat ? btScalar(0) : dampingScale)) * tetra.m_element_measure;
+				btScalar scale1 = elasticScale * tetra.m_element_measure;
 				df[id0] -= scale1 * df_on_node0;
 				df[id1] -= scale1 * df_on_node123.getColumn(0);
 				df[id2] -= scale1 * df_on_node123.getColumn(1);
 				df[id3] -= scale1 * df_on_node123.getColumn(2);
-				if (flat && m_damping_beta != 0)
+				if (m_damping_beta != 0)
 				{
-					// Nearly flat elements retain the original unrotated damping tangent.
-					const btMatrix3x3 dampingF = Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;
+					// Damping stays in the predictor frame, including the flat-element fallback.
+					const auto &damp = dampingScratch(*psb, j);
+					const btMatrix3x3 rotation = damp.m_J < TETRA_FLAT_THRESHOLD ? btMatrix3x3::getIdentity() : damp.m_corotation;
+					const btMatrix3x3 dampingF = rotation.transpose() * Ds(id0, id1, id2, id3, dx) * tetra.m_Dm_inverse;
 					btMatrix3x3 dampingP;
 					firstPiolaDifferential(psb->m_tetraScratches[j], dampingF, dampingP);
-					const btMatrix3x3 dampingNodes = dampingP * tetra.m_Dm_inverse.transpose();
+					const btMatrix3x3 dampingNodes = rotation * dampingP * tetra.m_Dm_inverse.transpose();
 					const btScalar dampingWeight = dampingScale * tetra.m_element_measure;
 					df[id0] -= dampingWeight * (dampingNodes * grad_N_hat_1st_col);
 					df[id1] -= dampingWeight * dampingNodes.getColumn(0);

@@ -136,69 +136,116 @@ TEST_F(DeformableBlockPreconditioner, VelocityGuessRejectsInversionAndRestoresCo
 
 TEST_F(DeformableBlockPreconditioner, NewtonSnapshotReplaysEnergiesAndLinearCorrection)
 {
-	class Probe : public btDeformableBodySolver
+	for (int frozenSnapshot = 0; frozenSnapshot < 2; ++frozenSnapshot)
 	{
-	public:
-		void prepare()
+		class Probe : public btDeformableBodySolver
 		{
-			setupDeformableSolve(true); updateState();
-			m_objective->computeResidual(m_dt,m_residual);
-			computeStep(m_ddv,m_residual);
+		  public:
+			void prepare()
+			{
+				setupDeformableSolve(true);
+				updateState();
+				m_objective->computeResidual(m_dt, m_residual);
+				computeStep(m_ddv, m_residual);
+			}
+			btScalar slope()
+			{
+				return m_cg.dot(m_ddv, m_residual);
+			}
+			const Vectors &direction() const
+			{
+				return m_ddv;
+			}
+		} source;
+		const btScalar dt = btScalar(.0002);
+		body->m_nodes[3].m_x.setZ(btScalar(.9));
+		for (int n = 0; n < 4; ++n)
+			body->m_nodes[n].m_v = body->m_nodes[n].m_vn = btVector3(btScalar(.1) * n, btScalar(.2), 0);
+		source.setImplicit(true);
+		source.setLineSearch(true);
+		source.reinitialize(bodies, dt);
+		source.setPreconditioner(btDeformableBackwardEulerObjective::KKT_preconditioner);
+		source.m_objective->m_lf.push_back(&force);
+		btDeformableVolumeBarrierForce barrier;
+		btDeformableVolumeBarrierForce::Material material = {body, btScalar(200)};
+		barrier.materials.push_back(material);
+		source.m_objective->m_lf.push_back(&barrier);
+		btAlignedObjectArray<int> indices;
+		indices.push_back(1);
+		indices.push_back(3);
+		btDeformableNodalForce nodal(body, indices, btVector3(1, 2, 3));
+		source.m_objective->m_lf.push_back(&nodal);
+		btDeformableGravityForce gravity(btVector3(0, -1, 0));
+		gravity.addSoftBody(body);
+		source.m_objective->m_lf.push_back(&gravity);
+		btDeformableContactForce contact(dt);
+		btSoftBody::DeformableNodeNodeContact c = {};
+		c.m_normal = btVector3(1, 0, 0);
+		c.m_friction = btScalar(.5);
+		btSoftBody::ContactNode cn = {&body->m_nodes[0], btMatrix3x3::getIdentity()};
+		c.m_surfaceNodes.push_back(cn);
+		ASSERT_TRUE(contact.add(c));
+		contact.contacts[0].normalImpulse = btScalar(.01);
+		contact.contacts[0].tangentImpulse = btVector3(0, btScalar(.001), 0);
+		source.m_objective->m_lf.push_back(&contact);
+		body->m_tetraScratchesTn.clear();
+		if (frozenSnapshot)
+		{
+			body->m_tetraScratchesTn.resize(1);
+			body->advanceDeformation();
 		}
-		btScalar slope() { return m_cg.dot(m_ddv,m_residual); }
-		const Vectors& direction() const { return m_ddv; }
-	} source;
-	const btScalar dt=btScalar(.0002);
-	body->m_nodes[3].m_x.setZ(btScalar(.9));
-	for(int n=0;n<4;++n)body->m_nodes[n].m_v=body->m_nodes[n].m_vn=btVector3(btScalar(.1)*n,btScalar(.2),0);
-	source.setImplicit(true);source.setLineSearch(true);source.reinitialize(bodies,dt);
-	source.setPreconditioner(btDeformableBackwardEulerObjective::KKT_preconditioner);
-	source.m_objective->m_lf.push_back(&force);
-	btDeformableVolumeBarrierForce barrier;
-	btDeformableVolumeBarrierForce::Material material={body,btScalar(200)};barrier.materials.push_back(material);
-	source.m_objective->m_lf.push_back(&barrier);
-	btAlignedObjectArray<int> indices;indices.push_back(1);indices.push_back(3);
-	btDeformableNodalForce nodal(body,indices,btVector3(1,2,3));source.m_objective->m_lf.push_back(&nodal);
-	btDeformableGravityForce gravity(btVector3(0,-1,0));gravity.addSoftBody(body);source.m_objective->m_lf.push_back(&gravity);
-	btDeformableContactForce contact(dt);btSoftBody::DeformableNodeNodeContact c={};
-	c.m_normal=btVector3(1,0,0);c.m_friction=btScalar(.5);
-	btSoftBody::ContactNode cn={&body->m_nodes[0],btMatrix3x3::getIdentity()};c.m_surfaceNodes.push_back(cn);
-	ASSERT_TRUE(contact.add(c));contact.contacts[0].normalImpulse=btScalar(.01);contact.contacts[0].tangentImpulse=btVector3(0,btScalar(.001),0);
-	source.m_objective->m_lf.push_back(&contact);source.prepare();
-	btDeformableNewtonSnapshot snapshot;snapshot.dt=dt;snapshot.slope=source.slope();
-	snapshot.baselineEnergy=source.m_objective->totalEnergy(dt)+source.kineticEnergy();
-	source.backupDv();
-	for(btScalar scale : {btScalar(1),btScalar(.25),btScalar(1e-6)})
-	{
-		source.updateEnergy(scale);snapshot.scales.push_back(scale);
-		snapshot.energies.push_back(source.m_objective->totalEnergy(dt)+source.kineticEnergy());
+		source.prepare();
+		btDeformableNewtonSnapshot snapshot;
+		snapshot.dt = dt;
+		snapshot.slope = source.slope();
+		snapshot.baselineEnergy = source.m_objective->totalEnergy(dt) + source.kineticEnergy();
+		source.backupDv();
+		for (btScalar scale : {btScalar(1), btScalar(.25), btScalar(1e-6)})
+		{
+			source.updateEnergy(scale);
+			snapshot.scales.push_back(scale);
+			snapshot.energies.push_back(source.m_objective->totalEnergy(dt) + source.kineticEnergy());
+		}
+		source.revertDv();
+		source.updateState();
+		const char *temp = std::getenv("TEMP");
+		const std::string path = std::string(temp ? temp : ".") + "/bullet-newton-" +
+								 std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count()) + ".bin";
+		ASSERT_TRUE(snapshot.save(path.c_str(), source));
+		btDeformableNewtonSnapshot replay;
+		ASSERT_TRUE(replay.load(path.c_str()));
+		Vectors product, conditioned;
+		btDeformableNewtonSnapshot::probe(replay.solver, product, conditioned);
+		ASSERT_EQ(product.size(), replay.operatorProbe.size());
+		ASSERT_EQ(conditioned.size(), replay.preconditionerProbe.size());
+		for (int n = 0; n < product.size(); ++n)
+			for (int d = 0; d < 3; ++d)
+			{
+				EXPECT_EQ(product[n][d], replay.operatorProbe[n][d]);
+				EXPECT_EQ(conditioned[n][d], replay.preconditionerProbe[n][d]);
+			}
+		EXPECT_NEAR(double(snapshot.baselineEnergy), double(replay.energy()), 1e-10);
+		replay.solver.backupDv();
+		for (int i = 0; i < snapshot.scales.size(); ++i)
+		{
+			replay.solver.updateEnergy(snapshot.scales[i]);
+			EXPECT_NEAR(double(snapshot.energies[i]), double(replay.energy()), 1e-9);
+		}
+		replay.solver.revertDv();
+		replay.solver.updateState();
+		replay.recomputeDirection();
+		for (int n = 0; n < 4; ++n)
+			EXPECT_LT((source.direction()[n] - replay.direction()[n]).length(), btScalar(1e-9));
+		// A truncated capture must be rejected, not interpreted as a partial scene.
+		FILE *invalid = std::fopen(path.c_str(), "wb");
+		ASSERT_TRUE(invalid != nullptr);
+		std::fputc(0, invalid);
+		std::fclose(invalid);
+		btDeformableNewtonSnapshot truncated;
+		EXPECT_FALSE(truncated.load(path.c_str()));
+		std::remove(path.c_str());
+		source.m_objective->m_lf.clear();
 	}
-	source.revertDv();source.updateState();
-	const char* temp=std::getenv("TEMP");
-	const std::string path=std::string(temp?temp:".")+"/bullet-newton-"+std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count())+".bin";
-	ASSERT_TRUE(snapshot.save(path.c_str(),source));
-	btDeformableNewtonSnapshot replay;ASSERT_TRUE(replay.load(path.c_str()));
-	Vectors product,conditioned;btDeformableNewtonSnapshot::probe(replay.solver,product,conditioned);
-	ASSERT_EQ(product.size(),replay.operatorProbe.size());
-	ASSERT_EQ(conditioned.size(),replay.preconditionerProbe.size());
-	for(int n=0;n<product.size();++n)for(int d=0;d<3;++d)
-	{
-		EXPECT_EQ(product[n][d],replay.operatorProbe[n][d]);
-		EXPECT_EQ(conditioned[n][d],replay.preconditionerProbe[n][d]);
-	}
-	EXPECT_NEAR(double(snapshot.baselineEnergy),double(replay.energy()),1e-10);
-	replay.solver.backupDv();
-	for(int i=0;i<snapshot.scales.size();++i)
-	{
-		replay.solver.updateEnergy(snapshot.scales[i]);
-		EXPECT_NEAR(double(snapshot.energies[i]),double(replay.energy()),1e-9);
-	}
-	replay.solver.revertDv();replay.solver.updateState();replay.recomputeDirection();
-	for(int n=0;n<4;++n)EXPECT_LT((source.direction()[n]-replay.direction()[n]).length(),btScalar(1e-9));
-	// A truncated capture must be rejected, not interpreted as a partial scene.
-	FILE* invalid=std::fopen(path.c_str(),"wb");ASSERT_TRUE(invalid!=nullptr);std::fputc(0,invalid);std::fclose(invalid);
-	btDeformableNewtonSnapshot truncated;EXPECT_FALSE(truncated.load(path.c_str()));std::remove(path.c_str());
-	source.m_objective->m_lf.clear();
 }
 
 TEST(NewtonReplay, DISABLED_CapturedLineSearch)
@@ -2466,4 +2513,119 @@ TEST(RigidCorrection, CollinearGeometryRetainsTranslationAndSwitchDisablesRotati
 	objective.m_rotationCorrectionEnabled=false;
 	ASSERT_TRUE(objective.setupTranslationCorrection());
 	EXPECT_EQ(3,objective.m_translationBodies[0].modes);
+}
+TEST_F(DeformableBlockPreconditioner, DampingGradientIncludesTrialGeometry)
+{
+	body->m_tetraScratchesTn.resize(1);
+	body->advanceDeformation();
+	Vectors v, d, impulse;
+	v.resize(4);
+	d.resize(4);
+	impulse.resize(4, btVector3(0, 0, 0));
+	const btScalar dt = .2, eps = 1e-5;
+	for (int n = 0; n < 4; ++n)
+	{
+		v[n] = btVector3(n + 1, .3 * n, -.2);
+		d[n] = btVector3(.2, n - 1, .4 * n);
+	}
+	auto trial = [&](btScalar a) {
+		for (int n = 0; n < 4; ++n)
+		{
+			body->m_nodes[n].m_v = v[n] + a * d[n];
+			body->m_nodes[n].m_q = body->m_nodes[n].m_x + dt * body->m_nodes[n].m_v;
+		}
+		body->updateDeformation();
+	};
+	trial(0);
+	force.addScaledDampingForce(dt, impulse);
+	double expected = 0;
+	for (int n = 0; n < 4; ++n)
+		expected -= impulse[n].dot(d[n]);
+	trial(eps);
+	double plus = force.totalDampingEnergy(dt);
+	trial(-eps);
+	double minus = force.totalDampingEnergy(dt);
+	EXPECT_NEAR(expected, (plus - minus) / (2 * eps), 1e-6 * btMax(1., std::abs(expected)));
+}
+
+TEST_F(DeformableBlockPreconditioner, ElasticGradientWithRotatedShear)
+{
+	const btMatrix3x3 rotation(btQuaternion(btVector3(1, 2, 3).normalized(), .8));
+	const btMatrix3x3 deformation = rotation * btMatrix3x3(1.2, .4, .1, 0, .8, .2, 0, 0, 1.1);
+	Vectors q, d, f;
+	q.resize(4);
+	d.resize(4);
+	f.resize(4, btVector3(0, 0, 0));
+	for (int n = 0; n < 4; ++n)
+	{
+		q[n] = deformation * body->m_nodes[n].m_x;
+		d[n] = btVector3(.2, n - 1, .4 * n);
+	}
+	auto trial = [&](btScalar a) {
+		for (int n = 0; n < 4; ++n)
+			body->m_nodes[n].m_q = q[n] + a * d[n];
+		body->updateDeformation();
+	};
+	trial(0);
+	force.addScaledElasticForce(1, f);
+	double expected = 0;
+	for (int n = 0; n < 4; ++n)
+		expected -= f[n].dot(d[n]);
+	const btScalar eps = 1e-5;
+	trial(eps);
+	double plus = force.totalElasticEnergy(1);
+	trial(-eps);
+	double minus = force.totalElasticEnergy(1);
+	EXPECT_NEAR(expected, (plus - minus) / (2 * eps), 1e-6 * btMax(1., std::abs(expected)));
+}
+
+TEST_F(DeformableBlockPreconditioner, FrozenDampingOperatorsMatchWithDifferentRotations)
+{
+	body->m_tetraScratchesTn.resize(1);
+	body->m_tetraScratchesTn[0] = body->m_tetraScratches[0];
+	body->m_tetraScratchesTn[0].m_corotation = btMatrix3x3(btQuaternion(btVector3(3, 1, 2).normalized(), -.6));
+	Vectors x, expected, actual;
+	x.resize(4);
+	expected.resize(4);
+	actual.resize(4);
+	for (int n = 0; n < 4; ++n)
+		x[n] = btVector3(n - 2, n * n, 3 - n);
+	for (int flat = 0; flat < 2; ++flat)
+		for (int assemble = 0; assemble < 2; ++assemble)
+		for (int currentFlat = 0; currentFlat < 2; ++currentFlat)
+		{
+			body->m_tetraScratchesTn[0].m_J = flat ? .001 : 1.;
+			force.m_useAssembledImplicit = assemble != 0;
+			compareBlocksToOperator(.02, currentFlat != 0);
+			for (int n = 0; n < 4; ++n)
+			{
+				expected[n].setZero();
+				actual[n].setZero();
+			}
+			force.addScaledDampingForceDifferential(-.02, x, expected);
+			force.addScaledElasticForceDifferential(-.0004, x, expected);
+			force.prepareImplicitForceDifferential(.02);
+			force.addImplicitForceDifferential(.02, x, actual);
+			force.finishImplicitForceDifferential();
+			for (int n = 0; n < 4; ++n)
+				EXPECT_LT((actual[n] - expected[n]).length(), 1e-9);
+		}
+}
+
+TEST_F(DeformableBlockPreconditioner, PolarRotationIsProperForDegenerateTetrahedra)
+{
+	const btMatrix3x3 rotation(btQuaternion(btVector3(1, 2, 3).normalized(), 3.13));
+	for (btScalar stretch : {btScalar(1), btScalar(1e-8), btScalar(0), btScalar(-.1)})
+	{
+		const btMatrix3x3 f = rotation * btMatrix3x3(1, .3, 0, 0, .8, .1, 0, 0, stretch);
+		for (int n = 0; n < 4; ++n)
+			body->m_nodes[n].m_q = f * body->m_nodes[n].m_x;
+		body->updateDeformation();
+		const auto &r = body->m_tetraScratches[0].m_corotation;
+		EXPECT_NEAR(double(r.determinant()), 1., 1e-10);
+		const btMatrix3x3 metric = r.transpose() * r;
+		for (int i = 0; i < 3; ++i)
+			for (int j = 0; j < 3; ++j)
+				EXPECT_NEAR(double(metric[i][j]), i == j ? 1. : 0., 1e-10);
+	}
 }

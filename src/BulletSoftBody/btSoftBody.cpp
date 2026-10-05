@@ -3667,14 +3667,8 @@ void btSoftBody::initializeDmInverse()
 	}
 }
 
-static btScalar Dot4(const btVector4& a, const btVector4& b)
-{
-	return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-}
-
 void btSoftBody::updateDeformation()
 {
-	btQuaternion q;
 	for (int i = 0; i < m_tetras.size(); ++i)
 	{
 		btSoftBody::Tetra& t = m_tetras[i];
@@ -3693,20 +3687,11 @@ void btSoftBody::updateDeformation()
 		s.m_trace = C[0].getX() + C[1].getY() + C[2].getZ();
 		s.m_cofF = t.m_F.adjoint().transpose();
 
-		btVector3 a = t.m_n[0]->m_q;
-		btVector3 b = t.m_n[1]->m_q;
-		btVector3 c = t.m_n[2]->m_q;
-		btVector3 d = t.m_n[3]->m_q;
-		btVector4 q1(a[0], b[0], c[0], d[0]);
-		btVector4 q2(a[1], b[1], c[1], d[1]);
-		btVector4 q3(a[2], b[2], c[2], d[2]);
-		btMatrix3x3 B(Dot4(q1, t.m_P_inv[0]), Dot4(q1, t.m_P_inv[1]), Dot4(q1, t.m_P_inv[2]),
-					  Dot4(q2, t.m_P_inv[0]), Dot4(q2, t.m_P_inv[1]), Dot4(q2, t.m_P_inv[2]),
-					  Dot4(q3, t.m_P_inv[0]), Dot4(q3, t.m_P_inv[1]), Dot4(q3, t.m_P_inv[2]));
-		q.setRotation(btVector3(0, 0, 1), 0);
-		B.getRotation(q);
-		btMatrix3x3 Q(q);
-		s.m_corotation = Q;
+		// Corotated stress is an energy gradient only with the polar rotation of F.
+		btMatrix3x3 u, v;
+		btVector3 sigma;
+		singularValueDecomposition(s.m_F, u, sigma, v);
+		s.m_corotation = u * v.transpose();
 	}
 }
 
