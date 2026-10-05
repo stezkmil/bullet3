@@ -473,7 +473,8 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 			btDeformableDiagnostics::write("CONTACT_REFRESH_GUESS", "applied=%d nodes=%d", int(applied), m_coupledRefreshVelocity.size());
 			m_coupledRefreshVelocity.clear();
 		}
-		for (int iteration = 0; iteration < 20; ++iteration)
+		btDeformableContactConvergence convergence;
+		for (int iteration = 0; iteration < convergence.limit(); ++iteration)
 		{
 			m_coupledContactIterations = iteration + 1;
 			m_deformableBodySolver->solveDeformableConstraints(timeStep);
@@ -483,19 +484,41 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 				btDeformableDiagnostics::write("CONTACT_ABORT", "iteration=%d reason=invalid_predictor", iteration);
 				break;
 			}
-			const btScalar error = contact.updateMultipliers();
-			btDeformableDiagnostics::write("CONTACT_SOLVE", "iteration=%d contacts=%d error=%.9g newton_converged=%d normal_error=%.9g tangent_error=%.9g worst_normal=%d worst_tangent=%d",
+			contact.updateMultipliers();
+			const btScalar normalError = convergence.normalError(contact.lastNormalError);
+			const btScalar error = btMax(normalError, contact.lastTangentError);
+			btDeformableDiagnostics::write("CONTACT_SOLVE",
+				"iteration=%d contacts=%d error=%.9g newton_converged=%d normal_error=%.9g tangent_error=%.9g worst_normal=%d "
+				"worst_tangent=%d",
 				iteration, contact.contacts.size(), double(error), int(m_deformableBodySolver->m_lastSolveConverged),
 				double(contact.lastNormalError), double(contact.lastTangentError), contact.worstNormalContact, contact.worstTangentContact);
 			if (m_deformableBodySolver->m_lastSolveConverged && error <= btScalar(0.001))
-			{ m_coupledSolveConverged = true; break; }
+			{
+				m_coupledSolveConverged = true;
+				break;
+			}
+			const bool penaltyIncreased =
+				convergence.increaseNormalPenalty(iteration + 1, normalError, m_deformableBodySolver->m_lastSolveConverged);
+			if (penaltyIncreased)
+			{
+				// Multipliers remain physical impulses when the penalty changes.
+				for (int c = 0; c < contact.contacts.size(); ++c)
+					contact.contacts[c].rho *= btScalar(4);
+				btDeformableDiagnostics::write("CONTACT_PENALTY", "completed=%d scale=%d error=%.9g", iteration + 1,
+					convergence.penaltyScale(), double(contact.lastNormalError));
+			}
+			if (convergence.observe(iteration + 1, error, m_deformableBodySolver->m_lastSolveConverged, penaltyIncreased))
+				btDeformableDiagnostics::write(
+					"CONTACT_BUDGET", "completed=%d limit=%d error=%.9g", iteration + 1, convergence.limit(), double(error));
 		}
 		if (btDeformableDiagnostics::enabled())
 		{
 			m_deformableBodySolver->updateState();
 			for (int b = 0; b < m_softBodies.size(); ++b)
 			{
-				auto& body = *m_softBodies[b]; int worst = -1; btScalar minimum = btScalar(.3);
+				auto &body = *m_softBodies[b];
+				int worst = -1;
+				btScalar minimum = btScalar(.3);
 				for (int t = 0; t < body.m_tetras.size(); ++t)
 				{
 					const btScalar j = btDeformableVolumeBarrierForce::deformation(body.m_tetras[t]).determinant();

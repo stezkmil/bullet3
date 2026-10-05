@@ -2629,3 +2629,110 @@ TEST_F(DeformableBlockPreconditioner, PolarRotationIsProperForDegenerateTetrahed
 				EXPECT_NEAR(double(metric[i][j]), i == j ? 1. : 0., 1e-10);
 	}
 }
+
+TEST_F(DeformableBlockPreconditioner, ContactBudgetFinishesSlowMultiplierConvergence)
+{
+	btDeformableContactForce contact(.01);
+	btSoftBody::DeformableNodeNodeContact input = {};
+	input.m_normal = btVector3(1, 0, 0);
+	btSoftBody::ContactNode node = {&body->m_nodes[0], btMatrix3x3::getIdentity()};
+	input.m_surfaceNodes.push_back(node);
+	ASSERT_TRUE(contact.add(input));
+	auto &c = contact.contacts[0];
+	c.rho = .1;
+	btDeformableContactConvergence budget;
+	btScalar error = 1, errorAt20 = 0;
+	int iterations = 0;
+	while (iterations < budget.limit() && error > .001)
+	{
+		// Exact minimizer of the one-node inertial plus augmented-contact objective.
+		body->m_nodes[0].m_v = btVector3((-1 + c.normalImpulse) / (1 + c.rho), 0, 0);
+		error = contact.updateMultipliers();
+		++iterations;
+		if (iterations == 20)
+			errorAt20 = error;
+		budget.observe(iterations, error, true);
+	}
+	EXPECT_GT(errorAt20, .001);
+	EXPECT_GT(iterations, 20);
+	EXPECT_LT(iterations, 100);
+	EXPECT_LE(error, .001);
+	EXPECT_GE(c.normalImpulse, 0);
+	EXPECT_NEAR(double(body->m_nodes[0].m_v.x()), 0., .001);
+}
+TEST(ContactConvergence, StopsStagnatingOrUnconvergedSolvesAndBoundsWork)
+{
+	for (int mode = 0; mode < 4; ++mode)
+	{
+		btDeformableContactConvergence budget;
+		budget.observe(1, 1, true);
+		EXPECT_FALSE(budget.observe(20,
+			mode == 0	? 1
+			: mode == 1 ? .1
+			: mode == 2 ? SIMD_INFINITY
+						: std::numeric_limits<btScalar>::quiet_NaN(),
+			mode != 1));
+		EXPECT_EQ(20, budget.limit());
+	}
+	btDeformableContactConvergence budget;
+	budget.observe(1, 1, true);
+	btScalar error = 1;
+	for (int completed = 20; completed <= 100; completed += 20)
+	{
+		error *= .1;
+		budget.observe(completed, error, true);
+	}
+	EXPECT_EQ(100, budget.limit());
+}
+
+TEST(ContactConvergence, PenaltyGrowthRequiresStagnationAndConvergedInnerSolve)
+{
+	btDeformableContactConvergence progress;
+	EXPECT_FALSE(progress.increaseNormalPenalty(1, 1, true));
+	EXPECT_FALSE(progress.increaseNormalPenalty(5, .1, true));
+	EXPECT_FALSE(progress.increaseNormalPenalty(10, .1, false));
+	EXPECT_TRUE(progress.increaseNormalPenalty(15, .1, true));
+	EXPECT_EQ(4, progress.penaltyScale());
+	EXPECT_TRUE(progress.increaseNormalPenalty(20, .1, true));
+	EXPECT_TRUE(progress.increaseNormalPenalty(25, .1, true));
+	EXPECT_FALSE(progress.increaseNormalPenalty(30, .1, true));
+	EXPECT_EQ(64, progress.penaltyScale());
+	EXPECT_NEAR(double(progress.normalError(.001)), .064, 1e-12);
+	btDeformableContactConvergence accepted;
+	accepted.increaseNormalPenalty(1, .0001, true);
+	EXPECT_FALSE(accepted.increaseNormalPenalty(5, .0001, true));
+}
+
+TEST(NewtonReplay, DISABLED_AdaptiveCapturedContactSolve)
+{
+	const char *path = std::getenv("BULLET_NEWTON_REPLAY");
+	ASSERT_TRUE(path);
+	btDeformableNewtonSnapshot r;
+	ASSERT_TRUE(r.load(path));
+	btDeformableContactForce *c = nullptr;
+	for (int f = 0; f < r.solver.m_objective->m_lf.size(); ++f)
+		if (r.solver.m_objective->m_lf[f]->getForceType() == BT_CONTACT_FORCE)
+			c = static_cast<btDeformableContactForce *>(r.solver.m_objective->m_lf[f]);
+	ASSERT_TRUE(c);
+	btDeformableContactConvergence progress;
+	bool converged = false;
+	for (int k = 0; k < progress.limit(); ++k)
+	{
+		r.solver.solveDeformableConstraints(r.dt);
+		c->updateMultipliers();
+		const auto normalError = progress.normalError(c->lastNormalError);
+		const auto error = btMax(normalError, c->lastTangentError);
+		if (error <= .001 && r.solver.m_lastSolveConverged)
+		{
+			converged = true;
+			printf("ADAPTIVE_CAPTURE iterations=%d error=%.12g scale=%d\n", k + 1, double(error), progress.penaltyScale());
+			break;
+		}
+		const bool increase = progress.increaseNormalPenalty(k + 1, normalError, r.solver.m_lastSolveConverged);
+		if (increase)
+			for (int j = 0; j < c->contacts.size(); ++j)
+				c->contacts[j].rho *= 4;
+		progress.observe(k + 1, error, r.solver.m_lastSolveConverged, increase);
+	}
+	EXPECT_TRUE(converged);
+}

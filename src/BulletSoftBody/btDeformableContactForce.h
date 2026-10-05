@@ -4,6 +4,55 @@
 #include "btDeformableLagrangianForce.h"
 #include "btDeformableContactProjection.h"
 #include "btPreconditioner.h"
+#include <cmath>
+
+// Extend useful multiplier iterations before resorting to a smaller physical timestep.
+class btDeformableContactConvergence
+{
+	btScalar m_checkpointError = SIMD_INFINITY;
+	int m_limit = 20;
+	btScalar m_normalCheckpoint = SIMD_INFINITY;
+	int m_penaltyScale = 1;
+
+public:
+	int limit() const
+	{
+		return m_limit;
+	}
+	bool increaseNormalPenalty(int completed, btScalar error, bool newtonConverged)
+	{
+		if (completed == 1)
+			m_normalCheckpoint = error;
+		if (completed % 5 != 0)
+			return false;
+		const bool increase = newtonConverged && std::isfinite(double(error)) && std::isfinite(double(m_normalCheckpoint)) &&
+							  error > btScalar(.001) && error > m_normalCheckpoint * btScalar(.5) && m_penaltyScale < 64;
+		m_normalCheckpoint = error;
+		if (increase)
+			m_penaltyScale *= 4;
+		return increase;
+	}
+	int penaltyScale() const
+	{
+		return m_penaltyScale;
+	}
+	// Preserve the original impulse-to-velocity error scale after penalty growth.
+	btScalar normalError(btScalar error) const
+	{
+		return error * m_penaltyScale;
+	}
+	bool observe(int completed, btScalar error, bool newtonConverged, bool penaltyIncreased = false)
+	{
+		if (completed == 1)
+			m_checkpointError = error;
+		if (!std::isfinite(double(error)) || !std::isfinite(double(m_checkpointError)) || completed != m_limit || m_limit >= 100 ||
+			!newtonConverged || !(error >= 0 && (error < m_checkpointError * btScalar(.5) || penaltyIncreased)))
+			return false;
+		m_checkpointError = error;
+		m_limit += 20;
+		return true;
+	}
+};
 
 // Augmented contact impulses, solved together with elasticity. Geometry and
 // the friction radius stay fixed during each Newton solve.
