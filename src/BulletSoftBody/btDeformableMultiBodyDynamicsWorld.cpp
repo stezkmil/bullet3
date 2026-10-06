@@ -404,6 +404,8 @@ void btDeformableMultiBodyDynamicsWorld::integrateTransforms(btScalar timeStep)
 
 void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 {
+	m_contactWarmCandidate.clear();
+	m_contactCandidateDt = 0;
 	BT_PROFILE("btDeformableMultiBodyDynamicsWorld::solveConstraints");
 	// save v_{n+1}^* velocity after explicit forces
 	m_deformableBodySolver->backupVelocity();
@@ -466,6 +468,11 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 				btDeformableDiagnostics::write("CONTACT_SCALE", "contact=%d nodes=%d normal_rho=%.9g tangent_rho=%.9g",
 					c, contact.contacts[c].nodes.size(), double(contact.contacts[c].rho), double(contact.contacts[c].tangentRho));
 			addForce(&contact);
+		}
+		if (m_contactWarmStartEnabled)
+		{
+			const int matched = contact.warmStart(m_contactWarmStart, m_contactWarmDt);
+			btDeformableDiagnostics::write("CONTACT_WARM_START", "matched=%d contacts=%d", matched, contact.contacts.size());
 		}
 		m_coupledSolveConverged = false;
 		m_coupledContactIterations = 0;
@@ -553,6 +560,11 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 										body.getUserIndex(), worst, int(tet.m_n[k]-&body.m_nodes[0]), c, double(constraints[c].m_weights[n]), double(direction.x()), double(direction.y()), double(direction.z()));
 								}
 			}
+		}
+		if (m_coupledSolveConverged)
+		{
+			m_contactWarmCandidate = contact.contacts;
+			m_contactCandidateDt = timeStep;
 		}
 		if (contact.contacts.size()) removeForce(&contact);
 		if (barrier.materials.size()) removeForce(&barrier);
@@ -656,6 +668,7 @@ void btDeformableMultiBodyDynamicsWorld::solveContactConstraints()
 
 void btDeformableMultiBodyDynamicsWorld::addSoftBody(btSoftBody* body, int collisionFilterGroup, int collisionFilterMask)
 {
+	clearContactWarmStart();
 	m_coupledPreviousTimeStep = 0;
 	m_coupledStepFailed = false;
 	m_softBodies.push_back(body);
@@ -926,6 +939,7 @@ void btDeformableMultiBodyDynamicsWorld::removeSoftBodyForce(btSoftBody* psb)
 
 void btDeformableMultiBodyDynamicsWorld::removeSoftBody(btSoftBody* body)
 {
+	clearContactWarmStart();
 	m_coupledPreviousTimeStep = 0;
 	removeSoftBodyForce(body);
 	m_softBodies.remove(body);
@@ -936,6 +950,7 @@ void btDeformableMultiBodyDynamicsWorld::removeSoftBody(btSoftBody* body)
 
 void btDeformableMultiBodyDynamicsWorld::removeCollisionObject(btCollisionObject* collisionObject)
 {
+	clearContactWarmStart();
 	btSoftBody* body = btSoftBody::upcast(collisionObject);
 	if (body)
 		removeSoftBody(body);
@@ -945,7 +960,9 @@ void btDeformableMultiBodyDynamicsWorld::removeCollisionObject(btCollisionObject
 
 int btDeformableMultiBodyDynamicsWorld::stepSimulation(btScalar timeStep, int maxSubSteps, btScalar fixedTimeStep)
 {
-	if (m_coupledContact && m_coupledStepFailed) return 0;
+	const bool fixedStep = maxSubSteps > 0;
+	// Failure describes this call; a later call may have changed forces or geometry.
+	m_coupledStepFailed = false;
 	startProfiling(timeStep);
 
 	int numSimulationSubSteps = 0;
@@ -995,7 +1012,19 @@ int btDeformableMultiBodyDynamicsWorld::stepSimulation(btScalar timeStep, int ma
 		for (int i = 0; i < clampedSimulationSteps; i++)
 		{
 			internalSingleStepSimulation(fixedTimeStep);
-			if (m_coupledStepFailed) return i;
+			if (m_coupledStepFailed)
+			{
+				clearContactWarmStart();
+				// Discard this call's transient forces, as on a completed call.
+				for (int b = 0; b < m_softBodies.size(); ++b)
+					for (int n = 0; n < m_softBodies[b]->m_nodes.size(); ++n)
+						m_softBodies[b]->m_nodes[n].m_f.setZero();
+				clearForces();
+				// Fixed-step wall time is consumed, retaining only its fractional remainder.
+				// Physical time and callbacks advance only for completed substeps.
+				if (!fixedStep) m_localTime = 0;
+				return i;
+			}
 			synchronizeMotionStates();
 		}
 	}
@@ -1345,6 +1374,11 @@ void btDeformableMultiBodyDynamicsWorld::coupledSingleStepSimulation(btScalar ti
 			}
 			continue;
 		}
+		if (m_contactWarmStartEnabled)
+		{
+			m_contactWarmStart = m_contactWarmCandidate;
+			m_contactWarmDt = m_contactCandidateDt;
+		}
 		++accepted; remaining -= h;
 		// Last-safe positions remain useful to the collision detector, but are
 		// never applied to selected nodes in this path.
@@ -1368,6 +1402,7 @@ void btDeformableMultiBodyDynamicsWorld::coupledSingleStepSimulation(btScalar ti
 		m_coupledPreviousTimeStep = 0;
 		original.restore(m_softBodies); m_internalTime = originalTime;
 		refreshDeformableContacts(); m_coupledStepFailed = true;
+		clearContactWarmStart();
 		btDeformableDiagnostics::write("STEP_FAILED", "reason=%s attempts=%d accepted_discarded=%d rejected=%d remaining=%.9g",
 			failureReason, attempts, accepted, attempts - accepted, double(remaining));
 		return;

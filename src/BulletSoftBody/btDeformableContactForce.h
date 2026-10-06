@@ -64,6 +64,8 @@ public:
 		btAlignedObjectArray<btSoftBody::ContactNode> nodes;
 		btVector3 normal, tangentImpulse;
 		btScalar gap, friction, rho, tangentRho, normalImpulse;
+		const btCollisionObject* objects[2] = {nullptr, nullptr};
+		int parts[2] = {-1, -1}, triangles[2] = {-1, -1};
 	};
 	btAlignedObjectArray<Contact> contacts;
 	btScalar dt;
@@ -77,6 +79,12 @@ public:
 		if (c.m_surfaceInvalid) return false;
 		if (c.m_normal.length2() < SIMD_EPSILON) return false;
 		Contact v;
+		for (int side = 0; side < 2; ++side)
+		{
+			v.objects[side] = c.m_surfaceObjects[side];
+			v.parts[side] = c.m_surfaceParts[side];
+			v.triangles[side] = c.m_surfaceTriangles[side];
+		}
 		v.nodes = c.m_surfaceNodes;
 		if (!v.nodes.size())
 		{
@@ -118,6 +126,63 @@ public:
 		}
 		contacts.push_back(v);
 		return true;
+	}
+	// Seed only identified, nearby stencils; the usual solve and geometry checks remain authoritative.
+	int warmStart(const btAlignedObjectArray<Contact>& previous, btScalar previousDt)
+	{
+		if (!(previousDt > 0) || !(dt > 0)) return 0;
+		const btScalar ratio = dt / previousDt;
+		if (ratio < btScalar(.25) || ratio > btScalar(4)) return 0;
+		btAlignedObjectArray<int> used;
+		used.resize(previous.size(), 0);
+		int matched = 0;
+		for (int i = 0; i < contacts.size(); ++i)
+		{
+			Contact& c = contacts[i];
+			if (!c.objects[0] || !c.objects[1] || c.triangles[0] < 0 || c.triangles[1] < 0) continue;
+			int best = -1;
+			btScalar bestError = btScalar(1e-4);
+			for (int j = 0; j < previous.size(); ++j)
+			{
+				const Contact& old = previous[j];
+				if (used[j] || old.nodes.size() != c.nodes.size() || old.normal.dot(c.normal) < btScalar(.9999)) continue;
+				bool same = true;
+				for (int side = 0; side < 2; ++side) same = same && c.objects[side] == old.objects[side] && c.parts[side] == old.parts[side] && c.triangles[side] == old.triangles[side];
+				if (!same) continue;
+				btScalar error = 0;
+				for (int n = 0; n < c.nodes.size(); ++n)
+				{
+					bool found = false;
+					for (int k = 0; k < old.nodes.size(); ++k)
+						if (c.nodes[n].node == old.nodes[k].node)
+						{
+							const auto diff = c.nodes[n].jacobian - old.nodes[k].jacobian;
+							error += diff[0].length2() + diff[1].length2() + diff[2].length2();
+							found = true;
+							break;
+						}
+					if (!found)
+					{
+						same = false;
+						break;
+					}
+				}
+				if (same && error < bestError && std::isfinite(double(old.normalImpulse)) && std::isfinite(double(old.tangentImpulse.length2())))
+				{
+					best = j;
+					bestError = error;
+				}
+			}
+			if (best < 0) continue;
+			used[best] = 1;
+			const Contact& old = previous[best];
+			c.normalImpulse = btMax(btScalar(0), old.normalImpulse * ratio);
+			c.tangentImpulse = (old.tangentImpulse - c.normal * c.normal.dot(old.tangentImpulse)) * ratio;
+			const btScalar length = c.tangentImpulse.length(), radius = c.friction * c.normalImpulse;
+			if (length > radius && length > 0) c.tangentImpulse *= radius / length;
+			++matched;
+		}
+		return matched;
 	}
 	btVector3 velocity(const Contact& c, bool split = false) const
 	{

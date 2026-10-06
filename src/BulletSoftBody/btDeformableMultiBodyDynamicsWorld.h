@@ -24,6 +24,7 @@
 #include "btSoftBodyHelpers.h"
 #include "BulletCollision/CollisionDispatch/btSimulationIslandManager.h"
 #include <functional>
+#include "btDeformableContactForce.h"
 typedef btAlignedObjectArray<btSoftBody*> btSoftBodyArray;
 
 class btDeformableBodySolver;
@@ -51,6 +52,15 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_lineSearch;
 	bool m_useProjection;
 	bool m_coupledContact = false;
+	bool m_contactWarmStartEnabled = true;
+	btAlignedObjectArray<btDeformableContactForce::Contact> m_contactWarmStart, m_contactWarmCandidate;
+	btScalar m_contactWarmDt = 0, m_contactCandidateDt = 0;
+	void clearContactWarmStart()
+	{
+		m_contactWarmStart.clear();
+		m_contactWarmCandidate.clear();
+		m_contactWarmDt = m_contactCandidateDt = 0;
+	}
 	bool m_coupledStepFailed = false;
 	bool m_coupledSolveConverged = false;
 	int m_coupledContactIterations = 0;
@@ -88,10 +98,18 @@ public:
 	// Experimental: implicit deformables against static rigid geometry only.
 	void setCoupledContact(bool enabled)
 	{
+		clearContactWarmStart();
 		if (enabled != m_coupledContact || m_coupledStepFailed) m_coupledPreviousTimeStep = 0;
 		m_coupledContact = enabled; m_coupledStepFailed = false;
 		for (int b = 0; b < m_softBodies.size(); ++b) m_softBodies[b]->m_useSurfaceContact = enabled;
 	}
+	// Experimental initial guess; acceptance checks and contact penalties are unchanged.
+	void setContactWarmStart(bool enabled)
+	{
+		m_contactWarmStartEnabled = enabled;
+		clearContactWarmStart();
+	}
+	// Status of the last stepSimulation call; failure does not disable later calls.
 	bool hasCoupledStepFailed() const { return m_coupledStepFailed; }
 	void setAdaptiveCoupledTimesteps(bool enabled)
 	{
