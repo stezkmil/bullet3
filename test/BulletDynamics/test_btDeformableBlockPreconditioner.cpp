@@ -2612,6 +2612,19 @@ TEST_F(DeformableBlockPreconditioner, FrozenDampingOperatorsMatchWithDifferentRo
 		}
 }
 
+TEST(NewtonReplay, DISABLED_CorrectedCapturedSolve)
+{
+	const char* path = std::getenv("BULLET_NEWTON_REPLAY");
+	ASSERT_TRUE(path);
+	btDeformableNewtonSnapshot r;
+	ASSERT_TRUE(r.load(path));
+	r.solver.updateState();
+	r.solver.setMaxNewtonIterations(20);
+	r.solver.solveDeformableConstraints(r.dt);
+	printf("CORRECTED_CAPTURE converged=%d weighted=%.17g\n", int(r.solver.m_lastSolveConverged), double(r.weightedResidual()));
+	EXPECT_TRUE(r.solver.m_lastSolveConverged);
+}
+
 TEST_F(DeformableBlockPreconditioner, PolarRotationIsProperForDegenerateTetrahedra)
 {
 	const btMatrix3x3 rotation(btQuaternion(btVector3(1, 2, 3).normalized(), 3.13));
@@ -2735,4 +2748,251 @@ TEST(NewtonReplay, DISABLED_AdaptiveCapturedContactSolve)
 		progress.observe(k + 1, error, r.solver.m_lastSolveConverged, increase);
 	}
 	EXPECT_TRUE(converged);
+}
+
+TEST(CoupledContact, FailedCallCanRetryWithoutResetOrAccumulatedForces)
+{
+	for (int fixed = 0; fixed < 2; ++fixed)
+	{
+		btSoftBodyRigidBodyCollisionConfiguration config;
+		btCollisionDispatcher dispatcher(&config);
+		btDbvtBroadphase broadphase;
+		btDeformableBodySolver solver;
+		btDeformableMultiBodyConstraintSolver constraints;
+		constraints.setDeformableSolver(&solver);
+		ContactTestWorld world(&dispatcher, &broadphase, &constraints, &config, &solver);
+		world.setImplicit(true);
+		world.setCoupledContact(true);
+		world.setMaxNewtonIterations(8);
+		world.setGravity(btVector3(0, 0, 0));
+		world.setInternalTickCallback(countAccepted);
+		world.setLatencyMotionStateInterpolation(false);
+		const btVector3 pa(.005, 0, 0), pb(0, 0, 0);
+		const btScalar mass = 1, dt = .125;
+		btSoftBody a(&world.getWorldInfo(), 1, &pa, &mass), b(&world.getWorldInfo(), 1, &pb, &mass);
+		a.m_cfg.drag = b.m_cfg.drag = 0;
+		a.m_cfg.collisions = b.m_cfg.collisions = 0;
+		a.m_nodes[0].m_v = a.m_nodes[0].m_vn = btVector3(-.01, 0, 0);
+		b.m_nodes[0].m_v = b.m_nodes[0].m_vn = btVector3(0, 0, 0);
+		world.addSoftBody(&a);
+		world.addSoftBody(&b);
+		acceptedCallbacks = 0;
+		world.forceFailure = true;
+		for (int attempt = 0; attempt < 2; ++attempt)
+		{
+			a.addForce(btVector3(0, 1, 0), 0);
+			const int detections = world.detections;
+			EXPECT_EQ(0, world.stepSimulation(dt, fixed, dt));
+			EXPECT_TRUE(world.hasCoupledStepFailed());
+			EXPECT_GT(world.detections, detections);
+			EXPECT_EQ(pa, a.m_nodes[0].m_x);
+			EXPECT_EQ(pb, b.m_nodes[0].m_x);
+			EXPECT_EQ(btVector3(0, 0, 0), a.m_nodes[0].m_f);
+			EXPECT_EQ(0, acceptedCallbacks);
+			EXPECT_EQ(0, world.getLocalTime());
+		}
+		world.forceFailure = false;
+		btAlignedObjectArray<int> indices;
+		indices.push_back(0);
+		btDeformableNodalForce persistent(&a, indices, btVector3(0, 1, 0));
+		world.addForce(&persistent);
+		EXPECT_EQ(1, world.stepSimulation(dt, fixed, dt));
+		EXPECT_FALSE(world.hasCoupledStepFailed());
+		EXPECT_EQ(1, acceptedCallbacks);
+		EXPECT_NEAR(double(a.m_nodes[0].m_v.y()), double(dt), 1e-9);
+		EXPECT_NEAR(double(a.m_nodes[0].m_x.y()), double(dt * dt), 1e-9);
+		world.removeForce(&persistent);
+		world.removeSoftBody(&a);
+		world.removeSoftBody(&b);
+	}
+}
+
+TEST(CoupledContact, LaterFailedSubstepRetainsCompletedTimeAndFractionalRemainder)
+{
+	class FailAfterFirst : public btDeformableBodySolver
+	{
+	public:
+		bool fail = true;
+		void solveDeformableConstraints(btScalar dt) override
+		{
+			if (fail && acceptedCallbacks == 1)
+			{
+				m_lastSolveConverged = false;
+				return;
+			}
+			btDeformableBodySolver::solveDeformableConstraints(dt);
+		}
+	} solver;
+	btSoftBodyRigidBodyCollisionConfiguration config;
+	btCollisionDispatcher dispatcher(&config);
+	btDbvtBroadphase broadphase;
+	btDeformableMultiBodyConstraintSolver constraints;
+	constraints.setDeformableSolver(&solver);
+	ContactTestWorld world(&dispatcher, &broadphase, &constraints, &config, &solver);
+	world.setImplicit(true);
+	world.setCoupledContact(true);
+	world.setMaxNewtonIterations(5);
+	world.setGravity(btVector3(0, 0, 0));
+	world.setInternalTickCallback(countAccepted);
+	const btVector3 p(0, 0, 0);
+	const btScalar mass = 1, dt = .125;
+	btSoftBody body(&world.getWorldInfo(), 1, &p, &mass);
+	body.m_cfg.drag = 0;
+	body.m_cfg.collisions = 0;
+	body.m_nodes[0].m_v = body.m_nodes[0].m_vn = btVector3(1, 0, 0);
+	world.addSoftBody(&body);
+	acceptedCallbacks = 0;
+	EXPECT_EQ(1, world.stepSimulation(btScalar(2.5) * dt, 2, dt));
+	EXPECT_TRUE(world.hasCoupledStepFailed());
+	EXPECT_EQ(1, acceptedCallbacks);
+	EXPECT_NEAR(double(body.m_nodes[0].m_x.x()), double(dt), 1e-9);
+	EXPECT_EQ(btScalar(.5) * dt, world.getLocalTime());
+	solver.fail = false;
+	EXPECT_EQ(1, world.stepSimulation(btScalar(.5) * dt, 2, dt));
+	EXPECT_FALSE(world.hasCoupledStepFailed());
+	EXPECT_EQ(2, acceptedCallbacks);
+	EXPECT_NEAR(double(body.m_nodes[0].m_x.x()), double(2 * dt), 1e-9);
+	EXPECT_EQ(0, world.getLocalTime());
+	world.removeSoftBody(&body);
+}
+
+TEST_F(DeformableBlockPreconditioner, WarmStartScalesImpulsesAndProjectsFrictionWithoutChangingPenalty)
+{
+	btCollisionObject a, b;
+	btSoftBody::DeformableNodeNodeContact c = {};
+	c.m_normal = btVector3(1, 0, 0);
+	c.m_friction = .25;
+	c.m_surfaceObjects[0] = &a;
+	c.m_surfaceObjects[1] = &b;
+	c.m_surfaceTriangles[0] = 1;
+	c.m_surfaceTriangles[1] = 2;
+	btSoftBody::ContactNode n = {&body->m_nodes[0], btMatrix3x3::getIdentity()};
+	c.m_surfaceNodes.push_back(n);
+	btDeformableContactForce previous(.01), current(.02);
+	ASSERT_TRUE(previous.add(c));
+	previous.contacts[0].normalImpulse = 2;
+	previous.contacts[0].tangentImpulse = btVector3(0, 1, 0);
+	c.m_normal = btVector3(1, .001, 0).normalized();
+	ASSERT_TRUE(current.add(c));
+	const auto rho = current.contacts[0].rho;
+	EXPECT_EQ(1, current.warmStart(previous.contacts, previous.dt));
+	EXPECT_EQ(4, current.contacts[0].normalImpulse);
+	EXPECT_NEAR(0., double(current.contacts[0].normal.dot(current.contacts[0].tangentImpulse)), 1e-12);
+	EXPECT_NEAR(1., double(current.contacts[0].tangentImpulse.length()), 1e-12);
+	EXPECT_EQ(rho, current.contacts[0].rho);
+}
+TEST_F(DeformableBlockPreconditioner, WarmStartRejectsChangedIdentityStencilAndLargeTimestepRatio)
+{
+	btCollisionObject a, b;
+	btSoftBody::DeformableNodeNodeContact c = {};
+	c.m_normal = btVector3(1, 0, 0);
+	c.m_friction = .5;
+	c.m_surfaceObjects[0] = &a;
+	c.m_surfaceObjects[1] = &b;
+	c.m_surfaceTriangles[0] = 1;
+	c.m_surfaceTriangles[1] = 2;
+	btSoftBody::ContactNode n = {&body->m_nodes[0], btMatrix3x3::getIdentity()};
+	c.m_surfaceNodes.push_back(n);
+	btDeformableContactForce previous(.01);
+	ASSERT_TRUE(previous.add(c));
+	previous.contacts[0].normalImpulse = 2;
+	for (int mode = 0; mode < 4; ++mode)
+	{
+		auto changed = c;
+		if (mode == 0) changed.m_surfaceTriangles[0]++;
+		if (mode == 1) changed.m_surfaceNodes[0].node = &body->m_nodes[1];
+		if (mode == 2) changed.m_surfaceNodes[0].jacobian = changed.m_surfaceNodes[0].jacobian * .5;
+		btDeformableContactForce current(mode == 3 ? .1 : .01);
+		ASSERT_TRUE(current.add(changed));
+		EXPECT_EQ(0, current.warmStart(previous.contacts, previous.dt));
+		EXPECT_EQ(0, current.contacts[0].normalImpulse);
+	}
+	btDeformableContactForce current(.01);
+	ASSERT_TRUE(current.add(c));
+	c.m_surfaceNodes[0].jacobian = c.m_surfaceNodes[0].jacobian * 1.001;
+	ASSERT_TRUE(current.add(c));
+	ASSERT_EQ(2, current.contacts.size());
+	EXPECT_EQ(1, current.warmStart(previous.contacts, previous.dt));
+	EXPECT_EQ(2, current.contacts[0].normalImpulse);
+	EXPECT_EQ(0, current.contacts[1].normalImpulse);
+}
+
+TEST(CoupledContact, WarmStartHistoryIsDiscardedAfterFailedOuterStep)
+{
+	class ProbeSolver : public btDeformableBodySolver
+	{
+	public:
+		bool fail = false;
+		btScalar firstSeed = -1;
+		void solveDeformableConstraints(btScalar dt) override
+		{
+			if (firstSeed < 0)
+			{
+				firstSeed = 0;
+				for (int f = 0; f < m_objective->m_lf.size(); ++f)
+					if (m_objective->m_lf[f]->getForceType() == BT_CONTACT_FORCE)
+					{
+						auto* contact = static_cast<btDeformableContactForce*>(m_objective->m_lf[f]);
+						for (int c = 0; c < contact->contacts.size(); ++c) firstSeed += contact->contacts[c].normalImpulse;
+					}
+			}
+			if (fail)
+			{
+				m_lastSolveConverged = false;
+				return;
+			}
+			btDeformableBodySolver::solveDeformableConstraints(dt);
+		}
+	} solver;
+	class WarmWorld : public ContactTestWorld
+	{
+	public:
+		using ContactTestWorld::ContactTestWorld;
+		void performDiscreteCollisionDetection() override
+		{
+			auto& bodies = getSoftBodyArray();
+			if (bodies.size() != 2) return;
+			btSoftBody::DeformableNodeNodeContact c = {};
+			c.m_node0 = &bodies[0]->m_nodes[0];
+			c.m_node1 = &bodies[1]->m_nodes[0];
+			c.m_normal = btVector3(1, 0, 0);
+			c.m_offset = c.m_node0->m_x.x() - c.m_node1->m_x.x();
+			c.m_surfaceObjects[0] = bodies[0];
+			c.m_surfaceObjects[1] = bodies[1];
+			c.m_surfaceTriangles[0] = c.m_surfaceTriangles[1] = 0;
+			bodies[0]->m_nodeNodeContacts.push_back(c);
+		}
+	};
+	btSoftBodyRigidBodyCollisionConfiguration config;
+	btCollisionDispatcher dispatcher(&config);
+	btDbvtBroadphase broadphase;
+	btDeformableMultiBodyConstraintSolver constraints;
+	constraints.setDeformableSolver(&solver);
+	WarmWorld world(&dispatcher, &broadphase, &constraints, &config, &solver);
+	world.setImplicit(true);
+	world.setCoupledContact(true);
+	world.setMaxNewtonIterations(8);
+	world.setGravity(btVector3(0, 0, 0));
+	const btVector3 p(0, 0, 0);
+	const btScalar mass = 1, dt = .01;
+	btSoftBody a(&world.getWorldInfo(), 1, &p, &mass), b(&world.getWorldInfo(), 1, &p, &mass);
+	a.m_cfg.drag = b.m_cfg.drag = 0;
+	a.m_cfg.collisions = b.m_cfg.collisions = 0;
+	a.m_nodes[0].m_v = a.m_nodes[0].m_vn = btVector3(-1, 0, 0);
+	b.m_nodes[0].m_v = b.m_nodes[0].m_vn = btVector3(0, 0, 0);
+	world.addSoftBody(&a);
+	world.addSoftBody(&b);
+	ASSERT_EQ(1, world.stepSimulation(dt, 0));
+	const auto position = a.m_nodes[0].m_x;
+	solver.firstSeed = -1;
+	solver.fail = true;
+	EXPECT_EQ(0, world.stepSimulation(dt, 0));
+	EXPECT_GT(solver.firstSeed, 0);
+	EXPECT_EQ(position, a.m_nodes[0].m_x);
+	solver.firstSeed = -1;
+	solver.fail = false;
+	EXPECT_EQ(1, world.stepSimulation(dt, 0));
+	EXPECT_EQ(0, solver.firstSeed);
+	world.removeSoftBody(&a);
+	world.removeSoftBody(&b);
 }
