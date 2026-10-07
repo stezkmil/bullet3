@@ -36,6 +36,8 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #include "BulletDynamics/Featherstone/btMultiBodyConstraint.h"
 
 #include <memory>
+#include <functional>
+#include <utility>
 #include <vector>
 
 //#ifdef BT_USE_DOUBLE_PRECISION
@@ -1331,6 +1333,12 @@ public:
 	void setGravityFactor(btScalar gravFactor);
 	void setCacheBarycenter(bool cacheBarycenter);
 	void initializeDmInverse();
+	using DeformationRange = std::function<void(int, int)>;
+	// Configure between solves; dispatch must join all ranges before returning.
+	using DeformationDispatcher = std::function<void(int, const DeformationRange&)>;
+	DeformationDispatcher m_deformationDispatcher;
+	void setDeformationDispatcher(DeformationDispatcher dispatcher) { m_deformationDispatcher = std::move(dispatcher); }
+	void updateDeformationRange(int begin, int end);
 	void updateDeformation();
 	void advanceDeformation();
 	void applyForces();

@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
+#include <functional>
+#include <utility>
 #include "btDeformableOptimizationConfig.h"
 #include "btDeformableLagrangianForce.h"
 #include "LinearMath/btQuickprof.h"
@@ -315,31 +317,77 @@ public:
 			const btSoftBody* body = m_softBodies[b];
 			if (!body->isActive() || body->isStaticObject())
 				continue;
-			for (int t = 0; t < body->m_tetras.size(); ++t)
+			if (m_implicitAssemblyDispatcher && body->m_tetras.size() >= 512)
 			{
-				const btSoftBody::Tetra& tetra = body->m_tetras[t];
-				const btSoftBody::TetraScratch& scratch = body->m_tetraScratches[t];
-				btVector3 gradient[4];
-				gradient[1] = tetra.m_Dm_inverse[0];
-				gradient[2] = tetra.m_Dm_inverse[1];
-				gradient[3] = tetra.m_Dm_inverse[2];
-				gradient[0] = -(gradient[1] + gradient[2] + gradient[3]);
-				for (int n = 0; n < 4; ++n)
+				m_parallelDiagonalContributions.resize(body->m_tetras.size() * 4);
+				const ImplicitRowBody evaluate = [&](int begin, int end)
 				{
-					const btSoftBody::Node& node = *tetra.m_n[n];
-					if (node.m_frozen > 0 || node.m_im <= 0)
-						continue;
-					const btVector3 g = gradient[n];
-					const btVector3 rotated = scratch.m_corotation * g;
-					// Frozen-rotation tangent used by addScaledElasticForceDifferential:
-					// K_ii = V * (mu*|g|^2*I + (mu+lambda)*(R*g)*(R*g)^T).
-					const btMatrix3x3 isotropic = identity * (m_mu * g.length2());
-					const btMatrix3x3 elastic = isotropic + OuterProduct(rotated, rotated) * (m_mu + m_lambda);
-					// Match the unrotated damping differential for nearly flat elements.
-					const btVector3 dampingGradient =
-						dampingScratch(*body, t).m_J < TETRA_FLAT_THRESHOLD ? g : dampingScratch(*body, t).m_corotation * g;
-					const btMatrix3x3 damping = isotropic + OuterProduct(dampingGradient, dampingGradient) * (m_mu + m_lambda);
-					blocks[node.index] += (elastic * (dt * dt) + damping * (dt * m_damping_beta)) * tetra.m_element_measure;
+					for (int t = begin; t < end; ++t)
+					{
+						const btSoftBody::Tetra& tetra = body->m_tetras[t];
+						const btSoftBody::TetraScratch& scratch = body->m_tetraScratches[t];
+						btVector3 gradient[4];
+						gradient[1] = tetra.m_Dm_inverse[0];
+						gradient[2] = tetra.m_Dm_inverse[1];
+						gradient[3] = tetra.m_Dm_inverse[2];
+						gradient[0] = -(gradient[1] + gradient[2] + gradient[3]);
+						for (int n = 0; n < 4; ++n)
+						{
+							const btSoftBody::Node& node = *tetra.m_n[n];
+							if (node.m_frozen > 0 || node.m_im <= 0)
+								continue;
+							const btVector3 g = gradient[n];
+							const btVector3 rotated = scratch.m_corotation * g;
+							// Frozen-rotation tangent used by addScaledElasticForceDifferential:
+							// K_ii = V * (mu*|g|^2*I + (mu+lambda)*(R*g)*(R*g)^T).
+							const btMatrix3x3 isotropic = identity * (m_mu * g.length2());
+							const btMatrix3x3 elastic = isotropic + OuterProduct(rotated, rotated) * (m_mu + m_lambda);
+							// Match the unrotated damping differential for nearly flat elements.
+							const btVector3 dampingGradient =
+								dampingScratch(*body, t).m_J < TETRA_FLAT_THRESHOLD ? g : dampingScratch(*body, t).m_corotation * g;
+							const btMatrix3x3 damping = isotropic + OuterProduct(dampingGradient, dampingGradient) * (m_mu + m_lambda);
+							m_parallelDiagonalContributions[t * 4 + n] = elastic * (dt * dt) + damping * (dt * m_damping_beta);
+						}
+					}
+				};
+				m_implicitAssemblyDispatcher(body->m_tetras.size(), evaluate);
+				// Keep the final volume multiply in the ordered reduction to preserve rounding.
+				for (int t = 0; t < body->m_tetras.size(); ++t)
+					for (int n = 0; n < 4; ++n)
+					{
+						const btSoftBody::Node& node = *body->m_tetras[t].m_n[n];
+						if (node.m_frozen <= 0 && node.m_im > 0)
+							blocks[node.index] += m_parallelDiagonalContributions[t * 4 + n] * body->m_tetras[t].m_element_measure;
+					}
+			}
+			else
+			{
+				for (int t = 0; t < body->m_tetras.size(); ++t)
+				{
+					const btSoftBody::Tetra& tetra = body->m_tetras[t];
+					const btSoftBody::TetraScratch& scratch = body->m_tetraScratches[t];
+					btVector3 gradient[4];
+					gradient[1] = tetra.m_Dm_inverse[0];
+					gradient[2] = tetra.m_Dm_inverse[1];
+					gradient[3] = tetra.m_Dm_inverse[2];
+					gradient[0] = -(gradient[1] + gradient[2] + gradient[3]);
+					for (int n = 0; n < 4; ++n)
+					{
+						const btSoftBody::Node& node = *tetra.m_n[n];
+						if (node.m_frozen > 0 || node.m_im <= 0)
+							continue;
+						const btVector3 g = gradient[n];
+						const btVector3 rotated = scratch.m_corotation * g;
+						// Frozen-rotation tangent used by addScaledElasticForceDifferential:
+						// K_ii = V * (mu*|g|^2*I + (mu+lambda)*(R*g)*(R*g)^T).
+						const btMatrix3x3 isotropic = identity * (m_mu * g.length2());
+						const btMatrix3x3 elastic = isotropic + OuterProduct(rotated, rotated) * (m_mu + m_lambda);
+						// Match the unrotated damping differential for nearly flat elements.
+						const btVector3 dampingGradient =
+							dampingScratch(*body, t).m_J < TETRA_FLAT_THRESHOLD ? g : dampingScratch(*body, t).m_corotation * g;
+						const btMatrix3x3 damping = isotropic + OuterProduct(dampingGradient, dampingGradient) * (m_mu + m_lambda);
+						blocks[node.index] += (elastic * (dt * dt) + damping * (dt * m_damping_beta)) * tetra.m_element_measure;
+					}
 				}
 			}
 			for (int n = 0; n < body->m_nodes.size(); ++n)
@@ -471,6 +519,17 @@ public:
 		btMatrix3x3 value;
 	};
 	std::vector<ImplicitBlock> m_implicitBlocks;
+	std::vector<int> m_implicitRowStarts;
+	using ImplicitRowBody = std::function<void(int, int)>;
+	// Configure between solves. Dispatch must finish all row ranges before returning.
+	using ImplicitRowDispatcher = std::function<void(int, const ImplicitRowBody&)>;
+	ImplicitRowDispatcher m_implicitRowDispatcher;
+	void setImplicitRowDispatcher(ImplicitRowDispatcher dispatcher) { m_implicitRowDispatcher = std::move(dispatcher); }
+	// Configure between solves; all ranges must join before the dispatcher returns.
+	ImplicitRowDispatcher m_implicitAssemblyDispatcher;
+	void setImplicitAssemblyDispatcher(ImplicitRowDispatcher dispatcher) { m_implicitAssemblyDispatcher = std::move(dispatcher); }
+	std::vector<int> m_implicitContributionStarts, m_implicitContributions;
+	btAlignedObjectArray<btMatrix3x3> m_parallelDiagonalContributions;
 	std::vector<int> m_implicitTopology, m_implicitBlockSlots;
 	bool m_assembledImplicitReady = false;
 	bool m_implicitHasFallback = false;
@@ -566,32 +625,85 @@ public:
 						m_implicitBlocks.push_back({location.row, location.column, btMatrix3x3::getIdentity() * btScalar(0)});
 					m_implicitBlockSlots[location.slot] = static_cast<int>(m_implicitBlocks.size()) - 1;
 				}
+				m_implicitRowStarts.clear();
+				for (int i = 0; i < static_cast<int>(m_implicitBlocks.size()); ++i)
+					if (i == 0 || m_implicitBlocks[i].row != m_implicitBlocks[i - 1].row) m_implicitRowStarts.push_back(i);
+				m_implicitRowStarts.push_back(static_cast<int>(m_implicitBlocks.size()));
+				// Gather in original tetra/local-pair order, regardless of worker scheduling.
+				m_implicitContributionStarts.assign(m_implicitBlocks.size() + 1, 0);
+				for (int slot : m_implicitBlockSlots)
+					if (slot >= 0) m_implicitContributionStarts[slot + 1] += 2;
+				for (int i = 1; i < static_cast<int>(m_implicitContributionStarts.size()); ++i)
+					m_implicitContributionStarts[i] += m_implicitContributionStarts[i - 1];
+				m_implicitContributions.resize(m_implicitContributionStarts.back());
+				std::vector<int> cursor = m_implicitContributionStarts;
+				for (int t = 0; t < count; ++t)
+					for (int term = 0; term < 2; ++term)
+						for (int pair = 0; pair < 12; ++pair)
+						{
+							const int slot = t * 12 + pair;
+							if (m_implicitBlockSlots[slot] >= 0)
+								m_implicitContributions[cursor[m_implicitBlockSlots[slot]]++] = slot * 2 + term;
+						}
 				m_implicitTopology.swap(topology);
 			}
-			for (ImplicitBlock& block : m_implicitBlocks) block.value = btMatrix3x3::getIdentity() * btScalar(0);
-			for (int t = 0; t < count; ++t)
+			if (m_implicitAssemblyDispatcher && count >= 512 && m_implicitBlocks.size() >= 4096)
 			{
-				const CachedImplicitTetra& entry = m_implicitTetraCache[t];
-				if (!entry.usable) continue;
-				for (int term = 0; term < 2; ++term)
+				const ImplicitRowBody assemble = [&](int begin, int end)
 				{
-					const btMatrix3x3 &g = term ? entry.dampingGradients : entry.gradients;
-					const btScalar muWeight = term ? entry.dampingMuWeight : entry.muWeight;
-					const btScalar lambdaWeight = term ? entry.dampingLambdaWeight : entry.lambdaWeight;
-					const btVector3 gradients[4] = {-(g[0] + g[1] + g[2]), g[0], g[1], g[2]};
-					int slot = t * 12;
-					for (int a = 0; a < 4; ++a)
-						for (int b = 0; b < 4; ++b)
+					for (int i = begin; i < end; ++i)
+					{
+						btMatrix3x3& block = m_implicitBlocks[i].value;
+						block = btMatrix3x3::getIdentity() * btScalar(0);
+						for (int j = m_implicitContributionStarts[i]; j < m_implicitContributionStarts[i + 1]; ++j)
 						{
-							if (a == b)
-								continue;
-							btMatrix3x3 &block = m_implicitBlocks[m_implicitBlockSlots[slot++]].value;
-							const btScalar diagonal = muWeight * gradients[a].dot(gradients[b]);
-							for (int r = 0; r < 3; ++r)
-								for (int c = 0; c < 3; ++c)
-									block[r][c] += (r == c ? diagonal : btScalar(0)) + muWeight * gradients[b][r] * gradients[a][c] +
-												   lambdaWeight * gradients[a][r] * gradients[b][c];
+							const int contribution = m_implicitContributions[j], slot = contribution / 2, pair = slot % 12;
+							const int term = contribution % 2;
+							const int a = pair / 3, b = pair % 3 + (pair % 3 >= a ? 1 : 0);
+							const CachedImplicitTetra& entry = m_implicitTetraCache[slot / 12];
+							{
+								const btMatrix3x3& g = term ? entry.dampingGradients : entry.gradients;
+								const btScalar muWeight = term ? entry.dampingMuWeight : entry.muWeight;
+								const btScalar lambdaWeight = term ? entry.dampingLambdaWeight : entry.lambdaWeight;
+								const btVector3 gradients[4] = {-(g[0] + g[1] + g[2]), g[0], g[1], g[2]};
+								const btScalar diagonal = muWeight * gradients[a].dot(gradients[b]);
+								for (int r = 0; r < 3; ++r)
+									for (int c = 0; c < 3; ++c)
+										block[r][c] += (r == c ? diagonal : btScalar(0)) + muWeight * gradients[b][r] * gradients[a][c] +
+													   lambdaWeight * gradients[a][r] * gradients[b][c];
+							}
 						}
+					}
+				};
+				m_implicitAssemblyDispatcher(static_cast<int>(m_implicitBlocks.size()), assemble);
+			}
+			else
+			{
+				for (ImplicitBlock& block : m_implicitBlocks) block.value = btMatrix3x3::getIdentity() * btScalar(0);
+				for (int t = 0; t < count; ++t)
+				{
+					const CachedImplicitTetra& entry = m_implicitTetraCache[t];
+					if (!entry.usable) continue;
+					for (int term = 0; term < 2; ++term)
+					{
+						const btMatrix3x3& g = term ? entry.dampingGradients : entry.gradients;
+						const btScalar muWeight = term ? entry.dampingMuWeight : entry.muWeight;
+						const btScalar lambdaWeight = term ? entry.dampingLambdaWeight : entry.lambdaWeight;
+						const btVector3 gradients[4] = {-(g[0] + g[1] + g[2]), g[0], g[1], g[2]};
+						int slot = t * 12;
+						for (int a = 0; a < 4; ++a)
+							for (int b = 0; b < 4; ++b)
+							{
+								if (a == b)
+									continue;
+								btMatrix3x3& block = m_implicitBlocks[m_implicitBlockSlots[slot++]].value;
+								const btScalar diagonal = muWeight * gradients[a].dot(gradients[b]);
+								for (int r = 0; r < 3; ++r)
+									for (int c = 0; c < 3; ++c)
+										block[r][c] += (r == c ? diagonal : btScalar(0)) + muWeight * gradients[b][r] * gradients[a][c] +
+													   lambdaWeight * gradients[a][r] * gradients[b][c];
+							}
+					}
 				}
 			}
 			m_assembledImplicitReady = true;
@@ -613,9 +725,26 @@ public:
 		const bool useCache = m_implicitCacheReady && dt == m_implicitCacheDt;
 		const bool assembled = useCache && m_assembledImplicitReady;
 		if (assembled)
-			for (const ImplicitBlock& block : m_implicitBlocks)
-				// Relative displacements preserve rigid translation without diagonal cancellation.
-				df[block.row] += block.value * (dx[block.column] - dx[block.row]);
+		{
+			// Small or aliased products stay serial; parallel ranges own whole output rows.
+			if (&dx != &df && m_implicitRowDispatcher && m_implicitRowStarts.size() > 256 && m_implicitBlocks.size() >= 4096)
+			{
+				const ImplicitRowBody applyRows = [&](int begin, int end)
+				{
+					for (int row = begin; row < end; ++row)
+						for (int i = m_implicitRowStarts[row]; i < m_implicitRowStarts[row + 1]; ++i)
+						{
+							const ImplicitBlock& block = m_implicitBlocks[i];
+							df[block.row] += block.value * (dx[block.column] - dx[block.row]);
+						}
+				};
+				m_implicitRowDispatcher(static_cast<int>(m_implicitRowStarts.size()) - 1, applyRows);
+			}
+			else
+				for (const ImplicitBlock& block : m_implicitBlocks)
+					// Relative displacements preserve rigid translation without diagonal cancellation.
+					df[block.row] += block.value * (dx[block.column] - dx[block.row]);
+		}
 		const btScalar dampingScale = -dt * m_damping_beta;
 		const btScalar elasticScale = -dt * dt;
 		int numNodes = getNumNodes();

@@ -134,9 +134,21 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			updateState();
 			if (barrier && !barrier->admissible())
 			{
-				m_lastSolveInvalidPredictor = true;
-				diagnosticExit = "volume_predictor_invalid";
-				break;
+				bool repaired = false;
+				if (i == 0)
+				{
+					TVStack stationary;
+					stationary.resize(m_numNodes);
+					for (int n = 0; n < m_numNodes; ++n) stationary[n] = -m_objective->m_nodes[n]->m_splitv;
+					// Change only the trial guess; inertia still uses the incoming velocity.
+					repaired = setImplicitVelocityGuess(stationary);
+				}
+				if (!repaired)
+				{
+					m_lastSolveInvalidPredictor = true;
+					diagnosticExit = "volume_predictor_invalid";
+					break;
+				}
 			}
 			// add the inertia term in the residual
 			int counter = 0;
@@ -182,8 +194,8 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			{
 				const bool linearRecoveryBefore = m_implicitRecoveryUsed;
 				btScalar inner_product;
-				if (barrier) { computeStep(m_ddv, m_residual); inner_product = m_cg.dot(m_residual, m_ddv); }
-				else inner_product = computeDescentStep(m_ddv, m_residual);
+				if (barrier) { computeStep(m_ddv, m_residual, m_contactWeightedTarget > 0); inner_product = m_cg.dot(m_residual, m_ddv); }
+				else inner_product = computeDescentStep(m_ddv, m_residual, false, m_contactWeightedTarget > 0);
 				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
 				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
 				const bool accurateLinearStep = !m_useProjection &&
@@ -309,7 +321,7 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			}
 			else
 			{
-				computeStep(m_ddv, m_residual);
+				computeStep(m_ddv, m_residual, m_contactWeightedTarget > 0);
 				const btScalar stepNorm = m_objective->computeNorm(m_ddv);
 				const btScalar relativeStepTolerance = m_newtonTolerance * btMax(btScalar(1), m_objective->computeNorm(m_dv));
 				const bool accurateLinearStep = !m_useProjection &&
@@ -406,7 +418,7 @@ void btDeformableBodySolver::updateEnergy(btScalar scale)
 	updateState();
 }
 
-btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose)
+btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose, bool preconditionerReady)
 {
 	btScalar inner_product = 0;
 	if (m_useProjection)
@@ -420,7 +432,7 @@ btScalar btDeformableBodySolver::computeDescentStep(TVStack& ddv, const TVStack&
 		TVStack rhs, x;
 		m_objective->addLagrangeMultiplierRHS(residual, m_dv, rhs);
 		m_objective->addLagrangeMultiplier(ddv, x);
-		solveImplicitKKT(x, rhs);
+		solveImplicitKKT(x, rhs, preconditionerReady);
 		for (int i = 0; i < ddv.size(); ++i)
 		{
 			ddv[i] = x[i];
@@ -562,10 +574,12 @@ void btDeformableBodySolver::measureImplicitLinearResidual(const TVStack& x, con
 	m_lastStationarityResidual = std::isfinite((double)stationaritySquared) ? btSqrt(stationaritySquared) : SIMD_INFINITY;
 }
 
-void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
+void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs, bool preconditionerReady)
 {
 	ImplicitOperatorCacheScope cacheScope(*m_objective);
-	m_objective->m_preconditioner->reinitialize(true);
+	// The weighted residual just built these blocks at this exact Newton state.
+	// Reuse is local to this correction, never across state or multiplier updates.
+	if (!preconditionerReady) m_objective->m_preconditioner->reinitialize(true);
 	const bool translation = m_objective->setupTranslationCorrection();
 	m_objective->correctTranslation(x, rhs);
 	// Keep the first Newton correction cheap. Later corrections retain Krylov
@@ -574,7 +588,8 @@ void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 	const bool continued = m_newtonIteration > 0 && (constrained || translation || m_contactWeightedTarget > 0);
 	const int linearBudget = continued ? (constrained ? 2400 : 1200) : kMaxConjugateGradientIterations;
 	const btScalar physicalTarget = continued && m_contactWeightedTarget == 0 ? btScalar(0.5) * m_newtonTolerance : btScalar(0);
-	const int iterations = m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, !continued, true, linearBudget, physicalTarget, btScalar(.5) * m_contactWeightedTarget);
+	// Do not solve a changing contact linearization to final accuracy far from equilibrium.
+	const int iterations = m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, !continued, true, linearBudget, physicalTarget, btScalar(.5) * m_contactWeightedTarget, m_contactWeightedTarget > 0 ? btScalar(.01) : btScalar(0));
 	btDeformableDiagnostics::write("KRYLOV_SOLVE", "newton=%d iterations=%d budget=%d initial=%.9g final=%.9g target=%.9g stagnated=%d",
 		m_newtonIteration, iterations, linearBudget, double(m_cr.getInitialResidual()), double(m_cr.getFinalResidual()),
 		double(m_cr.getTargetResidual()), int(m_cr.getStagnated()));
@@ -595,7 +610,7 @@ void btDeformableBodySolver::solveImplicitKKT(TVStack& x, const TVStack& rhs)
 	m_objective->m_translationCorrection = false;
 }
 
-void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
+void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual, bool preconditionerReady)
 {
 	if (m_useProjection)
 	{
@@ -607,7 +622,7 @@ void btDeformableBodySolver::computeStep(TVStack& ddv, const TVStack& residual)
 		TVStack rhs, x;
 		m_objective->addLagrangeMultiplierRHS(residual, m_dv, rhs);
 		m_objective->addLagrangeMultiplier(ddv, x);
-		solveImplicitKKT(x, rhs);
+		solveImplicitKKT(x, rhs, preconditionerReady);
 		for (int i = 0; i < ddv.size(); ++i)
 		{
 			ddv[i] = x[i];

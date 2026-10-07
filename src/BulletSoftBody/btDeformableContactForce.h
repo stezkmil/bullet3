@@ -94,6 +94,24 @@ public:
 			btSoftBody::ContactNode b = {c.m_node1, btMatrix3x3::getIdentity() * btScalar(-1)};
 			v.nodes.push_back(a); v.nodes.push_back(b);
 		}
+		// Surface interpolation can leave roundoff-sized entries at triangle vertices.
+		// Canonical stencils let equivalent supports share one multiplier.
+		btScalar largestEntry = 0;
+		for (int n = 0; n < v.nodes.size(); ++n)
+		{
+			const auto& j = v.nodes[n].jacobian;
+			largestEntry = btMax(largestEntry, j[0].length2() + j[1].length2() + j[2].length2());
+		}
+		int kept = 0;
+		for (int n = 0; n < v.nodes.size(); ++n)
+		{
+			const auto& j = v.nodes[n].jacobian;
+			if (j[0].length2() + j[1].length2() + j[2].length2() <= largestEntry * btScalar(1e-24)) continue;
+			if (kept != n) v.nodes[kept] = v.nodes[n];
+			++kept;
+		}
+		v.nodes.resize(kept);
+		if (!kept) return false;
 		v.normal = c.m_normal.normalized();
 		v.gap = c.m_offset; v.friction = btMax(btScalar(0), c.m_friction);
 		btScalar inverseMass = 0;

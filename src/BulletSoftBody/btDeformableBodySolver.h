@@ -50,7 +50,7 @@ protected:
 	btScalar m_lastLinearConstraintResidual = SIMD_INFINITY;
 	btScalar m_lastStationarityResidual = SIMD_INFINITY;
 	btScalar m_contactWeightedTarget = 0;
-	void solveImplicitKKT(TVStack& x, const TVStack& rhs);
+	void solveImplicitKKT(TVStack& x, const TVStack& rhs, bool preconditionerReady = false);
 	void measureImplicitLinearResidual(const TVStack& x, const TVStack& rhs);
 	btScalar implicitConstraintError(const TVStack& dv) const;
 	bool m_implicit;                                               // use implicit scheme if true, explicit scheme if false
@@ -118,11 +118,11 @@ public:
 	bool updateNodes();
 
 	// calculate the change in dv resulting from the momentum solve
-	void computeStep(TVStack& ddv, const TVStack& residual);
+	void computeStep(TVStack& ddv, const TVStack& residual, bool preconditionerReady = false);
 	bool setImplicitVelocityGuess(const btAlignedObjectArray<btVector3>& velocity);
 
 	// calculate the change in dv resulting from the momentum solve when line search is turned on
-	btScalar computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose = false);
+	btScalar computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose = false, bool preconditionerReady = false);
 
 	virtual void copySoftBodyToVertexBuffer(const btSoftBody* const softBody, btVertexBufferDescriptor* vertexBuffer) {}
 

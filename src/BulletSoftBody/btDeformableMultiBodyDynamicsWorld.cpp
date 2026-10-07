@@ -469,9 +469,11 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 					c, contact.contacts[c].nodes.size(), double(contact.contacts[c].rho), double(contact.contacts[c].tangentRho));
 			addForce(&contact);
 		}
+		const auto coldContacts = contact.contacts;
+		int matched = 0;
 		if (m_contactWarmStartEnabled)
 		{
-			const int matched = contact.warmStart(m_contactWarmStart, m_contactWarmDt);
+			matched = contact.warmStart(m_contactWarmStart, m_contactWarmDt);
 			btDeformableDiagnostics::write("CONTACT_WARM_START", "matched=%d contacts=%d", matched, contact.contacts.size());
 		}
 		m_coupledSolveConverged = false;
@@ -482,43 +484,54 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 			btDeformableDiagnostics::write("CONTACT_REFRESH_GUESS", "applied=%d nodes=%d", int(applied), m_coupledRefreshVelocity.size());
 			m_coupledRefreshVelocity.clear();
 		}
-		btDeformableContactConvergence convergence;
-		for (int iteration = 0; iteration < convergence.limit(); ++iteration)
+		// A stale multiplier guess must not force a smaller physical timestep.
+		// Retry once without history, retaining all final convergence checks.
+		for (int contactPass = 0; contactPass < (matched ? 2 : 1); ++contactPass)
 		{
-			m_coupledContactIterations = iteration + 1;
-			m_deformableBodySolver->solveDeformableConstraints(timeStep);
-			// Multiplier updates cannot repair an inadmissible starting geometry.
-			if (m_deformableBodySolver->m_lastSolveInvalidPredictor)
+			if (contactPass)
 			{
-				btDeformableDiagnostics::write("CONTACT_ABORT", "iteration=%d reason=invalid_predictor", iteration);
-				break;
+				contact.contacts = coldContacts;
+				btDeformableDiagnostics::write("CONTACT_RESTART_COLD", "matched=%d", matched);
 			}
-			contact.updateMultipliers();
-			const btScalar normalError = convergence.normalError(contact.lastNormalError);
-			const btScalar error = btMax(normalError, contact.lastTangentError);
-			btDeformableDiagnostics::write("CONTACT_SOLVE",
-				"iteration=%d contacts=%d error=%.9g newton_converged=%d normal_error=%.9g tangent_error=%.9g worst_normal=%d "
-				"worst_tangent=%d",
-				iteration, contact.contacts.size(), double(error), int(m_deformableBodySolver->m_lastSolveConverged),
-				double(contact.lastNormalError), double(contact.lastTangentError), contact.worstNormalContact, contact.worstTangentContact);
-			if (m_deformableBodySolver->m_lastSolveConverged && error <= btScalar(0.001))
+			btDeformableContactConvergence convergence;
+			for (int iteration = 0; iteration < convergence.limit(); ++iteration)
 			{
-				m_coupledSolveConverged = true;
-				break;
+				++m_coupledContactIterations;
+				m_deformableBodySolver->solveDeformableConstraints(timeStep);
+				// Multiplier updates cannot repair an inadmissible starting geometry.
+				if (m_deformableBodySolver->m_lastSolveInvalidPredictor)
+				{
+					btDeformableDiagnostics::write("CONTACT_ABORT", "iteration=%d reason=invalid_predictor", iteration);
+					break;
+				}
+				contact.updateMultipliers();
+				const btScalar normalError = convergence.normalError(contact.lastNormalError);
+				const btScalar error = btMax(normalError, contact.lastTangentError);
+				btDeformableDiagnostics::write("CONTACT_SOLVE",
+					"iteration=%d contacts=%d error=%.9g newton_converged=%d normal_error=%.9g tangent_error=%.9g worst_normal=%d "
+					"worst_tangent=%d",
+					iteration, contact.contacts.size(), double(error), int(m_deformableBodySolver->m_lastSolveConverged),
+					double(contact.lastNormalError), double(contact.lastTangentError), contact.worstNormalContact, contact.worstTangentContact);
+				if (m_deformableBodySolver->m_lastSolveConverged && error <= btScalar(0.001))
+				{
+					m_coupledSolveConverged = true;
+					break;
+				}
+				const bool penaltyIncreased =
+					convergence.increaseNormalPenalty(iteration + 1, normalError, m_deformableBodySolver->m_lastSolveConverged);
+				if (penaltyIncreased)
+				{
+					// Multipliers remain physical impulses when the penalty changes.
+					for (int c = 0; c < contact.contacts.size(); ++c)
+						contact.contacts[c].rho *= btScalar(4);
+					btDeformableDiagnostics::write("CONTACT_PENALTY", "completed=%d scale=%d error=%.9g", iteration + 1,
+						convergence.penaltyScale(), double(contact.lastNormalError));
+				}
+				if (convergence.observe(iteration + 1, error, m_deformableBodySolver->m_lastSolveConverged, penaltyIncreased))
+					btDeformableDiagnostics::write(
+						"CONTACT_BUDGET", "completed=%d limit=%d error=%.9g", iteration + 1, convergence.limit(), double(error));
 			}
-			const bool penaltyIncreased =
-				convergence.increaseNormalPenalty(iteration + 1, normalError, m_deformableBodySolver->m_lastSolveConverged);
-			if (penaltyIncreased)
-			{
-				// Multipliers remain physical impulses when the penalty changes.
-				for (int c = 0; c < contact.contacts.size(); ++c)
-					contact.contacts[c].rho *= btScalar(4);
-				btDeformableDiagnostics::write("CONTACT_PENALTY", "completed=%d scale=%d error=%.9g", iteration + 1,
-					convergence.penaltyScale(), double(contact.lastNormalError));
-			}
-			if (convergence.observe(iteration + 1, error, m_deformableBodySolver->m_lastSolveConverged, penaltyIncreased))
-				btDeformableDiagnostics::write(
-					"CONTACT_BUDGET", "completed=%d limit=%d error=%.9g", iteration + 1, convergence.limit(), double(error));
+			if (m_coupledSolveConverged || m_deformableBodySolver->m_lastSolveInvalidPredictor) break;
 		}
 		if (btDeformableDiagnostics::enabled())
 		{

@@ -3669,7 +3669,17 @@ void btSoftBody::initializeDmInverse()
 
 void btSoftBody::updateDeformation()
 {
-	for (int i = 0; i < m_tetras.size(); ++i)
+	// Each tetra owns its deformation and scratch; node positions remain read-only.
+	if (m_deformationDispatcher && m_tetras.size() >= 512)
+		m_deformationDispatcher(m_tetras.size(), [this](int begin, int end)
+								{ updateDeformationRange(begin, end); });
+	else
+		updateDeformationRange(0, m_tetras.size());
+}
+
+void btSoftBody::updateDeformationRange(int begin, int end)
+{
+	for (int i = begin; i < end; ++i)
 	{
 		btSoftBody::Tetra& t = m_tetras[i];
 		btVector3 c1 = t.m_n[1]->m_q - t.m_n[0]->m_q;
@@ -4615,7 +4625,9 @@ void btSoftBody::skinSoftStaticCollisionHandler(const btCollisionObjectWrapper* 
 	contact.m_surfaceObjects[0] = this; contact.m_surfaceObjects[1] = contact.m_colObj;
 	contact.m_surfaceParts[0] = softPart; contact.m_surfaceParts[1] = rigidPart;
 	contact.m_surfaceTriangles[0] = softTriangle; contact.m_surfaceTriangles[1] = rigidTriangle;
-	contact.m_normal = outwardNormal;
+	const btScalar normalSquared = outwardNormal.length2();
+	const bool validNormal = std::isfinite(double(normalSquared)) && normalSquared > SIMD_EPSILON;
+	contact.m_normal = validNormal ? outwardNormal / btSqrt(normalSquared) : btVector3(0, 0, 0);
 	contact.m_friction = m_cfg.kDF * contact.m_colObj->getFriction();
 	contact.m_contact_point_impulse_magnitude = impulse;
 	btScalar softMargin = 0, rigidMargin = 0;
@@ -4634,11 +4646,58 @@ void btSoftBody::skinSoftStaticCollisionHandler(const btCollisionObjectWrapper* 
 		else supported = false;
 	}
 	else supported = false;
-	contact.m_surfaceInvalid = !supported || penetrating || !std::isfinite(double(geometricDistance)) || geometricDistance < 0
+	contact.m_surfaceInvalid = !validNormal || !supported || penetrating || !std::isfinite(double(geometricDistance)) || geometricDistance < 0
 		|| !appendSurfaceContactNodes(softPart, softTriangle, softPoint, 1, contact.m_surfaceNodes, &softMargin);
 	contact.m_offset = geometricDistance - (softMargin + rigidMargin) * btScalar(39.0 / 40.0);
 	// A static obstacle contributes no velocity DOFs; only the soft surface stencil enters J.
 	m_nodeNodeContacts.push_back(contact);
+	if (contact.m_surfaceInvalid || getCollisionShape()->getShapeType() != GIMPACT_SHAPE_PROXYTYPE) return;
+	const auto* rigidShape = static_cast<const btGImpactShapeInterface*>(shape);
+	const btGImpactMeshShapePart* rigidPiece = nullptr;
+	if (rigidShape->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE)
+		rigidPiece = static_cast<const btGImpactMeshShape*>(rigidShape)->getMeshPart(rigidPart);
+	else if (rigidShape->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE_PART)
+		rigidPiece = static_cast<const btGImpactMeshShapePart*>(rigidShape);
+	if (!rigidPiece) return;
+	rigidPiece->lockChildShapes();
+	const auto* rigidManager = rigidPiece->getPrimitiveManager();
+	btPrimitiveTriangle rigidFace;
+	const bool validRigid = rigidTriangle >= 0 && rigidTriangle < rigidManager->get_primitive_count();
+	if (validRigid) rigidManager->get_primitive_triangle(rigidTriangle, rigidFace, false);
+	rigidPiece->unlockChildShapes();
+	if (!validRigid) return;
+	rigidFace.applyTransform(rigidWrap->getWorldTransform());
+	btVector3 planeNormal = (rigidFace.m_vertices[1]-rigidFace.m_vertices[0]).cross(rigidFace.m_vertices[2]-rigidFace.m_vertices[0]);
+	if (planeNormal.length2() <= SIMD_EPSILON) return;
+	planeNormal.normalize();
+	if (btFabs(planeNormal.dot(contact.m_normal)) < btScalar(.999999)) return;
+	const auto* softShape = static_cast<const btGImpactShapeInterface*>(getCollisionShape());
+	if (softShape->getGImpactShapeType() != CONST_GIMPACT_TRIMESH_SHAPE) return;
+	const auto* softPiece = static_cast<const btGImpactMeshShape*>(softShape)->getMeshPart(softPart);
+	softPiece->lockChildShapes();
+	btPrimitiveTriangle softFace;
+	softPiece->getPrimitiveManager()->get_primitive_triangle(softTriangle, softFace, false);
+	softPiece->unlockChildShapes();
+	softFace.applyTransform(getWorldTransform());
+	// A closest point alone lets a broad face pivot into the same static plane.
+	// Add its in-triangle vertex supports, each with its own geometric clearance.
+	for (int v = 0; v < 3; ++v)
+	{
+		const auto& point = softFace.m_vertices[v];
+		const btScalar distance = contact.m_normal.dot(point - rigidFace.m_vertices[0]);
+		if (distance < 0 || distance > softMargin + rigidMargin) continue;
+		const btVector3 projection = point - contact.m_normal * distance;
+		btVector3 bary;
+		getBarycentric(projection, rigidFace.m_vertices[0], rigidFace.m_vertices[1], rigidFace.m_vertices[2], bary);
+		const btScalar edgeTolerance = btScalar(64) * SIMD_EPSILON;
+		if (!(bary.x() >= -edgeTolerance && bary.y() >= -edgeTolerance && bary.z() >= -edgeTolerance)) continue;
+		DeformableNodeNodeContact support = contact;
+		support.m_surfaceNodes.clear();
+		support.m_contact_point_impulse_magnitude = nullptr;
+		if (!appendSurfaceContactNodes(softPart, softTriangle, point, 1, support.m_surfaceNodes)) continue;
+		support.m_offset = distance - (softMargin + rigidMargin) * btScalar(39.0 / 40.0);
+		m_nodeNodeContacts.push_back(support);
+	}
 }
 
 bool btSoftBody::appendSurfaceContactNodes(int part, int triangle, const btVector3& point, btScalar sign, btAlignedObjectArray<ContactNode>& nodes, btScalar* surfaceMargin)

@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <thread>
 #include "BulletSoftBody/btDeformableContactForce.h"
 #include "BulletSoftBody/btDeformableContactRefresh.h"
 #include "BulletSoftBody/btDeformableEnergyChange.h"
@@ -85,6 +86,29 @@ TEST_F(DeformableBlockPreconditioner, FinalContactNewtonUpdateIsChecked)
 	solver.m_objective->m_lf.push_back(&contact);solver.setupDeformableSolve(true);
 	solver.solveDeformableConstraints(.01);EXPECT_TRUE(solver.m_lastSolveConverged);
 	EXPECT_NEAR(double(body->m_nodes[0].m_v.x()),.1/11,1e-9);
+	solver.m_objective->m_lf.clear();
+}
+
+TEST_F(DeformableBlockPreconditioner, PreparedBlocksMatchFreshSolveAndDoNotPersist)
+{
+	btDeformableBodySolver solver;
+	solver.setImplicit(true); solver.m_useProjection = false;
+	solver.reinitialize(bodies, btScalar(.01));
+	solver.setPreconditioner(btDeformableBackwardEulerObjective::KKT_preconditioner);
+	solver.m_objective->m_lf.push_back(&force);
+	solver.setupDeformableSolve(true); solver.updateState();
+	Vectors rhs, reused, fresh, changed;
+	rhs.resize(4, btVector3(0,0,0)); rhs[0] = btVector3(1,-2,3); rhs[1] = -rhs[0];
+	reused.resize(4, btVector3(0,0,0)); fresh = reused; changed = reused;
+	solver.m_objective->m_preconditioner->reinitialize(true);
+	solver.computeStep(reused, rhs, true);
+	solver.computeStep(fresh, rhs);
+	for (int n = 0; n < 4; ++n) EXPECT_LT((reused[n]-fresh[n]).length(), btScalar(1e-8));
+	force.setYoungsModulus(btScalar(1e7));
+	solver.computeStep(changed, rhs);
+	btScalar difference = 0;
+	for (int n = 0; n < 4; ++n) difference += (changed[n]-fresh[n]).length2();
+	EXPECT_GT(difference, btScalar(1e-6));
 	solver.m_objective->m_lf.clear();
 }
 
@@ -1481,7 +1505,7 @@ TEST(CoupledContact, SuccessfulSubstepsDoNotExhaustRetryBudget)
 	}
 }
 
-TEST(ContactRefresh, ReplacesWholePatchWithoutMergingDistinctPoints)
+TEST(ContactRefresh, ReplacesChangedPlaneWithoutMergingDistinctPoints)
 {
 	btCollisionObject a,b,c;
 	btSoftBody::DeformableNodeNodeContact old={};
@@ -1874,7 +1898,7 @@ TEST(CoupledContact, GeometricGapIgnoresLegacyPushbackAndRejectsRecoveryDistance
     btCollisionObjectWrapper wrapper(nullptr,&rigidShape,&rigid,identity,-1,-1);
     a.m_nodeNodeContacts.clear();
     a.skinSoftStaticCollisionHandler(&wrapper,0,0,0,0,point,btVector3(0,0,1),btScalar(.15),false,nullptr);
-    ASSERT_EQ(1,a.m_nodeNodeContacts.size());const auto& fixedContact=a.m_nodeNodeContacts[0];
+    ASSERT_EQ(4,a.m_nodeNodeContacts.size());const auto& fixedContact=a.m_nodeNodeContacts[0];
     EXPECT_EQ(&a,fixedContact.m_surfaceObjects[0]);EXPECT_EQ(&rigid,fixedContact.m_surfaceObjects[1]);
     EXPECT_EQ(0,fixedContact.m_surfaceTriangles[0]);EXPECT_EQ(0,fixedContact.m_surfaceTriangles[1]);
     ASSERT_FALSE(fixedContact.m_surfaceInvalid);EXPECT_EQ(nullptr,fixedContact.m_node1);EXPECT_EQ(0,a.m_nodeRigidContacts.size());
@@ -1884,10 +1908,13 @@ TEST(CoupledContact, GeometricGapIgnoresLegacyPushbackAndRejectsRecoveryDistance
     EXPECT_LT((translation-btVector3(1,2,3)).length(),btScalar(1e-10));
     btDeformableContactForce fixedForce(btScalar(.0002));EXPECT_TRUE(fixedForce.add(fixedContact));
     a.skinSoftStaticCollisionHandler(&wrapper,0,0,0,0,point,btVector3(0,0,1),btScalar(.15),true,nullptr);
-    EXPECT_TRUE(a.m_nodeNodeContacts[1].m_surfaceInvalid);
+    EXPECT_TRUE(a.m_nodeNodeContacts[4].m_surfaceInvalid);
     rigid.setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
     a.skinSoftStaticCollisionHandler(&wrapper,0,0,0,0,point,btVector3(0,0,1),btScalar(.15),false,nullptr);
-    EXPECT_TRUE(a.m_nodeNodeContacts[2].m_surfaceInvalid);
+    EXPECT_TRUE(a.m_nodeNodeContacts[5].m_surfaceInvalid);
+    rigid.setCollisionFlags(btCollisionObject::CF_STATIC_OBJECT);
+    a.skinSoftStaticCollisionHandler(&wrapper,0,0,0,0,point,btVector3(0,0,0),btScalar(.15),false,nullptr);
+    EXPECT_TRUE(a.m_nodeNodeContacts[6].m_surfaceInvalid);
 
 }
 
@@ -2993,6 +3020,573 @@ TEST(CoupledContact, WarmStartHistoryIsDiscardedAfterFailedOuterStep)
 	solver.fail = false;
 	EXPECT_EQ(1, world.stepSimulation(dt, 0));
 	EXPECT_EQ(0, solver.firstSeed);
+	world.removeSoftBody(&a);
+	world.removeSoftBody(&b);
+}
+
+TEST(ElasticOperator, ParallelRowsMatchSerialAcrossRebuildAndFallback)
+{
+	const int side = 8, stride = side + 1;
+	const int count = stride * stride * stride;
+	std::vector<btVector3> positions;
+	std::vector<btScalar> masses(count, 1);
+	for (int z = 0; z <= side; ++z)
+		for (int y = 0; y <= side; ++y)
+			for (int x = 0; x <= side; ++x)
+				positions.push_back(btVector3(x, y, z));
+	btSoftBodyWorldInfo info;
+	btSoftBody body(&info, count, positions.data(), masses.data());
+	const int permutations[6][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
+	const int offsets[3] = {1, stride, stride * stride};
+	for (int z = 0; z < side; ++z)
+		for (int y = 0; y < side; ++y)
+			for (int x = 0; x < side; ++x)
+			{
+				const int a = x + stride * y + stride * stride * z;
+				for (const auto& permutation : permutations)
+				{
+					int b = a + offsets[permutation[0]], c = b + offsets[permutation[1]];
+					body.appendTetra(a, b, c, a + 1 + stride + stride * stride);
+				}
+			}
+	body.initializeDmInverse();
+	body.m_tetraScratches.resize(body.m_tetras.size());
+	for (int t = 0; t < body.m_tetras.size(); ++t)
+	{
+		body.m_tetras[t].m_element_measure = btFabs(body.m_tetras[t].m_element_measure);
+		body.m_tetraScratches[t].m_J = 1;
+		body.m_tetraScratches[t].m_corotation = btMatrix3x3(btQuaternion(btVector3(1, 2, 3).normalized(), btScalar(.1 * (t % 7))));
+	}
+	btDeformableLinearElasticityForce force(1e6, 2e6, btScalar(.01), btScalar(.01));
+	force.addSoftBody(&body);
+	Vectors input, output, reference;
+	input.resize(count);
+	output.resize(count);
+	reference.resize(count);
+	for (int n = 0; n < count; ++n)
+	{
+		body.m_nodes[n].index = n;
+		input[n] = btVector3(btScalar(n % 13) / 13, btScalar(n % 17) / 17, btScalar(n % 23) / 23);
+	}
+	const btScalar dt = btScalar(.0002);
+	force.m_useAssembledImplicit = true;
+	for (int state = 0; state < 4; ++state)
+	{
+		for (int n = 0; n < count; ++n) body.m_nodes[n].index = state == 1 ? count - 1 - n : n;
+		for (int t = 0; t < body.m_tetras.size(); ++t) body.m_tetraScratches[t].m_J = state == 2 && t % 19 == 0 ? btScalar(.001) : btScalar(1);
+		if (state == 3) body.setActivationState(ISLAND_SLEEPING);
+		force.prepareImplicitForceDifferential(dt);
+		force.setImplicitRowDispatcher({});
+		for (int n = 0; n < count; ++n) reference[n] = btVector3(1, 2, 3);
+		force.addImplicitForceDifferential(dt, input, reference);
+		for (int workers : {1, 2, 4, 8})
+		{
+			int calls = 0;
+			force.setImplicitRowDispatcher([&](int rows, const btDeformableLinearElasticityForce::ImplicitRowBody& work)
+										   {
+				++calls;
+				std::vector<std::thread> threads;
+				for (int w = 0; w < workers; ++w)
+					threads.emplace_back([&,w]() { work(rows*w/workers, rows*(w+1)/workers); });
+				for (auto& thread : threads) thread.join(); });
+			for (int n = 0; n < count; ++n) output[n] = btVector3(1, 2, 3);
+			force.addImplicitForceDifferential(dt, input, output);
+			EXPECT_EQ(state == 3 ? 0 : 1, calls);
+			for (int n = 0; n < count; ++n) EXPECT_EQ(reference[n], output[n]);
+		}
+		const btScalar aliasDt = btScalar(1e-8);
+		force.prepareImplicitForceDifferential(aliasDt);
+		force.setImplicitRowDispatcher({});
+		reference = input;
+		force.addImplicitForceDifferential(aliasDt, reference, reference);
+		force.setImplicitRowDispatcher([](int, const btDeformableLinearElasticityForce::ImplicitRowBody&)
+									   { ADD_FAILURE() << "Aliased product dispatched"; });
+		output = input;
+		force.addImplicitForceDifferential(aliasDt, output, output);
+		for (int n = 0; n < count; ++n) EXPECT_EQ(reference[n], output[n]);
+
+		force.finishImplicitForceDifferential();
+	}
+}
+
+TEST_F(DeformableBlockPreconditioner, SmallAssembledProductDoesNotDispatch)
+{
+	force.m_useAssembledImplicit = true;
+	force.setDamping(0, 0);
+	force.setImplicitRowDispatcher([](int, const btDeformableLinearElasticityForce::ImplicitRowBody&)
+								   { ADD_FAILURE() << "Small product dispatched"; });
+	force.prepareImplicitForceDifferential(.01);
+	Vectors input, output;
+	input.resize(4, btVector3(1, 2, 3));
+	output.resize(4, btVector3(0, 0, 0));
+	force.addImplicitForceDifferential(.01, input, output);
+	for (int i = 0; i < 4; ++i) EXPECT_EQ(btVector3(0, 0, 0), output[i]);
+	force.finishImplicitForceDifferential();
+}
+
+TEST_F(DeformableBlockPreconditioner, ParallelDeformationMatchesSerialAndJoinsBeforeAdvance)
+{
+	for (int t = 1; t < 769; ++t) body->appendTetra(0, 1, 2, 3);
+	body->initializeDmInverse();
+	body->m_tetraScratches.resize(769);
+	body->m_tetraScratchesTn.resize(769);
+	for (int state = 0; state < 5; ++state)
+	{
+		btMatrix3x3 transform(btQuaternion(btVector3(1, 2, 3).normalized(), btScalar(.73)));
+		if (state == 1) transform = btMatrix3x3(1, 0, 0, 0, 1, 0, 0, 0, 0);
+		if (state == 2) transform = btMatrix3x3(-1, 0, 0, 0, 1, 0, 0, 0, 1);
+		if (state == 3) transform = btMatrix3x3::getIdentity() * btScalar(0);
+		if (state == 4) transform = btMatrix3x3(1, .2, 0, 0, .7, 0, 0, 0, 1e-12);
+		for (int n = 0; n < 4; ++n) body->m_nodes[n].m_q = transform * body->m_nodes[n].m_x;
+		body->setDeformationDispatcher({});
+		body->updateDeformation();
+		const auto expected = body->m_tetraScratches;
+		for (int workers : {1, 2, 4, 8})
+		{
+			int calls = 0;
+			body->setDeformationDispatcher([&](int count, const btSoftBody::DeformationRange& work)
+										   {
+				++calls;
+				std::vector<std::thread> threads;
+				for (int w = 0; w < workers; ++w)
+					threads.emplace_back([&,w]() { work(count*w/workers, count*(w+1)/workers); });
+				for (auto& thread : threads) thread.join(); });
+			for (int t = 0; t < 769; ++t) body->m_tetraScratches[t].m_J = -123;
+			body->advanceDeformation();
+			EXPECT_EQ(1, calls);
+			for (int t = 0; t < 769; ++t)
+			{
+				const auto& actual = body->m_tetraScratches[t];
+				EXPECT_EQ(expected[t].m_J, actual.m_J);
+				EXPECT_EQ(expected[t].m_trace, actual.m_trace);
+				EXPECT_EQ(expected[t].m_J, body->m_tetraScratchesTn[t].m_J);
+				for (int r = 0; r < 3; ++r)
+				{
+					EXPECT_EQ(expected[t].m_F[r], actual.m_F[r]);
+					EXPECT_EQ(expected[t].m_F[r], body->m_tetras[t].m_F[r]);
+					EXPECT_EQ(expected[t].m_cofF[r], actual.m_cofF[r]);
+					EXPECT_EQ(expected[t].m_corotation[r], actual.m_corotation[r]);
+					EXPECT_EQ(expected[t].m_corotation[r], body->m_tetraScratchesTn[t].m_corotation[r]);
+				}
+			}
+		}
+	}
+	body->setDeformationDispatcher({});
+}
+
+TEST_F(DeformableBlockPreconditioner, SmallDeformationUpdateStaysSerial)
+{
+	body->setDeformationDispatcher([](int, const btSoftBody::DeformationRange&)
+								   { ADD_FAILURE() << "Small body dispatched"; });
+	body->updateDeformation();
+	EXPECT_TRUE(std::isfinite(double(body->m_tetraScratches[0].m_J)));
+	body->m_tetras.clear();
+	body->updateDeformation();
+}
+
+TEST(ElasticOperator, ParallelAssemblyMatchesSerialAcrossRebuildAndFallback)
+{
+	const int side = 8, stride = side + 1;
+	const int count = stride * stride * stride;
+	std::vector<btVector3> positions;
+	std::vector<btScalar> masses(count, 1);
+	for (int z = 0; z <= side; ++z)
+		for (int y = 0; y <= side; ++y)
+			for (int x = 0; x <= side; ++x)
+				positions.push_back(btVector3(x, y, z));
+	btSoftBodyWorldInfo info;
+	btSoftBody body(&info, count, positions.data(), masses.data());
+	const int permutations[6][3] = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
+	const int offsets[3] = {1, stride, stride * stride};
+	for (int z = 0; z < side; ++z)
+		for (int y = 0; y < side; ++y)
+			for (int x = 0; x < side; ++x)
+			{
+				const int a = x + stride * y + stride * stride * z;
+				for (const auto& permutation : permutations)
+				{
+					int b = a + offsets[permutation[0]], c = b + offsets[permutation[1]];
+					body.appendTetra(a, b, c, a + 1 + stride + stride * stride);
+				}
+			}
+	body.initializeDmInverse();
+	body.m_tetraScratches.resize(body.m_tetras.size());
+	body.m_tetraScratchesTn.resize(body.m_tetras.size());
+	for (int t = 0; t < body.m_tetras.size(); ++t)
+	{
+		body.m_tetras[t].m_element_measure = btFabs(body.m_tetras[t].m_element_measure);
+		body.m_tetraScratches[t].m_J = 1;
+		body.m_tetraScratches[t].m_corotation = btMatrix3x3(btQuaternion(btVector3(1, 2, 3).normalized(), btScalar(.1 * (t % 7))));
+		body.m_tetraScratchesTn[t].m_J = t % 17 == 0 ? btScalar(.001) : btScalar(1);
+		body.m_tetraScratchesTn[t].m_corotation = btMatrix3x3(btQuaternion(btVector3(3, 1, 2).normalized(), btScalar(.07 * (t % 11))));
+	}
+	btDeformableLinearElasticityForce force(1e6, 2e6, btScalar(.01), btScalar(.01));
+	force.addSoftBody(&body);
+	Vectors input, output, reference;
+	input.resize(count);
+	output.resize(count);
+	reference.resize(count);
+	for (int n = 0; n < count; ++n)
+	{
+		body.m_nodes[n].index = n;
+		input[n] = btVector3(btScalar(n % 13) / 13, btScalar(n % 17) / 17, btScalar(n % 23) / 23);
+	}
+	const btScalar dt = btScalar(.0002);
+	force.m_useAssembledImplicit = true;
+	for (int state = 0; state < 4; ++state)
+	{
+		for (int n = 0; n < count; ++n) body.m_nodes[n].index = state == 1 ? count - 1 - n : n;
+		for (int t = 0; t < body.m_tetras.size(); ++t) body.m_tetraScratches[t].m_J = state == 2 && t % 19 == 0 ? btScalar(.001) : btScalar(1);
+		if (state == 3) body.setActivationState(ISLAND_SLEEPING);
+		force.setImplicitAssemblyDispatcher({});
+		force.prepareImplicitForceDifferential(dt);
+		const auto serialBlocks = force.m_implicitBlocks;
+		btAlignedObjectArray<btMatrix3x3> diagonalReference, diagonalParallel;
+		diagonalReference.resize(count, btMatrix3x3::getIdentity());
+		for (int n = 0; n < count; ++n)
+		{
+			body.m_nodes[n].m_im = n % 11 == 0 ? 0 : 1;
+			body.m_nodes[n].m_frozen = n % 13 == 0 ? 1 : 0;
+		}
+		force.addImplicitForceDifferentialBlocks(dt, diagonalReference);
+		for (int n = 0; n < count; ++n) reference[n] = btVector3(1, 2, 3);
+		force.addImplicitForceDifferential(dt, input, reference);
+		for (int workers : {1, 2, 4, 8, 31, 32})
+		{
+			int calls = 0;
+			force.setImplicitAssemblyDispatcher([&](int rows, const btDeformableLinearElasticityForce::ImplicitRowBody& work)
+												{
+				++calls;
+				std::vector<std::thread> threads;
+				for (int w = 0; w < workers; ++w)
+					threads.emplace_back([&,w]() { work(rows*w/workers, rows*(w+1)/workers); });
+				for (auto& thread : threads) thread.join(); });
+			force.prepareImplicitForceDifferential(dt);
+			ASSERT_EQ(serialBlocks.size(), force.m_implicitBlocks.size());
+			for (int i = 0; i < static_cast<int>(serialBlocks.size()); ++i)
+				for (int r = 0; r < 3; ++r) EXPECT_EQ(serialBlocks[i].value[r], force.m_implicitBlocks[i].value[r]);
+			for (int n = 0; n < count; ++n) output[n] = btVector3(1, 2, 3);
+			force.addImplicitForceDifferential(dt, input, output);
+			EXPECT_EQ(state == 3 ? 0 : 1, calls);
+			diagonalParallel.resize(count);
+			for (int n = 0; n < count; ++n) diagonalParallel[n] = btMatrix3x3::getIdentity();
+			force.addImplicitForceDifferentialBlocks(dt, diagonalParallel);
+			EXPECT_EQ(state == 3 ? 0 : 2, calls);
+			for (int n = 0; n < count; ++n)
+				for (int r = 0; r < 3; ++r) EXPECT_EQ(diagonalReference[n][r], diagonalParallel[n][r]);
+			for (int n = 0; n < count; ++n) EXPECT_EQ(reference[n], output[n]);
+		}
+		force.finishImplicitForceDifferential();
+	}
+}
+
+TEST_F(DeformableBlockPreconditioner, SmallAssemblyDoesNotDispatch)
+{
+	force.setImplicitAssemblyDispatcher([](int, const btDeformableLinearElasticityForce::ImplicitRowBody&)
+										{ ADD_FAILURE() << "Small assembly dispatched"; });
+	force.m_useAssembledImplicit = true;
+	force.prepareImplicitForceDifferential(btScalar(.0002));
+	EXPECT_TRUE(force.m_assembledImplicitReady);
+	force.finishImplicitForceDifferential();
+	force.m_useAssembledImplicit = false;
+	force.prepareImplicitForceDifferential(btScalar(.0002));
+	EXPECT_FALSE(force.m_assembledImplicitReady);
+	force.finishImplicitForceDifferential();
+}
+
+TEST(ContactRefresh, PreservesCoplanarSupportIncludingStricterEquivalentStencil)
+{
+	btCollisionObject a, b;
+	btSoftBody::Node nodes[2] = {};
+	btSoftBody::DeformableNodeNodeContact old = {};
+	old.m_surfaceObjects[0] = &a;
+	old.m_surfaceObjects[1] = &b;
+	old.m_surfaceParts[0] = old.m_surfaceParts[1] = 0;
+	old.m_surfaceTriangles[0] = old.m_surfaceTriangles[1] = 0;
+	old.m_normal = btVector3(0, 0, 1);
+	old.m_offset = btScalar(-.1);
+	old.m_surfaceNodes.push_back({&nodes[0], btMatrix3x3::getIdentity()});
+	auto fresh = old;
+	fresh.m_surfaceNodes[0].node = &nodes[1];
+	btAlignedObjectArray<btSoftBody::DeformableNodeNodeContact> current, updated;
+	current.push_back(old);
+	updated.push_back(fresh);
+	EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+	ASSERT_EQ(1, current.size());
+	EXPECT_EQ(&nodes[0], current[0].m_surfaceNodes[0].node);
+	// Same nodes with different interpolation weights still provide distinct support.
+	updated[0] = old;
+	updated[0].m_surfaceNodes[0].jacobian = updated[0].m_surfaceNodes[0].jacobian * btScalar(.5);
+	EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+	updated[0] = old;
+	updated[0].m_offset = btScalar(.2);
+	EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+	btDeformableContactForce force(btScalar(.002));
+	EXPECT_TRUE(force.add(current[0]));
+	EXPECT_TRUE(force.add(updated[0]));
+	ASSERT_EQ(1, force.contacts.size());
+	EXPECT_EQ(btScalar(-.1), force.contacts[0].gap);
+	updated[0].m_surfaceObjects[0] = &b;
+	updated[0].m_surfaceObjects[1] = &a;
+	updated[0].m_normal *= -1;
+	updated[0].m_surfaceNodes[0].jacobian = updated[0].m_surfaceNodes[0].jacobian * btScalar(-1);
+	EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+	updated[0].m_surfaceInvalid = true;
+	EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+}
+
+TEST(ContactRefresh, CompatibleSupportSurvivesMixedNormalsInEitherOrder)
+{
+	btCollisionObject a, b;
+	btSoftBody::DeformableNodeNodeContact old = {};
+	old.m_surfaceObjects[0] = &a;
+	old.m_surfaceObjects[1] = &b;
+	old.m_surfaceParts[0] = old.m_surfaceParts[1] = 0;
+	old.m_surfaceTriangles[0] = old.m_surfaceTriangles[1] = 0;
+	old.m_normal = btVector3(0, 0, 1);
+	auto rotated = old;
+	rotated.m_normal = btVector3(1, 0, 0);
+	for (int order = 0; order < 2; ++order)
+	{
+		btAlignedObjectArray<btSoftBody::DeformableNodeNodeContact> current, updated;
+		current.push_back(old);
+		updated.push_back(order ? old : rotated);
+		updated.push_back(order ? rotated : old);
+		EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+		ASSERT_EQ(1, current.size());
+	}
+}
+
+TEST(ContactRefresh, ReversedSelfContactKeepsCompatibleSupport)
+{
+	btCollisionObject body;
+	btSoftBody::DeformableNodeNodeContact old = {};
+	old.m_surfaceObjects[0] = old.m_surfaceObjects[1] = &body;
+	old.m_surfaceParts[0] = old.m_surfaceParts[1] = 0;
+	old.m_surfaceTriangles[0] = 3;
+	old.m_surfaceTriangles[1] = 7;
+	old.m_normal = btVector3(0, 0, 1);
+	auto reversed = old;
+	reversed.m_surfaceTriangles[0] = 7;
+	reversed.m_surfaceTriangles[1] = 3;
+	reversed.m_normal *= -1;
+	btAlignedObjectArray<btSoftBody::DeformableNodeNodeContact> current, updated;
+	current.push_back(old);
+	updated.push_back(reversed);
+	EXPECT_EQ(0, btRemoveRefreshedContactPatches(current, updated));
+	ASSERT_EQ(1, current.size());
+}
+
+TEST(CoupledContact, FeasiblePredictorPreservesIncomingMomentum)
+{
+    btSoftBodyWorldInfo info;
+    const btVector3 p[] = {btVector3(0,0,0),btVector3(1,0,0),btVector3(0,1,0),btVector3(0,0,1)};
+    const btScalar masses[] = {btScalar(.001),btScalar(.001),btScalar(.001),btScalar(.001)};
+    btSoftBody body(&info,4,p,masses);
+    body.appendTetra(0,1,2,3);body.initializeDmInverse();
+    body.m_tetraScratches.resize(1);body.m_tetraScratchesTn.resize(1);
+    for(int n=0;n<4;++n)body.m_nodes[n].m_v=body.m_nodes[n].m_vn=btVector3(0,0,0);
+    const btVector3 incoming(0,0,-12);
+    body.m_nodes[3].m_v=body.m_nodes[3].m_vn=incoming;
+    body.updateDeformation();
+    btDeformableLinearElasticityForce elastic;
+    elastic.setYoungsModulus(100);elastic.setPoissonRatio(btScalar(.4));elastic.setDamping(0,0);elastic.addSoftBody(&body);
+    btDeformableVolumeBarrierForce barrier;
+    btDeformableVolumeBarrierForce::Material material={&body,btScalar(100/.6)};barrier.materials.push_back(material);
+    btAlignedObjectArray<btSoftBody*> bodies;bodies.push_back(&body);
+    btDeformableBodySolver solver;solver.setImplicit(true);solver.setLineSearch(true);solver.m_useProjection=false;
+    solver.setMaxNewtonIterations(50);solver.setNewtonTolerance(btScalar(1e-6));
+    const btScalar dt=btScalar(.1);
+    solver.reinitialize(bodies,dt);solver.setPreconditioner(btDeformableBackwardEulerObjective::KKT_preconditioner);
+    solver.m_objective->m_lf.push_back(&elastic);solver.m_objective->m_lf.push_back(&barrier);
+    solver.setupDeformableSolve(true);solver.updateState();
+    ASSERT_FALSE(barrier.admissible());
+    btDeformableDiagnostics::StepScope diagnostic(&solver,0,dt);
+    solver.solveDeformableConstraints(dt);solver.updateState();
+    EXPECT_TRUE(solver.m_lastSolveConverged);EXPECT_FALSE(solver.m_lastSolveInvalidPredictor);EXPECT_TRUE(barrier.admissible());
+    Vectors balance;balance.resize(4,btVector3(0,0,0));elastic.addScaledForces(dt,balance);barrier.addScaledForces(dt,balance);
+    balance[3]-=(body.m_nodes[3].m_v-incoming)/body.m_nodes[3].m_im;
+    for(int n=0;n<3;++n)balance[n]-=body.m_nodes[n].m_v/body.m_nodes[n].m_im;
+    for(int n=0;n<4;++n)EXPECT_LT(balance[n].length(),btScalar(1e-6));
+    btVector3 momentum(0,0,0);for(int n=0;n<4;++n)momentum+=body.m_nodes[n].m_v/body.m_nodes[n].m_im;
+    EXPECT_LT((momentum-incoming*btScalar(.001)).length(),btScalar(1e-6));
+    EXPECT_GT((body.m_nodes[3].m_v-incoming).length(),btScalar(1));
+    EXPECT_EQ(p[3],body.m_nodes[3].m_x);
+    solver.m_objective->m_lf.clear();
+}
+
+TEST(CoupledContact, StaticPlaneSupportsUseLocalClearanceAndFiniteTriangle)
+{
+    btSoftBodyWorldInfo info;
+    const btVector3 p[]={btVector3(0,0,.1),btVector3(2,0,.15),btVector3(0,2,.18),btVector3(0,0,2)};
+    const btScalar masses[]={1,1,1,1};
+    int indices[]={0,1,2};btScalar vertices[]={0,0,0,2,0,0,0,2,0};
+    btTriangleIndexVertexArray mesh(1,indices,3*sizeof(int),3,vertices,3*sizeof(btScalar));
+    MappedContactBody body(&info,p,masses);body.appendTetra(0,1,2,3);body.mapping.resize(3);
+    for(int v=0;v<3;++v){body.mapping[v].vertexToTetra=0;body.mapping[v].baryCoordInTetra=btVector4(0,0,0,0);body.mapping[v].baryCoordInTetra[v]=1;}
+    auto* shape=new btGImpactMeshShape(&mesh,new MappedContactManager(&body));delete body.getCollisionShape();body.setCollisionShape(shape);
+    shape->setMargin(btScalar(.1));shape->updateBound();
+    btGImpactMeshShape rigidShape(&mesh);rigidShape.setMargin(btScalar(.1));rigidShape.updateBound();
+    btCollisionObject rigid;rigid.setCollisionShape(&rigidShape);rigid.setCollisionFlags(btCollisionObject::CF_STATIC_OBJECT);
+    for(int rotated=0;rotated<2;++rotated)
+    {
+        btTransform transform;transform.setIdentity();
+        if(rotated){transform.setRotation(btQuaternion(btVector3(1,2,3).normalized(),btScalar(.7)));transform.setOrigin(btVector3(4,-3,2));}
+        body.setWorldTransform(transform);rigid.setWorldTransform(transform);
+        btCollisionObjectWrapper wrapper(nullptr,&rigidShape,&rigid,transform,-1,-1);
+        const btVector3 normal=transform.getBasis()*btVector3(0,0,1);
+        body.m_nodeNodeContacts.clear();
+        body.skinSoftStaticCollisionHandler(&wrapper,0,0,0,0,transform*p[0],normal,btScalar(.1),false,nullptr);
+        ASSERT_EQ(4,body.m_nodeNodeContacts.size());
+        for(int v=0;v<3;++v)
+        {
+            const auto& c=body.m_nodeNodeContacts[v+1];
+            EXPECT_NEAR(double(p[v].z()-.195),double(c.m_offset),1e-7);
+            btVector3 displacement(0,0,0);
+            for(int n=0;n<c.m_surfaceNodes.size();++n)
+                if(c.m_surfaceNodes[n].node==&body.m_nodes[v])displacement+=c.m_surfaceNodes[n].jacobian*btVector3(0,0,1);
+            EXPECT_NEAR(1.,double(normal.dot(displacement)),1e-8);
+        }
+    }
+    btTransform identity;identity.setIdentity();body.setWorldTransform(identity);
+    btTransform translated=identity;translated.setOrigin(btVector3(1,0,0));rigid.setWorldTransform(translated);
+    btCollisionObjectWrapper finite(nullptr,&rigidShape,&rigid,translated,-1,-1);
+    body.m_nodeNodeContacts.clear();
+    body.skinSoftStaticCollisionHandler(&finite,0,0,0,0,p[1],btVector3(0,0,1),btScalar(.15),false,nullptr);
+    ASSERT_EQ(2,body.m_nodeNodeContacts.size());
+    EXPECT_NEAR(-.045,double(body.m_nodeNodeContacts[1].m_offset),1e-7);
+}
+
+TEST(DeformableCRContinuation, InexactCorrectionVerifiesResidualAndDoesNotLeakToStrictSolve)
+{
+    struct Matrix
+    {
+        void multiply(const Vectors& x,Vectors& y){y[0]=x[0]*btVector3(1,10,100);}
+        void precondition(const Vectors& x,Vectors& y){y=x;}
+    } matrix;
+    Vectors rhs,x,product;
+    rhs.resize(1,btVector3(10000,1,1));x.resize(1,btVector3(0,0,0));product=x;
+    btConjugateResidual<Matrix> cr(100);
+    const int coarse=cr.solveWithConvergencePolicy(matrix,x,rhs,false,false,true,100,0,btScalar(1e-6),btScalar(.01));
+    matrix.multiply(x,product);
+    EXPECT_LE((rhs[0]-product[0]).length(),cr.getTargetResidual());
+    EXPECT_NEAR(double((rhs[0]-product[0]).length()),double(cr.getFinalResidual()),1e-8);
+    EXPECT_GT(cr.getFinalResidual(),btScalar(1));
+    EXPECT_LT(coarse,3);
+    cr.solveWithConvergencePolicy(matrix,x,rhs,false,false,true,100,0,btScalar(1e-6));
+    matrix.multiply(x,product);
+    EXPECT_LE(cr.getTargetResidual(),btScalar(1e-8));
+    EXPECT_LT((rhs[0]-product[0]).length(),btScalar(1e-8));
+}
+
+TEST(CoupledContact, RoundoffStencilEntriesDoNotCreateDuplicateMultipliers)
+{
+    btSoftBodyWorldInfo info;const btVector3 p[]={btVector3(0,0,0),btVector3(1,0,0)};const btScalar masses[]={1,1};
+    btSoftBody body(&info,2,p,masses);
+    btSoftBody::DeformableNodeNodeContact c={};c.m_normal=btVector3(0,0,1);c.m_offset=btScalar(.1);
+    btSoftBody::ContactNode primary={&body.m_nodes[0],btMatrix3x3::getIdentity()};c.m_surfaceNodes.push_back(primary);
+    btDeformableContactForce force(btScalar(.01));ASSERT_TRUE(force.add(c));
+    btSoftBody::ContactNode roundoff={&body.m_nodes[1],btMatrix3x3::getIdentity()*btScalar(1e-14)};c.m_surfaceNodes.push_back(roundoff);
+    c.m_offset=btScalar(.05);ASSERT_TRUE(force.add(c));
+    ASSERT_EQ(1,force.contacts.size());EXPECT_EQ(btScalar(.05),force.contacts[0].gap);
+    c.m_surfaceNodes[1].jacobian=btMatrix3x3::getIdentity()*btScalar(1e-6);
+    ASSERT_TRUE(force.add(c));EXPECT_EQ(2,force.contacts.size());
+    c.m_surfaceNodes[0].jacobian=btMatrix3x3::getIdentity()*btScalar(0);
+    c.m_surfaceNodes[1].jacobian=btMatrix3x3::getIdentity()*btScalar(0);
+    EXPECT_FALSE(force.add(c));
+    c.m_surfaceNodes.resize(1);c.m_surfaceNodes[0].jacobian=btMatrix3x3::getIdentity()*btScalar(1e-15);
+    ASSERT_TRUE(force.add(c));EXPECT_EQ(1,force.contacts[force.contacts.size()-1].nodes.size());
+}
+
+TEST(CoupledContact, StalledWarmStartRetriesColdBeforeSubdividing)
+{
+	class ProbeSolver : public btDeformableBodySolver
+	{
+	public:
+		bool fail = false;
+		int rejectedWarmCalls = 0;
+		bool recoveredCold = false;
+		btScalar firstSeed = -1;
+		void solveDeformableConstraints(btScalar dt) override
+		{
+			if (firstSeed < 0)
+			{
+				firstSeed = 0;
+				for (int f = 0; f < m_objective->m_lf.size(); ++f)
+					if (m_objective->m_lf[f]->getForceType() == BT_CONTACT_FORCE)
+					{
+						auto* contact = static_cast<btDeformableContactForce*>(m_objective->m_lf[f]);
+						for (int c = 0; c < contact->contacts.size(); ++c) firstSeed += contact->contacts[c].normalImpulse;
+					}
+			}
+			if (fail)
+			{
+				btScalar seed = 0;
+				for (int f = 0; f < m_objective->m_lf.size(); ++f)
+					if (m_objective->m_lf[f]->getForceType() == BT_CONTACT_FORCE)
+						{
+							const auto& contacts = static_cast<btDeformableContactForce*>(m_objective->m_lf[f])->contacts;
+							for (int c = 0; c < contacts.size(); ++c) seed += contacts[c].normalImpulse;
+						}
+				if (seed > 0)
+				{
+					++rejectedWarmCalls;
+					m_lastSolveConverged = false;
+					return;
+				}
+				recoveredCold = true;
+				fail = false;
+			}
+			btDeformableBodySolver::solveDeformableConstraints(dt);
+		}
+	} solver;
+	class WarmWorld : public ContactTestWorld
+	{
+	public:
+		using ContactTestWorld::ContactTestWorld;
+		void performDiscreteCollisionDetection() override
+		{
+			auto& bodies = getSoftBodyArray();
+			if (bodies.size() != 2) return;
+			btSoftBody::DeformableNodeNodeContact c = {};
+			c.m_node0 = &bodies[0]->m_nodes[0];
+			c.m_node1 = &bodies[1]->m_nodes[0];
+			c.m_normal = btVector3(1, 0, 0);
+			c.m_offset = c.m_node0->m_x.x() - c.m_node1->m_x.x();
+			c.m_surfaceObjects[0] = bodies[0];
+			c.m_surfaceObjects[1] = bodies[1];
+			c.m_surfaceTriangles[0] = c.m_surfaceTriangles[1] = 0;
+			bodies[0]->m_nodeNodeContacts.push_back(c);
+		}
+	};
+	btSoftBodyRigidBodyCollisionConfiguration config;
+	btCollisionDispatcher dispatcher(&config);
+	btDbvtBroadphase broadphase;
+	btDeformableMultiBodyConstraintSolver constraints;
+	constraints.setDeformableSolver(&solver);
+	WarmWorld world(&dispatcher, &broadphase, &constraints, &config, &solver);
+	world.setImplicit(true);
+	world.setCoupledContact(true);
+	world.setMaxNewtonIterations(8);
+	world.setGravity(btVector3(0, 0, 0));
+	const btVector3 p(0, 0, 0);
+	const btScalar mass = 1, dt = .01;
+	btSoftBody a(&world.getWorldInfo(), 1, &p, &mass), b(&world.getWorldInfo(), 1, &p, &mass);
+	a.m_cfg.drag = b.m_cfg.drag = 0;
+	a.m_cfg.collisions = b.m_cfg.collisions = 0;
+	a.m_nodes[0].m_v = a.m_nodes[0].m_vn = btVector3(-1, 0, 0);
+	b.m_nodes[0].m_v = b.m_nodes[0].m_vn = btVector3(0, 0, 0);
+	world.addSoftBody(&a);
+	world.addSoftBody(&b);
+	ASSERT_EQ(1, world.stepSimulation(dt, 0));
+	solver.firstSeed = -1;
+	solver.fail = true;
+	EXPECT_EQ(1, world.stepSimulation(dt, 0));
+	EXPECT_GT(solver.firstSeed, 0);
+	EXPECT_EQ(20, solver.rejectedWarmCalls);
+	EXPECT_TRUE(solver.recoveredCold);
+	EXPECT_FALSE(world.hasCoupledStepFailed());
+	EXPECT_GE(double(a.m_nodes[0].m_x.x()-b.m_nodes[0].m_x.x()), -1e-5);
 	world.removeSoftBody(&a);
 	world.removeSoftBody(&b);
 }

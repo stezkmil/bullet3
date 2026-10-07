@@ -56,7 +56,7 @@ public:
 	// Explicit integration uses false to retain the absolute tolerance and
 	// full iteration budget. Implicit Newton calls select the weighted residual
 	// and may continue to a verified physical residual target.
-	int solveWithConvergencePolicy(MatrixX& A, TVStack& x, const TVStack& b, bool verbose, bool useRelativeConvergence, bool useWeightedResidual = false, int iterationLimit = 0, btScalar trueResidualTarget = 0, btScalar weightedResidualTarget = 0)
+	int solveWithConvergencePolicy(MatrixX& A, TVStack& x, const TVStack& b, bool verbose, bool useRelativeConvergence, bool useWeightedResidual = false, int iterationLimit = 0, btScalar trueResidualTarget = 0, btScalar weightedResidualTarget = 0, btScalar relativeForcingTolerance = 0)
 	{
 		BT_PROFILE("CRSolve");
 		btAssert(x.size() == b.size());
@@ -74,7 +74,11 @@ public:
 		m_initialResidual = residual_norm;
 		m_finalResidual = residual_norm;
 		m_targetResidual = useRelativeConvergence ? btMax(Base::m_tolerance, m_relativeTolerance * residual_norm) : Base::m_tolerance;
-		if (weightedResidualTarget > 0) m_targetResidual = btMin(m_targetResidual, weightedResidualTarget);
+		// Inexact Newton corrections still verify b-A*x; final nonlinear checks remain strict.
+		if (weightedResidualTarget > 0)
+			m_targetResidual = relativeForcingTolerance > 0
+				? btMax(weightedResidualTarget, btMin(btScalar(.5), relativeForcingTolerance) * residual_norm)
+				: btMin(m_targetResidual, weightedResidualTarget);
 		m_stagnated = false;
 		best_x = x;
 		best_r = residual_norm;
