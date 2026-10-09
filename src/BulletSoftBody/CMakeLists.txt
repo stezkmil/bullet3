@@ -63,6 +63,11 @@ SET(BulletSoftBody_HDRS
 
 	btDeformableBackwardEulerObjective.h
 	btDeformableBodySolver.h
+	btDeformableVbdSolver.h
+	btDeformableVbdKernels.h
+	btDeformableVbdCollision.h
+	btDeformableVbdSettings.h
+	btDeformableVbdParallel.h
 	btDeformableMultiBodyConstraintSolver.h
 	btDeformableContactProjection.h
 	btDeformableMultiBodyDynamicsWorld.h
@@ -92,6 +97,7 @@ IF (BUILD_SHARED_LIBS)
 ENDIF (BUILD_SHARED_LIBS)
 
 IF (INSTALL_LIBS)
+	INSTALL(FILES LICENSE-Newton-VBD.txt DESTINATION share/licenses/bullet)
 	IF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
 		IF (${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION} GREATER 2.5)
 			IF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)

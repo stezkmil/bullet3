@@ -70,7 +70,7 @@ void GIM_TRIANGLE_CONTACT::merge_points(const btVector4& plane,
 ///class btPrimitiveTriangle
 bool btPrimitiveTriangle::overlap_test_conservative(const btPrimitiveTriangle& other)
 {
-	btScalar total_margin = m_margin + other.m_margin;
+	btScalar total_margin = m_margin + other.m_margin + m_discoveryPadding + other.m_discoveryPadding;
 	// classify points on other triangle
 	btScalar dis0 = bt_distance_point_plane(m_plane, other.m_vertices[0]) - total_margin;
 
@@ -94,7 +94,7 @@ bool btPrimitiveTriangle::overlap_test_conservative(const btPrimitiveTriangle& o
 
 bool btPrimitiveTriangle::overlap_test(const btPrimitiveTriangle& other) const
 {
-	btScalar total_margin = m_margin + other.m_margin;
+	btScalar total_margin = m_margin + other.m_margin + m_discoveryPadding + other.m_discoveryPadding;
 	// classify points on other triangle
 	btScalar dis0 = bt_distance_point_plane(m_plane, other.m_vertices[0]);
 
@@ -865,7 +865,7 @@ bool btPrimitiveTriangle::find_triangle_collision_alt_method_outer(btPrimitiveTr
 
 	ret = triangle_triangle_distance(other, dist_sq_out, a_closest_out, b_closest_out);
 	dist = sqrtf(dist_sq_out);
-	if (ret && dist_sq_out != 0.0 && dist < margin)
+	if (ret && dist_sq_out != 0.0 && dist < margin + m_discoveryPadding + other.m_discoveryPadding)
 	{
 		/*fprintf(stderr, "drawtriangle \"touch tri\" [%f,%f,%f][%f,%f,%f][%f,%f,%f]\n", m_vertices[0].x(), m_vertices[0].y(), m_vertices[0].z(),
 				m_vertices[1].x(), m_vertices[1].y(), m_vertices[1].z(),

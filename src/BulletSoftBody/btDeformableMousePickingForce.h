@@ -93,6 +93,20 @@ public:
 
 	void addScaledElasticForceDifferential(btScalar scale, const TVStack& dx, TVStack& df) override;
 
+	struct NodeSpring
+	{
+		const btSoftBody::Node* node;
+		btVector3 target;
+		btScalar stiffness, damping, maxForce;
+	};
+	// Snapshot targets so alternate solvers can evaluate candidate positions without mutating Bullet nodes.
+	void appendNodeSprings(std::vector<NodeSpring>& springs) const
+	{
+		for (int i = 0; i < getIndexCount(); ++i)
+			springs.push_back({getNode(i), m_mouse_transform.getOrigin() + m_node_to_mouse_x[i],
+				m_elasticStiffness, m_dampingStiffness, m_maxForce});
+	}
+
 	// ------------------------------------------------ setters ---------------
 	void setMousePos(const btVector3& p);
 	void setMouseTransform(const btTransform& t);

@@ -544,6 +544,7 @@ public:
 	{
 	public:
 		btScalar m_margin;
+		btScalar m_discoveryPadding = 0;
 		btStridingMeshInterface* m_meshInterface;
 		btVector3 m_scale;
 		int m_part;
@@ -578,6 +579,7 @@ public:
 			m_meshInterface = manager.m_meshInterface;
 			m_part = manager.m_part;
 			m_margin = manager.m_margin;
+			m_discoveryPadding = manager.m_discoveryPadding;
 			m_scale = manager.m_scale;
 			m_lock_count = 0;
 			vertexbase = 0;
@@ -703,7 +705,7 @@ public:
 			get_primitive_triangle(prim_index, triangle, false);
 			primbox.calc_from_triangle_margin(
 				triangle.m_vertices[0],
-				triangle.m_vertices[1], triangle.m_vertices[2], triangle.m_margin);
+				triangle.m_vertices[1], triangle.m_vertices[2], triangle.m_margin + triangle.m_discoveryPadding);
 		}
 
 		virtual void get_primitive_indices(int prim_index, unsigned int& A, unsigned int& B, unsigned int& C) const
@@ -719,6 +721,7 @@ public:
 			get_vertex(indices[1], triangle.m_vertices[1], get_original);
 			get_vertex(indices[2], triangle.m_vertices[2], get_original);
 			triangle.m_margin = m_margin;
+			triangle.m_discoveryPadding = m_discoveryPadding;
 		}
 
 		virtual bool get_primitive_triangle_safe(int prim_index, btPrimitiveTriangle& triangle) const override
@@ -859,6 +862,14 @@ public:
 	SIMD_FORCE_INLINE void getVertex(int vertex_index, btVector3& vertex) const
 	{
 		m_primitive_manager->get_vertex(vertex_index, vertex, false);
+	}
+
+	void setDiscoveryPadding(btScalar padding)
+	{
+		if (m_primitive_manager->m_discoveryPadding == padding) return;
+		m_primitive_manager->m_discoveryPadding = padding;
+		postUpdate();
+		m_box_set.clearNodes();
 	}
 
 	SIMD_FORCE_INLINE void setMargin(btScalar margin)

@@ -78,6 +78,8 @@ public:
 	btVector3 m_vertices[3];
 	btVector4 m_plane;
 	btScalar m_margin;
+	// Search padding never changes the contact clearance.
+	btScalar m_discoveryPadding = 0;
 	btScalar m_dummy;
 	btPrimitiveTriangle() : m_margin(0.01f)
 	{

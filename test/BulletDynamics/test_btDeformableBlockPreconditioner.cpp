@@ -3590,3 +3590,5 @@ TEST(CoupledContact, StalledWarmStartRetriesColdBeforeSubdividing)
 	world.removeSoftBody(&a);
 	world.removeSoftBody(&b);
 }
+
+#include "deformable_vbd_tests.h"

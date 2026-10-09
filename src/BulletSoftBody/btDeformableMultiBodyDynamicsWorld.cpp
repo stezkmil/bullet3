@@ -37,6 +37,9 @@ The algorithm also closely resembles the one in http://physbam.stanford.edu/~fed
 #include "btDeformableMultiBodyDynamicsWorld.h"
 #include "btDeformableVolumeBarrierForce.h"
 #include "btDeformableContactRefresh.h"
+#include "btDeformableVbdSolver.h"
+#include "btDeformableMousePickingForce.h"
+#include "btDeformableLinearElasticityForce.h"
 #include "DeformableBodyInplaceSolverIslandCallback.h"
 #include "btDeformableBodySolver.h"
 #include "LinearMath/btQuickprof.h"
@@ -44,6 +47,8 @@ The algorithm also closely resembles the one in http://physbam.stanford.edu/~fed
 #include "btDeformableDiagnostics.h"
 #include "btDeformableContactForce.h"
 #include "BulletCollision/Gimpact/btGImpactShape.h"
+#include "BulletCollision/CollisionShapes/btCompoundShape.h"
+#include <functional>
 #include <cmath>
 #include <cstdlib>
 #include <memory>
@@ -130,8 +135,9 @@ void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlap
 
 void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 {
+	if (m_vbdEnabled && m_softBodies.size()) { vbdSingleStepSimulation(timeStep); return; }
 	BT_PROFILE("internalSingleStepSimulation");
-	if (m_coupledContact) { coupledSingleStepSimulation(timeStep); return; }
+	if (m_coupledContact && !m_vbdEnabled) { coupledSingleStepSimulation(timeStep); return; }
 	btDeformableDiagnostics::StepScope diagnostics(this, m_executed_step_counter, timeStep);
 	btDeformableDiagnostics::bodies("begin", m_softBodies);
 
@@ -952,6 +958,7 @@ void btDeformableMultiBodyDynamicsWorld::removeSoftBodyForce(btSoftBody* psb)
 
 void btDeformableMultiBodyDynamicsWorld::removeSoftBody(btSoftBody* body)
 {
+	m_vbdAcceptedPositions.erase(body);
 	clearContactWarmStart();
 	m_coupledPreviousTimeStep = 0;
 	removeSoftBodyForce(body);
@@ -1180,6 +1187,852 @@ void btDeformableMultiBodyDynamicsWorld::refreshDeformableContacts()
 	}
 	performDiscreteCollisionDetection();
 	performDeformableCollisionDetection();
+}
+
+struct btDeformableVbdMappingCache
+{
+    btDeformableVbdSolver::SurfaceTopology topology;
+	std::vector<unsigned char> key;
+	std::vector<btDeformableVbdSolver::SurfaceVertex> vertices;
+	std::vector<std::array<int, 3>> faces;
+	std::vector<int> owners, faceEnds;
+	std::vector<btScalar> friction;
+	bool valid = false;
+};
+
+namespace
+{
+// Exact input comparison also catches edits made in place without a revision counter.
+template <class T> void vbdMappingKeyAppend(std::vector<unsigned char> &key, const T &value)
+{
+	const auto *bytes = reinterpret_cast<const unsigned char *>(&value);
+	key.insert(key.end(), bytes, bytes + sizeof(T));
+}
+std::vector<unsigned char> vbdMappingKey(const std::vector<btSoftBody *> &bodies, btScalar scale)
+{
+	std::vector<unsigned char> key;
+	size_t capacity = 1024;
+	for (auto *body : bodies)
+		if (const auto *mapping = body->getCollisionShapeVertexToSimTetra())
+			capacity += mapping->size() * 64;
+	key.reserve(capacity);
+	auto add = [&](const auto &value) { vbdMappingKeyAppend(key, value); };
+	add(scale);
+	add(bodies.size());
+	for (auto *body : bodies)
+	{
+		add(body);
+		add(body->m_nodes.size());
+		add(body->m_tetras.size());
+		add(body->getFriction());
+		const auto &pose = body->getWorldTransform();
+		for (int i = 0; i < 3; ++i)
+		{
+			add(pose.getOrigin()[i]);
+			for (int j = 0; j < 3; ++j)
+				add(pose.getBasis()[i][j]);
+		}
+		for (int t = 0; t < body->m_tetras.size(); ++t)
+			for (int j = 0; j < 4; ++j)
+			{
+				const auto node = body->m_tetras[t].m_n[j] - &body->m_nodes[0];
+				add(node);
+			}
+		const auto *mapping = body->getCollisionShapeVertexToSimTetra();
+		add(mapping);
+		if (!mapping)
+			continue;
+		add(mapping->size());
+		for (const auto &entry : *mapping)
+		{
+			add(entry.vertexToTetra);
+			for (int j = 0; j < 4; ++j)
+				add(entry.baryCoordInTetra[j]);
+		}
+		auto *shape = body->getCollisionShape();
+		add(shape);
+		add(shape->getShapeType());
+		if (shape->getShapeType() != GIMPACT_SHAPE_PROXYTYPE)
+			continue;
+		auto *gimpact = static_cast<btGImpactShapeInterface *>(shape);
+		add(gimpact->getGImpactShapeType());
+		if (gimpact->getGImpactShapeType() != CONST_GIMPACT_TRIMESH_SHAPE)
+			continue;
+		auto *mesh = static_cast<btGImpactMeshShape *>(shape);
+		add(mesh->getMeshPartCount());
+		for (int part = 0; part < mesh->getMeshPartCount(); ++part)
+		{
+			auto *piece = mesh->getMeshPart(part);
+			for (int j = 0; j < 3; ++j)
+				add(piece->getLocalScaling()[j]);
+			piece->lockChildShapes();
+			const auto *manager = piece->getPrimitiveManager();
+			add(manager->get_primitive_count());
+			for (int tri = 0; tri < manager->get_primitive_count(); ++tri)
+			{
+				unsigned int a, b, c;
+				manager->get_primitive_indices(tri, a, b, c);
+				add(a);
+				add(b);
+				add(c);
+			}
+			piece->unlockChildShapes();
+		}
+	}
+	return key;
+}
+struct VbdMappingLease
+{
+	btDeformableVbdMappingCache &cache;
+	btDeformableVbdSolver &solver;
+	void swap()
+	{
+		cache.vertices.swap(solver.surfaceVertices);
+		cache.faces.swap(solver.surface);
+		cache.owners.swap(solver.surfaceOwners);
+		cache.friction.swap(solver.surfaceFrictions);
+	}
+	~VbdMappingLease()
+	{
+		swap();
+	}
+};
+} // namespace
+
+namespace
+{
+struct VbdTriangleCollector : btTriangleCallback
+{
+	btDeformableVbdSolver &solver;
+	btTransform transform;
+	btScalar scale, friction;
+	VbdTriangleCollector(btDeformableVbdSolver &s, const btTransform &t, btScalar units, btScalar mu)
+		: solver(s), transform(t), scale(units), friction(mu)
+	{
+	}
+	void processTriangle(btVector3 *triangle, int, int) override
+	{
+		btDeformableVbdSolver::Triangle result;
+		for (int j = 0; j < 3; ++j)
+			result.x[j] = (transform * triangle[j]) * scale;
+		if ((result.x[1] - result.x[0]).cross(result.x[2] - result.x[0]).length2() < 1e-30)
+			return;
+		result.friction = friction;
+		solver.barriers.push_back(result);
+	}
+};
+} // namespace
+
+void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeStep)
+{
+	btDeformableDiagnostics::StepScope diagnostics(this, m_executed_step_counter, timeStep);
+	auto fail = [&](const char *reason)
+	{
+		m_coupledStepFailed = true;
+		btDeformableDiagnostics::write("STEP_FAILED", "solver=vbd reason=%s", reason);
+	};
+	if (!(m_vbdLengthScale > 0) || !std::isfinite(double(m_vbdLengthScale)) || !(timeStep > 0) || !std::isfinite(double(timeStep)) ||
+		m_vbdIterations < 1)
+	{
+		fail("invalid_settings");
+		return;
+	}
+	if (m_multiBodies.size() || m_solverCallback)
+	{
+		fail("unsupported_articulated_body_or_callback");
+		return;
+	}
+	std::vector<btSoftBody *> bodies;
+	std::vector<int> offsets;
+	for (int b = 0; b < m_softBodies.size(); ++b)
+		if (!m_softBodies[b]->isStaticObject())
+		{
+			auto *body = m_softBodies[b];
+			if (!body->m_tetras.size())
+			{
+				fail("requires_tetra_bodies");
+				return;
+			}
+			bodies.push_back(body);
+		}
+	if (bodies.empty())
+	{
+		fail("requires_tetra_body");
+		return;
+	}
+	if (m_internalPreTickCallback)
+		(*m_internalPreTickCallback)(this, timeStep);
+	m_deformableBodySolver->reinitialize(m_softBodies, timeStep);
+	const btScalar scale = m_vbdLengthScale;
+	if (!m_vbdCollisionCache)
+		m_vbdCollisionCache.reset(new btDeformableVbdCollisionCache());
+	btDeformableVbdSolver vbd(m_vbdCollisionCache.get());
+	if (!m_vbdMappingCache)
+		m_vbdMappingCache.reset(new btDeformableVbdMappingCache());
+	auto &mappingCache = *m_vbdMappingCache;
+	auto mappingKey = vbdMappingKey(bodies, scale);
+	const bool reuseMapping = mappingCache.valid && mappingCache.key == mappingKey;
+	if (!reuseMapping)
+	{
+		mappingCache.valid = false;
+		mappingCache.vertices.clear();
+		mappingCache.faces.clear();
+		mappingCache.owners.clear();
+		mappingCache.friction.clear();
+		mappingCache.faceEnds.clear();
+	}
+	VbdMappingLease mappingLease{mappingCache, vbd};
+	mappingLease.swap();
+	int cachedFace = 0;
+
+	vbd.settings = m_vbdSettings;
+	vbd.settings.gap = btMax(vbd.settings.gap, vbd.settings.radius);
+	vbd.settings.iterations = m_vbdIterations;
+	vbd.settings.collisionUnitsPerMeter = 1 / scale;
+	if (m_contactDiscoveryPadding >= 0)
+		vbd.settings.gap = vbd.settings.radius + m_contactDiscoveryPadding * scale;
+	auto &objective = *m_deformableBodySolver->m_objective;
+	vbd.mappedSurface = true;
+	for (int owner = 0; owner < int(bodies.size()); ++owner)
+	{
+		auto *body = bodies[owner];
+		const int offset = int(vbd.x.size()), firstFace = reuseMapping ? cachedFace : int(vbd.surface.size()),
+				  firstTet = int(vbd.tets.size());
+		offsets.push_back(offset);
+		btDeformableLinearElasticityForce *material = nullptr;
+		TVStack external;
+		external.resize(objective.m_nodes.size(), btVector3(0, 0, 0));
+		for (int f = 0; f < objective.m_lf.size(); ++f)
+		{
+			auto *force = objective.m_lf[f];
+			bool attached = false;
+			for (int b = 0; b < force->m_softBodies.size(); ++b)
+				attached = attached || force->m_softBodies[b] == body;
+			if (!attached)
+				continue;
+			switch (force->getForceType())
+			{
+			case BT_LINEAR_ELASTICITY_FORCE:
+				if (material)
+				{
+					fail("multiple_materials");
+					return;
+				}
+				material = static_cast<btDeformableLinearElasticityForce *>(force);
+				break;
+			case BT_MOUSE_PICKING_FORCE:
+			{
+				std::vector<btDeformableMousePickingForce::NodeSpring> springs;
+				static_cast<btDeformableMousePickingForce *>(force)->appendNodeSprings(springs);
+				for (const auto &spring : springs)
+				{
+					int node = -1;
+					for (int i = 0; i < body->m_nodes.size(); ++i)
+						if (&body->m_nodes[i] == spring.node)
+						{
+							node = i;
+							break;
+						}
+					if (node < 0)
+					{
+						fail("grab_node_not_in_body");
+						return;
+					}
+					vbd.springs.push_back(
+						{offset + node, spring.target * scale, spring.stiffness, spring.damping, spring.maxForce * scale});
+				}
+				break;
+			}
+			case BT_NODAL_FORCE:
+				force->addScaledForces(1, external);
+				break;
+			case BT_GRAVITY_FORCE:
+				break;
+			default:
+				fail("unsupported_force_type");
+				return;
+			}
+		}
+		if (!material)
+		{
+			fail("missing_tetra_material");
+			return;
+		}
+		const btScalar mu = material->m_mu / scale, lambda = material->m_lambda / scale;
+		for (int n = 0; n < body->m_nodes.size(); ++n)
+		{
+			const auto &node = body->m_nodes[n];
+			int anchorFreeze = 0;
+			for (int j = 0; j < body->m_deformableAnchors.size(); ++j)
+				if (body->m_deformableAnchors[j].m_node == &node)
+					anchorFreeze += body->m_deformableAnchors[j].m_freezeContribution;
+			const btScalar mass = node.m_im > 0 && node.m_frozen <= anchorFreeze ? 1 / node.m_im : 0;
+			vbd.x.push_back(node.m_x * scale);
+			vbd.velocity.push_back(mass > 0 ? node.m_v * scale : btVector3(0, 0, 0));
+			vbd.mass.push_back(mass);
+			vbd.massDamping.push_back(material->m_damping_alpha);
+			vbd.external.push_back((external[node.index] + getGravity() * (body->m_gravityFactor * mass)) * scale);
+		}
+		for (int k = 0; k < body->m_tetras.size(); ++k)
+		{
+			const auto &source = body->m_tetras[k];
+			btDeformableVbdSolver::Tet tet;
+			for (int j = 0; j < 4; ++j)
+				tet.nodes[j] = offset + int(source.m_n[j] - &body->m_nodes[0]);
+			tet.inverseRest = source.m_Dm_inverse * (1 / scale);
+			tet.volume = source.m_element_measure * scale * scale * scale;
+			tet.mu = mu;
+			tet.lambda = lambda;
+			tet.damping = material->m_damping_beta * mu / 4;
+			vbd.tets.push_back(tet);
+		}
+		if (reuseMapping)
+		{
+			if (body->getCollisionShapeVertexToSimTetra())
+			{
+				auto *mesh = static_cast<btGImpactMeshShape *>(body->getCollisionShape());
+				for (int part = 0; part < mesh->getMeshPartCount(); ++part)
+				{
+					auto *piece = mesh->getMeshPart(part);
+					piece->lockChildShapes();
+					const auto *manager = piece->getPrimitiveManager();
+					bool valid = true;
+					for (int tri = 0; tri < manager->get_primitive_count() && valid; ++tri)
+					{
+						btPrimitiveTriangle original;
+						manager->get_primitive_triangle(tri, original, false);
+						const auto &face = vbd.surface[cachedFace++];
+						for (int j = 0; j < 3; ++j)
+						{
+							const btVector3 expected = (body->getWorldTransform() * original.m_vertices[j]) * scale;
+							const btVector3 actual = vbd.surfaceVertices[face[j]].position(vbd.x);
+							if (!std::isfinite(double(expected.length2())) || (expected - actual).length2() > 1e-14)
+								valid = false;
+						}
+					}
+					piece->unlockChildShapes();
+					if (!valid)
+					{
+						mappingCache.valid = false;
+						fail("invalid_render_surface_mapping");
+						return;
+					}
+				}
+			}
+			else
+				cachedFace = mappingCache.faceEnds[owner];
+		}
+		else
+		{
+			if (const auto *mapping = body->getCollisionShapeVertexToSimTetra())
+			{
+				if (body->getCollisionShape()->getShapeType() != GIMPACT_SHAPE_PROXYTYPE)
+				{
+					fail("mapped_surface_requires_gimpact");
+					return;
+				}
+				auto *shape = static_cast<btGImpactShapeInterface *>(body->getCollisionShape());
+				if (shape->getGImpactShapeType() != CONST_GIMPACT_TRIMESH_SHAPE)
+				{
+					fail("mapped_surface_requires_triangle_mesh");
+					return;
+				}
+				auto *mesh = static_cast<btGImpactMeshShape *>(shape);
+				vbd.mappedSurface = true;
+				for (int part = 0; part < mesh->getMeshPartCount(); ++part)
+				{
+					auto *piece = mesh->getMeshPart(part);
+					const btVector3 scaling = piece->getLocalScaling();
+					const btMatrix3x3 transform =
+						body->getWorldTransform().getBasis() * btMatrix3x3(scaling.x(), 0, 0, 0, scaling.y(), 0, 0, 0, scaling.z());
+					piece->lockChildShapes();
+					const auto *manager = piece->getPrimitiveManager();
+					std::map<unsigned int, int> vertices;
+					bool valid = true;
+					for (int tri = 0; tri < manager->get_primitive_count() && valid; ++tri)
+					{
+						unsigned int indices[3];
+						manager->get_primitive_indices(tri, indices[0], indices[1], indices[2]);
+						std::array<int, 3> face;
+						for (int corner = 0; corner < 3; ++corner)
+						{
+							const unsigned int index = indices[corner];
+							if (index >= mapping->size())
+							{
+								valid = false;
+								break;
+							}
+							auto found = vertices.find(index);
+							if (found == vertices.end())
+							{
+								const auto &entry = (*mapping)[index];
+								if (entry.vertexToTetra >= unsigned(body->m_tetras.size()))
+								{
+									valid = false;
+									break;
+								}
+								btDeformableVbdSolver::SurfaceVertex vertex;
+								vertex.offset = body->getWorldTransform().getOrigin() * scale;
+								btScalar sum = 0;
+								for (int j = 0; j < 4; ++j)
+								{
+									const btScalar w = entry.baryCoordInTetra[j];
+									if (!std::isfinite(double(w)))
+									{
+										valid = false;
+										break;
+									}
+									sum += w;
+									if (w != 0)
+										vertex.support.push_back(
+											{offset + int(body->m_tetras[entry.vertexToTetra].m_n[j] - &body->m_nodes[0]), transform * w});
+								}
+								if (!valid || btFabs(sum - 1) > 1e-4)
+								{
+									valid = false;
+									break;
+								}
+								const int id = int(vbd.surfaceVertices.size());
+								vbd.surfaceVertices.push_back(vertex);
+								found = vertices.emplace(index, id).first;
+							}
+							face[corner] = found->second;
+						}
+						if (valid)
+						{
+							btPrimitiveTriangle original;
+							manager->get_primitive_triangle(tri, original, false);
+							for (int corner = 0; corner < 3; ++corner)
+							{
+								const btVector3 expected = (body->getWorldTransform() * original.m_vertices[corner]) * scale;
+								const btVector3 actual = vbd.surfaceVertices[face[corner]].position(vbd.x);
+								// Catch frame/scaling mismatches instead of silently colliding a different surface.
+								if (!std::isfinite(double(expected.length2())) || (expected - actual).length2() > 1e-14)
+									valid = false;
+							}
+							if (valid)
+								vbd.surface.push_back(face);
+						}
+					}
+					piece->unlockChildShapes();
+					if (!valid)
+					{
+						fail("invalid_render_surface_mapping");
+						return;
+					}
+				}
+			}
+			else
+			{
+				const int firstVertex = int(vbd.surfaceVertices.size());
+				for (int n = 0; n < body->m_nodes.size(); ++n)
+				{
+					btDeformableVbdSolver::SurfaceVertex vertex;
+					vertex.support.push_back({offset + n, btMatrix3x3::getIdentity()});
+					vbd.surfaceVertices.push_back(vertex);
+				}
+				std::map<std::array<int, 3>, int> faces;
+				for (int k = firstTet; k < int(vbd.tets.size()); ++k)
+					for (int omit = 0; omit < 4; ++omit)
+					{
+						std::array<int, 3> face;
+						int j = 0;
+						for (int n = 0; n < 4; ++n)
+							if (n != omit)
+								face[j++] = firstVertex + vbd.tets[k].nodes[n] - offset;
+						std::sort(face.begin(), face.end());
+						++faces[face];
+					}
+				for (const auto &face : faces)
+					if (face.second == 1)
+						vbd.surface.push_back(face.first);
+			}
+			mappingCache.faceEnds.push_back(int(vbd.surface.size()));
+		}
+		for (int face = firstFace; !reuseMapping && face < int(vbd.surface.size()); ++face)
+		{
+			vbd.surfaceOwners.push_back(owner);
+			vbd.surfaceFrictions.push_back(body->getFriction());
+		}
+		vbd.selfContact.push_back(body->useSelfCollision() || (body->m_cfg.collisions & btSoftBody::fCollision::CL_SELF) != 0);
+	}
+	mappingCache.key = std::move(mappingKey);
+	mappingCache.valid = true;
+	std::vector<btCollisionObject *> objects(bodies.begin(), bodies.end());
+	for (int b = 0; b < m_collisionObjects.size(); ++b)
+		if (std::find(objects.begin(), objects.end(), m_collisionObjects[b]) == objects.end())
+			objects.push_back(m_collisionObjects[b]);
+	vbd.collisionAllowed.assign(objects.size(), std::vector<bool>(objects.size(), false));
+	for (int i = 0; i < int(objects.size()); ++i)
+		for (int j = 0; j < int(objects.size()); ++j)
+			vbd.collisionAllowed[i][j] =
+				i == j || (getPairCache()->needsBroadphaseCollision(objects[i]->getBroadphaseHandle(), objects[j]->getBroadphaseHandle()) &&
+						   objects[i]->checkCollideWith(objects[j]) && objects[j]->checkCollideWith(objects[i]));
+	std::vector<int> rigidIndices(objects.size(), -1);
+	std::vector<btRigidBody *> rigidBodies;
+	for (int object = 0; object < int(objects.size()); ++object)
+	{
+		auto *body = btRigidBody::upcast(objects[object]);
+		if (!body)
+			continue;
+		btDeformableVbdSolver::Rigid rigid;
+		rigid.pose = body->getWorldTransform();
+		rigid.pose.setOrigin(rigid.pose.getOrigin() * scale);
+		rigid.mass = body->isStaticOrKinematicObject() ? btScalar(0) : btScalar(1) / body->getInvMass();
+		rigid.velocity = body->getLinearVelocity() * scale;
+		rigid.angularVelocity = body->getAngularVelocity();
+		rigid.linearFactor = body->getLinearFactor();
+		rigid.angularFactor = body->getAngularFactor();
+		rigid.linearDamping = body->getLinearDamping();
+		rigid.angularDamping = body->getAngularDamping();
+		rigid.force = body->getTotalForce() * scale + body->getGravity() * (rigid.mass * scale);
+		rigid.torque = body->getTotalTorque() * (scale * scale);
+		if (rigid.mass > 0)
+		{
+			if (body->getFlags() & BT_ENABLE_GYROSCOPIC_FORCE_EXPLICIT)
+				rigid.torque -= body->computeGyroscopicForceExplicit(m_solverInfo.m_maxGyroscopicForce) * (scale * scale);
+			if (body->getFlags() & BT_ENABLE_GYROSCOPIC_FORCE_IMPLICIT_WORLD)
+				rigid.angularVelocity += body->computeGyroscopicImpulseImplicit_World(timeStep);
+			if (body->getFlags() & BT_ENABLE_GYROSCOPIC_FORCE_IMPLICIT_BODY)
+				rigid.angularVelocity += body->computeGyroscopicImpulseImplicit_Body(timeStep);
+		}
+		const auto inverse = body->getInvInertiaDiagLocal();
+		for (int d = 0; d < 3; ++d)
+			rigid.inertia[d] = inverse[d] > 0 ? scale * scale / inverse[d] : btScalar(1);
+		btVector3 lo, hi;
+		body->getCollisionShape()->getAabb(body->getWorldTransform(), lo, hi);
+		rigid.radius =
+			btMax((lo - body->getWorldTransform().getOrigin()).length(), (hi - body->getWorldTransform().getOrigin()).length()) * scale;
+		rigidIndices[object] = int(vbd.rigids.size());
+		vbd.rigids.push_back(rigid);
+		rigidBodies.push_back(body);
+	}
+	for (int b = 0; b < int(bodies.size()); ++b)
+	{
+		auto *body = bodies[b];
+		auto addAnchor = [&](btSoftBody::Node *node, btRigidBody *target, const btVector3 &local, btScalar influence)
+		{
+			if (influence <= 0)
+				return true;
+			if (!target)
+				return false;
+			auto found = std::find(objects.begin(), objects.end(), target);
+			if (found == objects.end() || rigidIndices[found - objects.begin()] < 0)
+				return false;
+			const int index = int(node - &body->m_nodes[0]);
+			if (index < 0 || index >= body->m_nodes.size())
+				return false;
+			vbd.attachments.push_back({offsets[b] + index, rigidIndices[found - objects.begin()], local * scale, btScalar(1e7) * influence,
+									   btScalar(10) * influence});
+			return true;
+		};
+		for (int k = 0; k < body->m_anchors.size(); ++k)
+		{
+			const auto &anchor = body->m_anchors[k];
+			if (!addAnchor(anchor.m_node, anchor.m_body, anchor.m_local, anchor.m_influence))
+			{
+				fail("invalid_anchor");
+				return;
+			}
+		}
+		for (int k = 0; k < body->m_deformableAnchors.size(); ++k)
+		{
+			const auto &anchor = body->m_deformableAnchors[k];
+			if (!addAnchor(anchor.m_node, anchor.m_body, anchor.m_local, 1))
+			{
+				fail("invalid_deformable_anchor");
+				return;
+			}
+		}
+	}
+	struct VbdJointRange
+	{
+		btTypedConstraint *constraint;
+		int first, count;
+		std::vector<btScalar> scales;
+	};
+	std::vector<VbdJointRange> jointRanges;
+	auto jointBody = [&](btRigidBody &body)
+	{
+		const auto found = std::find(rigidBodies.begin(), rigidBodies.end(), &body);
+		return found == rigidBodies.end() ? -1 : int(found - rigidBodies.begin());
+	};
+	for (int c = 0; c < m_constraints.size(); ++c)
+	{
+		auto *constraint = m_constraints[c];
+		if (!constraint->isEnabled())
+			continue;
+		const int a = jointBody(constraint->getRigidBodyA()), b = jointBody(constraint->getRigidBodyB());
+		if ((a < 0 && !constraint->getRigidBodyA().isStaticObject()) || (b < 0 && !constraint->getRigidBodyB().isStaticObject()))
+		{
+			fail("joint_body_missing");
+			return;
+		}
+		constraint->buildJacobian();
+		btTypedConstraint::btConstraintInfo1 count{};
+		constraint->getInfo1(&count);
+		if (count.m_numConstraintRows <= 0)
+			continue;
+		// Some constraints write SIMD-padded btVector3 rows.
+		const int size = count.m_numConstraintRows * 4;
+		std::vector<btScalar> la(size, 0), aa(size, 0), lb(size, 0), ab(size, 0), rhs(size, 0), cfm(size, m_solverInfo.m_globalCfm),
+			lower(size, -SIMD_INFINITY), upper(size, SIMD_INFINITY);
+		btTypedConstraint::btConstraintInfo2 info{};
+		info.fps = 1 / timeStep;
+		info.erp = m_solverInfo.m_erp;
+		info.rowskip = 4;
+		info.m_J1linearAxis = la.data();
+		info.m_J1angularAxis = aa.data();
+		info.m_J2linearAxis = lb.data();
+		info.m_J2angularAxis = ab.data();
+		info.m_constraintError = rhs.data();
+		info.cfm = cfm.data();
+		info.m_lowerLimit = lower.data();
+		info.m_upperLimit = upper.data();
+		info.m_numIterations = vbd.settings.iterations;
+		info.m_solverMode = m_solverInfo.m_solverMode;
+		info.m_damping = m_solverInfo.m_damping;
+		constraint->getInfo2(&info);
+		VbdJointRange range{constraint, int(vbd.joints.size()), count.m_numConstraintRows, {}};
+		for (int row = 0; row < count.m_numConstraintRows; ++row)
+		{
+			const int k = 4 * row;
+			btDeformableVbdSolver::JointRow r;
+			r.a = a;
+			r.b = b;
+			r.linearA = btVector3(la[k], la[k + 1], la[k + 2]);
+			r.linearB = btVector3(lb[k], lb[k + 1], lb[k + 2]);
+			r.angularA = btVector3(aa[k], aa[k + 1], aa[k + 2]);
+			r.angularB = btVector3(ab[k], ab[k + 1], ab[k + 2]);
+			const bool linear = r.linearA.length2() + r.linearB.length2() > 0;
+			const btScalar impulseScale = linear ? scale : scale * scale;
+			if (linear)
+			{
+				r.angularA *= scale;
+				r.angularB *= scale;
+			}
+			r.rhs = rhs[k] * (linear ? scale : btScalar(1));
+			r.cfm = cfm[k] / (linear ? btScalar(1) : scale * scale);
+			const btScalar limit = constraint->getBreakingImpulseThreshold();
+			r.lower = btMax(lower[k], -limit) * impulseScale;
+			r.upper = btMin(upper[k], limit) * impulseScale;
+			vbd.joints.push_back(r);
+			range.scales.push_back(impulseScale);
+		}
+		jointRanges.push_back(range);
+	}
+	if (!vbd.initialize(reuseMapping ? &mappingCache.topology : nullptr))
+	{
+		mappingCache.valid = false;
+		fail(vbd.error);
+		return;
+	}
+	mappingCache.topology = vbd.surfaceTopology();
+	btVector3 lo = vbd.x[0] / scale, hi = lo;
+	for (const auto &point : vbd.x)
+	{
+		lo.setMin(point / scale);
+		hi.setMax(point / scale);
+	}
+	for (const auto &vertex : vbd.surfaceVertices)
+	{
+		const btVector3 point = vertex.position(vbd.x) / scale;
+		lo.setMin(point);
+		hi.setMax(point);
+	}
+	for (auto *rigid : rigidBodies)
+		if (!rigid->isStaticObject())
+		{
+			btVector3 rlo, rhi;
+			rigid->getCollisionShape()->getAabb(rigid->getWorldTransform(), rlo, rhi);
+			lo.setMin(rlo);
+			hi.setMax(rhi);
+		}
+	const btVector3 padding(vbd.settings.gap * 2 / scale, vbd.settings.gap * 2 / scale, vbd.settings.gap * 2 / scale);
+	lo -= padding;
+	hi += padding;
+	for (int b = int(bodies.size()); b < int(objects.size()); ++b)
+	{
+		btCollisionObject *other = objects[b];
+		bool collides = false;
+		for (int i = 0; i < int(objects.size()); ++i)
+			if (!objects[i]->isStaticObject())
+				collides = collides || vbd.collisionAllowed[i][b];
+		if (!collides)
+			continue;
+		btVector3 blo, bhi;
+		other->getCollisionShape()->getAabb(other->getWorldTransform(), blo, bhi);
+		if (!TestAabbAgainstAabb2(lo, hi, blo, bhi))
+			continue;
+		if (!other->isStaticObject() && rigidIndices[b] < 0)
+		{
+			fail("non_rigid_moving_barrier");
+			return;
+		}
+		const int collisionRigid = other->isStaticObject() ? -1 : rigidIndices[b];
+		std::function<bool(btCollisionShape *, const btTransform &)> collect;
+		collect = [&](btCollisionShape *shape, const btTransform &transform)
+		{
+			if (shape->isCompound())
+			{
+				auto *compound = static_cast<btCompoundShape *>(shape);
+				for (int child = 0; child < compound->getNumChildShapes(); ++child)
+					if (!collect(compound->getChildShape(child), transform * compound->getChildTransform(child)))
+						return false;
+				return true;
+			}
+			if (shape->isConvex())
+			{
+				vbd.convexBarriers.push_back({static_cast<btConvexShape *>(shape), transform, btMax(btScalar(0), other->getFriction()), b,
+											  collisionRigid, other->getWorldTransform().inverse() * transform});
+				return true;
+			}
+			if (collisionRigid < 0 && shape->getShapeType() == GIMPACT_SHAPE_PROXYTYPE &&
+				static_cast<btGImpactShapeInterface *>(shape)->getGImpactShapeType() == CONST_GIMPACT_TRIMESH_SHAPE)
+			{
+				auto *mesh = static_cast<btGImpactMeshShape *>(shape);
+				for (int part = 0; part < mesh->getMeshPartCount(); ++part)
+					vbd.nativeBarriers.push_back({mesh->getMeshPart(part), transform, btMax(btScalar(0), other->getFriction()), b, {}});
+				return true;
+			}
+			if (!shape->isConcave())
+				return false;
+			const btTransform inverse = transform.inverse();
+			btVector3 localLo(SIMD_INFINITY, SIMD_INFINITY, SIMD_INFINITY), localHi = -localLo;
+			for (int c = 0; c < 8; ++c)
+			{
+				const btVector3 p = inverse * btVector3(c & 1 ? hi.x() : lo.x(), c & 2 ? hi.y() : lo.y(), c & 4 ? hi.z() : lo.z());
+				localLo.setMin(p);
+				localHi.setMax(p);
+			}
+			const int first = int(vbd.barriers.size());
+			VbdTriangleCollector collector(vbd, transform, scale, btMax(btScalar(0), other->getFriction()));
+			static_cast<btConcaveShape *>(shape)->processAllTriangles(&collector, localLo, localHi);
+			for (int tri = first; tri < int(vbd.barriers.size()); ++tri)
+			{
+				auto &triangle = vbd.barriers[tri];
+				triangle.owner = b;
+				triangle.rigid = collisionRigid;
+				if (collisionRigid >= 0)
+					for (int j = 0; j < 3; ++j)
+						triangle.local[j] = vbd.rigids[collisionRigid].pose.invXform(triangle.x[j]);
+			}
+			return true;
+		};
+		if (!collect(other->getCollisionShape(), other->getWorldTransform()))
+		{
+			fail("unsupported_barrier_shape");
+			return;
+		}
+	}
+	for (auto *body : bodies)
+	{
+		const auto found = m_vbdAcceptedPositions.find(body);
+		if (found == m_vbdAcceptedPositions.end() || found->second.size() != body->m_nodes.size())
+		{
+			vbd.recoveryPositions.clear();
+			break;
+		}
+		vbd.recoveryPositions.insert(vbd.recoveryPositions.end(), found->second.begin(), found->second.end());
+	}
+	if (!vbd.step(timeStep))
+	{
+		fail(vbd.error);
+		return;
+	}
+	for (int b = 0; b < int(bodies.size()); ++b)
+	{
+		auto *body = bodies[b];
+		const int offset = offsets[b];
+		// Commit only complete, finite steps; no legacy contact projection follows VBD.
+		for (int n = 0; n < body->m_nodes.size(); ++n)
+		{
+			auto &node = body->m_nodes[n];
+			node.m_x = vbd.x[offset + n] / scale;
+			node.m_q = node.m_x;
+			node.m_v = vbd.velocity[offset + n] / scale;
+			node.m_vn = node.m_v;
+			node.m_splitv.setZero();
+		}
+		body->updateDeformation();
+		body->updateNormals();
+		body->updateBounds();
+		updateSingleAabb(body);
+	}
+	for (int r = 0; r < int(rigidBodies.size()); ++r)
+		if (vbd.rigids[r].mass > 0)
+		{
+			auto *body = rigidBodies[r];
+			const auto &rigid = vbd.rigids[r];
+			btTransform transform = rigid.pose;
+			transform.setOrigin(transform.getOrigin() / scale);
+			body->setCenterOfMassTransform(transform);
+			body->setInterpolationWorldTransform(transform);
+			body->setLinearVelocity(rigid.velocity / scale);
+			body->setAngularVelocity(rigid.angularVelocity);
+			body->setInterpolationLinearVelocity(body->getLinearVelocity());
+			body->setInterpolationAngularVelocity(body->getAngularVelocity());
+			updateSingleAabb(body);
+		}
+	m_internalTime += timeStep;
+	m_solverInfo.m_timeStep = timeStep;
+	m_dispatchInfo.m_timeStep = timeStep;
+	for (int b = 0; b < int(bodies.size()); ++b)
+		m_vbdAcceptedPositions[bodies[b]] =
+			std::vector<btVector3>(vbd.x.begin() + offsets[b], vbd.x.begin() + offsets[b] + bodies[b]->m_nodes.size());
+	if (vbd.recoveredIntersections)
+		btDeformableDiagnostics::write("VBD_RECOVERY", "bounded_initial_overlap=1 max_distance=%.9g",
+									   double(vbd.settings.recoveryDistance));
+	for (const auto &range : jointRanges)
+	{
+		btScalar maximum = 0;
+		for (int row = 0; row < range.count; ++row)
+			maximum = btMax(maximum, btFabs(vbd.joints[range.first + row].impulse) / range.scales[row]);
+		if (auto *feedback = range.constraint->getJointFeedback())
+		{
+			feedback->m_appliedForceBodyA.setZero();
+			feedback->m_appliedTorqueBodyA.setZero();
+			feedback->m_appliedForceBodyB.setZero();
+			feedback->m_appliedTorqueBodyB.setZero();
+			for (int row = 0; row < range.count; ++row)
+			{
+				const auto &r = vbd.joints[range.first + row];
+				feedback->m_appliedForceBodyA += r.linearA * (r.impulse / (timeStep * scale));
+				feedback->m_appliedForceBodyB += r.linearB * (r.impulse / (timeStep * scale));
+				feedback->m_appliedTorqueBodyA += r.angularA * (r.impulse / (timeStep * scale * scale));
+				feedback->m_appliedTorqueBodyB += r.angularB * (r.impulse / (timeStep * scale * scale));
+			}
+		}
+		range.constraint->internalSetAppliedImpulse(maximum);
+		if (maximum >= range.constraint->getBreakingImpulseThreshold())
+			range.constraint->setEnabled(false);
+	}
+	btDeformableDiagnostics::write(
+		"VBD_STEP",
+		"cd=gimpact soft_bodies=%d rigid_bodies=%d attachments=%d surface=%s surface_vertices=%d surface_triangles=%d grab_springs=%d "
+		"iterations=%d workers=%d colors=%d contacts=%d planes=%d pairs=%d triangles=%d radius=%.9g discovery=%.9g minJ=%.9g",
+		int(bodies.size()), int(rigidBodies.size()), int(vbd.attachments.size()), vbd.mappedSurface ? "mapped" : "tet_boundary",
+		int(vbd.surfaceVertices.size()), int(vbd.surface.size()), int(vbd.springs.size()), vbd.settings.iterations, vbd.settings.workers,
+		vbd.colorCount, int(vbd.contacts.size()), int(vbd.planes.size()), vbd.broadphasePairs, int(vbd.barriers.size()),
+		double(vbd.settings.radius), double(vbd.settings.gap), double(vbd.minimumJ));
+	btVector3 center(0, 0, 0), minimum = vbd.x[0], maximum = vbd.x[0];
+	btScalar totalMass = 0;
+	for (int n = 0; n < int(vbd.x.size()); ++n)
+	{
+		center += vbd.x[n] * vbd.mass[n];
+		totalMass += vbd.mass[n];
+		minimum.setMin(vbd.x[n]);
+		maximum.setMax(vbd.x[n]);
+	}
+	if (totalMass > 0)
+		center /= totalMass;
+	btDeformableDiagnostics::write("VBD_POSITION", "units=m cx=%.9g cy=%.9g cz=%.9g min_z=%.9g height=%.9g", double(center.x()),
+								   double(center.y()), double(center.z()), double(minimum.z()), double(maximum.z() - minimum.z()));
+	btDeformableDiagnostics::bodies("end", m_softBodies, true);
+	if (m_internalTickCallback)
+		(*m_internalTickCallback)(this, timeStep);
+	++m_executed_step_counter;
+	m_dispatchInfo.m_stepCounter = m_executed_step_counter;
 }
 
 void btDeformableMultiBodyDynamicsWorld::coupledSingleStepSimulation(btScalar timeStep)

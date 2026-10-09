@@ -16,6 +16,7 @@
 #ifndef BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD_H
 #define BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD_H
 
+#include "btDeformableVbdSettings.h"
 #include "btSoftMultiBodyDynamicsWorld.h"
 #include "btDeformableLagrangianForce.h"
 #include "btDeformableMassSpringForce.h"
@@ -24,9 +25,14 @@
 #include "btSoftBodyHelpers.h"
 #include "BulletCollision/CollisionDispatch/btSimulationIslandManager.h"
 #include <functional>
+#include <map>
+#include <memory>
+#include <vector>
 #include "btDeformableContactForce.h"
 typedef btAlignedObjectArray<btSoftBody*> btSoftBodyArray;
 
+struct btDeformableVbdCollisionCache;
+struct btDeformableVbdMappingCache;
 class btDeformableBodySolver;
 class btDeformableLagrangianForce;
 struct MultiBodyInplaceSolverIslandCallback;
@@ -52,6 +58,15 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_lineSearch;
 	bool m_useProjection;
 	bool m_coupledContact = false;
+	bool m_vbdEnabled = false;
+	btScalar m_vbdLengthScale = 1;
+	int m_vbdIterations = 10;
+	btDeformableVbdSettings m_vbdSettings;
+	std::unique_ptr<btDeformableVbdCollisionCache> m_vbdCollisionCache;
+	std::unique_ptr<btDeformableVbdMappingCache> m_vbdMappingCache;
+	std::map<btSoftBody*, std::vector<btVector3>> m_vbdAcceptedPositions;
+	btScalar m_contactDiscoveryPadding = -1;
+	void vbdSingleStepSimulation(btScalar timeStep);
 	bool m_contactWarmStartEnabled = true;
 	btAlignedObjectArray<btDeformableContactForce::Contact> m_contactWarmStart, m_contactWarmCandidate;
 	btScalar m_contactWarmDt = 0, m_contactCandidateDt = 0;
@@ -93,6 +108,15 @@ protected:
 	void addSoftsWithSelfCollisionCheckToOverlappingPairs();
 
 public:
+	// Extra search range in scene units; negative retains the VBD reference default.
+	void setVbdSettings(const btDeformableVbdSettings& settings) { m_vbdSettings=settings; m_vbdIterations=settings.iterations; }
+	void setContactDiscoveryPadding(btScalar padding) { m_contactDiscoveryPadding = padding; }
+	// Experimental Newton-style VBD for tetrahedral bodies and coupled rigid contacts.
+	void setVbdSolver(bool enabled, btScalar metersPerUnit = 1, int iterations = 10)
+	{
+		if(m_vbdEnabled != enabled || m_vbdLengthScale != metersPerUnit) { m_coupledStepFailed = false; m_vbdAcceptedPositions.clear(); }
+		m_vbdEnabled = enabled; m_vbdLengthScale = metersPerUnit; m_vbdIterations = iterations;
+	}
 	btDeformableMultiBodyDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btDeformableMultiBodyConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration, btDeformableBodySolver* deformableBodySolver = 0);
 
 	// Experimental: implicit deformables against static rigid geometry only.
