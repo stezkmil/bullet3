@@ -63,6 +63,8 @@ SET(BulletSoftBody_HDRS
 
 	btDeformableBackwardEulerObjective.h
 	btDeformableBodySolver.h
+	btDeformableVbdGpu.h
+	btDeformableVbdGpuApi.h
 	btDeformableVbdSolver.h
 	btDeformableVbdKernels.h
 	btDeformableVbdCollision.h

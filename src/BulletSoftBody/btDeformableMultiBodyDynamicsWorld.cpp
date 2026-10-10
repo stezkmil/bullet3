@@ -33,6 +33,7 @@ Call internalStepSimulation multiple times, to achieve 240Hz (4 steps of 60Hz).
 The algorithm also closely resembles the one in http://physbam.stanford.edu/~fedkiw/papers/stanford2008-03.pdf
  */
 
+#include <cstring>
 #include <stdio.h>
 #include "btDeformableMultiBodyDynamicsWorld.h"
 #include "btDeformableVolumeBarrierForce.h"
@@ -1196,6 +1197,8 @@ struct btDeformableVbdMappingCache
 	std::vector<btDeformableVbdSolver::SurfaceVertex> vertices;
 	std::vector<std::array<int, 3>> faces;
 	std::vector<int> owners, faceEnds;
+	// The mapping key invalidates these indices whenever mesh topology changes.
+	std::vector<std::vector<std::pair<unsigned int, int>>> validationVertices;
 	std::vector<btScalar> friction;
 	bool valid = false;
 };
@@ -1208,15 +1211,8 @@ template <class T> void vbdMappingKeyAppend(std::vector<unsigned char> &key, con
 	const auto *bytes = reinterpret_cast<const unsigned char *>(&value);
 	key.insert(key.end(), bytes, bytes + sizeof(T));
 }
-std::vector<unsigned char> vbdMappingKey(const std::vector<btSoftBody *> &bodies, btScalar scale)
+template <class Add> void vbdMappingFields(const std::vector<btSoftBody *> &bodies, btScalar scale, const Add &add)
 {
-	std::vector<unsigned char> key;
-	size_t capacity = 1024;
-	for (auto *body : bodies)
-		if (const auto *mapping = body->getCollisionShapeVertexToSimTetra())
-			capacity += mapping->size() * 64;
-	key.reserve(capacity);
-	auto add = [&](const auto &value) { vbdMappingKeyAppend(key, value); };
 	add(scale);
 	add(bodies.size());
 	for (auto *body : bodies)
@@ -1246,8 +1242,8 @@ std::vector<unsigned char> vbdMappingKey(const std::vector<btSoftBody *> &bodies
 		for (const auto &entry : *mapping)
 		{
 			add(entry.vertexToTetra);
-			for (int j = 0; j < 4; ++j)
-				add(entry.baryCoordInTetra[j]);
+			static_assert(sizeof(btVector4) == 4 * sizeof(btScalar), "The mapping key requires four contiguous scalar components");
+			add(entry.baryCoordInTetra);
 		}
 		auto *shape = body->getCollisionShape();
 		add(shape);
@@ -1279,7 +1275,32 @@ std::vector<unsigned char> vbdMappingKey(const std::vector<btSoftBody *> &bodies
 			piece->unlockChildShapes();
 		}
 	}
+}
+std::vector<unsigned char> vbdMappingKey(const std::vector<btSoftBody *> &bodies, btScalar scale)
+{
+	std::vector<unsigned char> key;
+	size_t capacity = 1024;
+	for (auto *body : bodies)
+		if (const auto *mapping = body->getCollisionShapeVertexToSimTetra())
+			capacity += mapping->size() * 64;
+	key.reserve(capacity);
+	vbdMappingFields(bodies, scale, [&](const auto &value) { vbdMappingKeyAppend(key, value); });
 	return key;
+}
+bool vbdMappingKeyMatches(const std::vector<unsigned char> &key, const std::vector<btSoftBody *> &bodies, btScalar scale)
+{
+	// Compare every serialized field exactly without constructing another copy of an unchanged key.
+	size_t offset = 0;
+	bool matches = true;
+	vbdMappingFields(bodies, scale,
+					 [&](const auto &value)
+					 {
+						 if (matches)
+							 matches = offset <= key.size() && sizeof(value) <= key.size() - offset &&
+									   std::memcmp(key.data() + offset, &value, sizeof(value)) == 0;
+						 offset += sizeof(value);
+					 });
+	return matches && offset == key.size();
 }
 struct VbdMappingLease
 {
@@ -1370,8 +1391,8 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 	if (!m_vbdMappingCache)
 		m_vbdMappingCache.reset(new btDeformableVbdMappingCache());
 	auto &mappingCache = *m_vbdMappingCache;
-	auto mappingKey = vbdMappingKey(bodies, scale);
-	const bool reuseMapping = mappingCache.valid && mappingCache.key == mappingKey;
+	const bool reuseMapping = mappingCache.valid && vbdMappingKeyMatches(mappingCache.key, bodies, scale);
+	auto mappingKey = reuseMapping ? std::vector<unsigned char>() : vbdMappingKey(bodies, scale);
 	if (!reuseMapping)
 	{
 		mappingCache.valid = false;
@@ -1380,10 +1401,11 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 		mappingCache.owners.clear();
 		mappingCache.friction.clear();
 		mappingCache.faceEnds.clear();
+		mappingCache.validationVertices.clear();
 	}
 	VbdMappingLease mappingLease{mappingCache, vbd};
 	mappingLease.swap();
-	int cachedFace = 0;
+	int cachedFace = 0, cachedPart = 0;
 
 	vbd.settings = m_vbdSettings;
 	vbd.settings.gap = btMax(vbd.settings.gap, vbd.settings.radius);
@@ -1495,21 +1517,30 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 				{
 					auto *piece = mesh->getMeshPart(part);
 					piece->lockChildShapes();
-					const auto *manager = piece->getPrimitiveManager();
-					bool valid = true;
-					for (int tri = 0; tri < manager->get_primitive_count() && valid; ++tri)
-					{
-						btPrimitiveTriangle original;
-						manager->get_primitive_triangle(tri, original, false);
-						const auto &face = vbd.surface[cachedFace++];
-						for (int j = 0; j < 3; ++j)
-						{
-							const btVector3 expected = (body->getWorldTransform() * original.m_vertices[j]) * scale;
-							const btVector3 actual = vbd.surfaceVertices[face[j]].position(vbd.x);
-							if (!std::isfinite(double(expected.length2())) || (expected - actual).length2() > 1e-14)
-								valid = false;
-						}
-					}
+					const auto &vertices = mappingCache.validationVertices[cachedPart++];
+					const int batch = 256, blocks = (int(vertices.size()) + batch - 1) / batch;
+					std::vector<unsigned char> validBlocks(blocks, 1);
+					// Read-only reconstruction is independent while the mesh stays locked.
+					const int workers = vbd.settings.workers >= 1 && vbd.settings.workers <= 256 ? vbd.settings.workers : 1;
+					btVbdParallelFor(blocks, workers,
+									 [&](int block)
+									 {
+										 const int end = btMin(int(vertices.size()), (block + 1) * batch);
+										 for (int i = block * batch; i < end; ++i)
+										 {
+											 const auto &vertex = vertices[i];
+											 btVector3 original;
+											 piece->getVertex(vertex.first, original);
+											 const btVector3 expected = (body->getWorldTransform() * original) * scale;
+											 const btVector3 actual = vbd.surfaceVertices[vertex.second].position(vbd.x);
+											 if (!std::isfinite(double(expected.length2())) || (expected - actual).length2() > 1e-14)
+											 {
+												 validBlocks[block] = 0;
+												 break;
+											 }
+										 }
+									 });
+					const bool valid = std::find(validBlocks.begin(), validBlocks.end(), 0) == validBlocks.end();
 					piece->unlockChildShapes();
 					if (!valid)
 					{
@@ -1519,8 +1550,7 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 					}
 				}
 			}
-			else
-				cachedFace = mappingCache.faceEnds[owner];
+			cachedFace = mappingCache.faceEnds[owner];
 		}
 		else
 		{
@@ -1548,6 +1578,7 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 					piece->lockChildShapes();
 					const auto *manager = piece->getPrimitiveManager();
 					std::map<unsigned int, int> vertices;
+					mappingCache.validationVertices.emplace_back();
 					bool valid = true;
 					for (int tri = 0; tri < manager->get_primitive_count() && valid; ++tri)
 					{
@@ -1595,6 +1626,7 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 								const int id = int(vbd.surfaceVertices.size());
 								vbd.surfaceVertices.push_back(vertex);
 								found = vertices.emplace(index, id).first;
+								mappingCache.validationVertices.back().emplace_back(index, id);
 							}
 							face[corner] = found->second;
 						}
@@ -1656,7 +1688,8 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 		}
 		vbd.selfContact.push_back(body->useSelfCollision() || (body->m_cfg.collisions & btSoftBody::fCollision::CL_SELF) != 0);
 	}
-	mappingCache.key = std::move(mappingKey);
+	if (!reuseMapping)
+		mappingCache.key = std::move(mappingKey);
 	mappingCache.valid = true;
 	std::vector<btCollisionObject *> objects(bodies.begin(), bodies.end());
 	for (int b = 0; b < m_collisionObjects.size(); ++b)
@@ -1834,12 +1867,7 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 		lo.setMin(point / scale);
 		hi.setMax(point / scale);
 	}
-	for (const auto &vertex : vbd.surfaceVertices)
-	{
-		const btVector3 point = vertex.position(vbd.x) / scale;
-		lo.setMin(point);
-		hi.setMax(point);
-	}
+	vbd.includeSurfaceBounds(scale, lo, hi);
 	for (auto *rigid : rigidBodies)
 		if (!rigid->isStaticObject())
 		{
@@ -2010,11 +2038,15 @@ void btDeformableMultiBodyDynamicsWorld::vbdSingleStepSimulation(btScalar timeSt
 	btDeformableDiagnostics::write(
 		"VBD_STEP",
 		"cd=gimpact soft_bodies=%d rigid_bodies=%d attachments=%d surface=%s surface_vertices=%d surface_triangles=%d grab_springs=%d "
-		"iterations=%d workers=%d colors=%d contacts=%d planes=%d pairs=%d triangles=%d radius=%.9g discovery=%.9g minJ=%.9g",
+		"iterations=%d workers=%d colors=%d contacts=%d planes=%d pairs=%d triangles=%d radius=%.9g discovery=%.9g minJ=%.9g gpu_guards=%d "
+		"gpu_fallbacks=%d gpu_surfaces=%d gpu_surface_fallbacks=%d",
 		int(bodies.size()), int(rigidBodies.size()), int(vbd.attachments.size()), vbd.mappedSurface ? "mapped" : "tet_boundary",
 		int(vbd.surfaceVertices.size()), int(vbd.surface.size()), int(vbd.springs.size()), vbd.settings.iterations, vbd.settings.workers,
 		vbd.colorCount, int(vbd.contacts.size()), int(vbd.planes.size()), vbd.broadphasePairs, int(vbd.barriers.size()),
-		double(vbd.settings.radius), double(vbd.settings.gap), double(vbd.minimumJ));
+		double(vbd.settings.radius), double(vbd.settings.gap), double(vbd.minimumJ), vbd.gpuGuardCalls, vbd.gpuGuardFallbacks,
+		vbd.gpuSurfaceCalls, vbd.gpuSurfaceFallbacks);
+	if (!vbd.gpuError.empty())
+		btDeformableDiagnostics::write("VBD_GPU_FALLBACK", "reason=%s", vbd.gpuError.c_str());
 	btVector3 center(0, 0, 0), minimum = vbd.x[0], maximum = vbd.x[0];
 	btScalar totalMass = 0;
 	for (int n = 0; n < int(vbd.x.size()); ++n)

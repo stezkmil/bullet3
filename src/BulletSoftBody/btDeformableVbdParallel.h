@@ -15,12 +15,12 @@ class btDeformableVbdWorkers
 	std::condition_variable ready, complete;
 	std::function<void(int)> operation;
 	std::atomic<int> next{0};
-	int count = 0, generation = 0, remaining = 0;
+	int count = 0, generation = 0, remaining = 0, chunk = 16;
 	bool stop = false;
 	void execute()
 	{
-		for (int begin = next.fetch_add(16); begin < count; begin = next.fetch_add(16))
-			for (int i = begin; i < count && i < begin + 16; ++i)
+		for (int begin = next.fetch_add(chunk); begin < count; begin = next.fetch_add(chunk))
+			for (int i = begin; i < count && i < begin + chunk; ++i)
 				operation(i);
 	}
 
@@ -57,11 +57,12 @@ class btDeformableVbdWorkers
 		for (auto &thread : threads)
 			thread.join();
 	}
-	void run(int n, const std::function<void(int)> &fn)
+	void run(int n, const std::function<void(int)> &fn, int grain = 16)
 	{
 		{
 			std::lock_guard<std::mutex> lock(mutex);
 			count = n;
+			chunk = grain > 0 ? grain : 1;
 			next = 0;
 			operation = fn;
 			remaining = int(threads.size());
@@ -74,9 +75,9 @@ class btDeformableVbdWorkers
 		operation = {};
 	}
 };
-inline void btVbdParallelFor(int count, int workers, const std::function<void(int)> &operation)
+inline void btVbdParallelFor(int count, int workers, const std::function<void(int)> &operation, int minimumCount = 64, int grain = 16)
 {
-	if (workers <= 1 || count < 64)
+	if (workers <= 1 || count < minimumCount)
 	{
 		for (int i = 0; i < count; ++i)
 			operation(i);
@@ -89,9 +90,9 @@ inline void btVbdParallelFor(int count, int workers, const std::function<void(in
 		pool.reset(new btDeformableVbdWorkers(workers));
 		size = workers;
 	}
-	pool->run(count, operation);
+	pool->run(count, operation, grain);
 }
-// Contiguous batches amortize scheduling for inexpensive geometry operations.
+// Each worker claims one contiguous batch to balance uneven triangle-query costs.
 template <class Operation> inline void btVbdParallelGeometry(int count, int workers, const Operation &operation)
 {
 	const int batch = 256;
@@ -101,6 +102,7 @@ template <class Operation> inline void btVbdParallelGeometry(int count, int work
 						 const int end = count < (block + 1) * batch ? count : (block + 1) * batch;
 						 for (int i = block * batch; i < end; ++i)
 							 operation(i);
-					 });
+					 },
+					 64, 1);
 }
 #endif

@@ -81,8 +81,10 @@ protected:
 	int _calc_splitting_axis(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex);
 
 	void _build_sub_tree(GIM_BVH_DATA_ARRAY& primitive_boxes, int startIndex, int endIndex);
+	int _partition_sub_tree(GIM_BVH_DATA_ARRAY &boxes, int begin, int end, int node);
+	void _build_sub_tree_at(GIM_BVH_DATA_ARRAY &boxes, int begin, int end, int node);
 
-public:
+  public:
 	btBvhTree()
 	{
 		m_num_nodes = 0;
@@ -91,6 +93,48 @@ public:
 	//! prototype functions for box tree management
 	//!@{
 	void build_tree(GIM_BVH_DATA_ARRAY& primitive_boxes);
+
+	// Disjoint preorder ranges retain the serial builder's topology and query order.
+	// execute must join all submitted tasks before returning.
+	template <class Execute> void build_tree_parallel(GIM_BVH_DATA_ARRAY &boxes, int taskCount, const Execute &execute)
+	{
+		if (!boxes.size())
+		{
+			clearNodes();
+			return;
+		}
+		if (taskCount < 2 || boxes.size() < 2)
+		{
+			build_tree(boxes);
+			return;
+		}
+		m_num_nodes = boxes.size() * 2 - 1;
+		m_node_array.resize(boxes.size() * 2);
+		struct Task
+		{
+			int begin, end, node;
+		};
+		std::vector<Task> tasks{{0, boxes.size(), 0}};
+		while (int(tasks.size()) < taskCount)
+		{
+			int largest = 0;
+			for (int i = 1; i < int(tasks.size()); ++i)
+				if (tasks[i].end - tasks[i].begin > tasks[largest].end - tasks[largest].begin)
+					largest = i;
+			const Task t = tasks[largest];
+			if (t.end - t.begin < 2)
+				break;
+			const int split = _partition_sub_tree(boxes, t.begin, t.end, t.node);
+			tasks[largest] = {t.begin, split, t.node + 1};
+			tasks.push_back({split, t.end, t.node + 2 * (split - t.begin)});
+		}
+		execute(int(tasks.size()),
+				[&](int i)
+				{
+					const Task &t = tasks[i];
+					_build_sub_tree_at(boxes, t.begin, t.end, t.node);
+				});
+	}
 
 	SIMD_FORCE_INLINE void clearNodes()
 	{
@@ -251,6 +295,18 @@ public:
 	//! this rebuild the entire set
 	void buildSet();
 
+	template <class Execute> void buildSetParallel(int taskCount, const Execute &execute)
+	{
+		GIM_BVH_DATA_ARRAY boxes;
+		boxes.resize(m_primitive_manager->get_primitive_count());
+		for (int i = 0; i < boxes.size(); ++i)
+		{
+			m_primitive_manager->get_primitive_box(i, boxes[i].m_bound);
+			boxes[i].m_data = i;
+		}
+		m_box_tree.build_tree_parallel(boxes, taskCount, execute);
+	}
+
 	//! returns the indices of the primitives in the m_primitive_manager
 	bool boxQuery(const btAABB& box, btAlignedObjectArray<int>& collided_results) const;
 
@@ -336,9 +392,44 @@ public:
 	static float getAverageTreeCollisionTime();
 #endif  //TRI_COLLISION_PROFILING
 
-	static void find_collision(btGImpactBvh* boxset1, const btTransform& trans1,
-							   btGImpactBvh* boxset2, const btTransform& trans2,
-							   btPairSet& collision_pairs);
+	static void find_collision(btGImpactBvh *boxset1, const btTransform &trans1, btGImpactBvh *boxset2, const btTransform &trans2,
+							   btPairSet &collision_pairs);
+
+	static void find_collision(btGImpactBvh *boxset1, const btTransform &trans1, btGImpactBvh *boxset2, const btTransform &trans2,
+							   std::vector<GIM_PAIR> &collision_pairs);
+
+  private:
+	static void collision_tasks(btGImpactBvh *a, btGImpactBvh *b, const BT_BOX_BOX_TRANSFORM_CACHE &cache, int target,
+								std::vector<GIM_PAIR> &tasks);
+	static void collide_subtree(btGImpactBvh *a, btGImpactBvh *b, const BT_BOX_BOX_TRANSFORM_CACHE &cache, const GIM_PAIR &task,
+								std::vector<GIM_PAIR> &pairs);
+
+  public:
+	// The executor joins before ordered concatenation; each task owns a disjoint traversal interval.
+	template <class Execute>
+	static void find_collision_parallel(btGImpactBvh *a, const btTransform &ta, btGImpactBvh *b, const btTransform &tb,
+										std::vector<GIM_PAIR> &pairs, int taskCount, const Execute &execute)
+	{
+		if (!a->getNodeCount() || !b->getNodeCount())
+			return;
+		if (taskCount < 2)
+		{
+			find_collision(a, ta, b, tb, pairs);
+			return;
+		}
+		BT_BOX_BOX_TRANSFORM_CACHE cache;
+		cache.calc_from_homogenic(ta, tb);
+		std::vector<GIM_PAIR> tasks;
+		collision_tasks(a, b, cache, taskCount, tasks);
+		std::vector<std::vector<GIM_PAIR>> results(tasks.size());
+		execute(int(tasks.size()), [&](int i) { collide_subtree(a, b, cache, tasks[i], results[i]); });
+		size_t total = pairs.size();
+		for (const auto &result : results)
+			total += result.size();
+		pairs.reserve(total);
+		for (const auto &result : results)
+			pairs.insert(pairs.end(), result.begin(), result.end());
+	}
 };
 
-#endif  // BT_GIMPACT_BVH_H_INCLUDED
+#endif // BT_GIMPACT_BVH_H_INCLUDED

@@ -3,6 +3,7 @@
 #include "LinearMath/btScalar.h"
 struct btDeformableVbdSettings
 {
+	bool gpuGuards = false;
 	int iterations = 10;
 	int workers = 1;
 	btScalar collisionUnitsPerMeter = 1000;

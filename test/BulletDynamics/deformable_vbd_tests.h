@@ -1337,6 +1337,78 @@ TEST(DeformableVbd, WorldMappingCacheChecksInPlaceEditsAndTransformChanges)
 	world.removeForce(&material);
 	world.removeSoftBody(&body);
 }
+TEST(DeformableVbd, WorldMappingCacheStillValidatesSharedVerticesAfterGeometryEdits)
+{
+	btSoftBodyRigidBodyCollisionConfiguration config;
+	btCollisionDispatcher dispatcher(&config);
+	btDbvtBroadphase broadphase;
+	btDeformableBodySolver solver;
+	btDeformableMultiBodyConstraintSolver constraints;
+	constraints.setDeformableSolver(&solver);
+	btDeformableMultiBodyDynamicsWorld world(&dispatcher, &broadphase, &constraints, &config, &solver);
+	world.setVbdSolver(true);
+	world.setGravity(btVector3(0, 0, 0));
+	btVector3 positions[] = {btVector3(0, 0, 0), btVector3(.1, 0, 0), btVector3(0, .1, 0), btVector3(0, 0, .1)};
+	btScalar masses[] = {.25, .25, .25, .25};
+	struct MappedBody : btSoftBody
+	{
+		using btSoftBody::btSoftBody;
+		std::vector<btVertexToTetraMapping> mapping;
+		const std::vector<btVertexToTetraMapping> *getCollisionShapeVertexToSimTetra() const override
+		{
+			return &mapping;
+		}
+	} body(&world.getWorldInfo(), 4, positions, masses);
+	body.appendTetra(0, 1, 2, 3);
+	body.initializeDmInverse();
+	body.m_tetraScratches.resize(1);
+	body.m_tetraScratchesTn.resize(1);
+	for (int i = 0; i < 4; ++i)
+		body.m_nodes[i].m_frozen = 1;
+	btTriangleMesh geometry;
+	geometry.addTriangle(positions[0], positions[1], positions[2], true);
+	geometry.addTriangle(positions[0], positions[2], positions[3], true);
+	btGImpactMeshShape shape(&geometry);
+	shape.updateBound();
+	body.setCollisionShape(&shape);
+	body.mapping.resize(4);
+	for (int i = 0; i < 4; ++i)
+	{
+		body.mapping[i].vertexToTetra = 0;
+		body.mapping[i].baryCoordInTetra = btVector4(0, 0, 0, 0);
+		body.mapping[i].baryCoordInTetra[i] = 1;
+	}
+	btDeformableLinearElasticityForce material(1000, 4000, 0, 0);
+	material.addSoftBody(&body);
+	world.addSoftBody(&body);
+	world.addForce(&material);
+	for (int step = 0; step < 3; ++step)
+	{
+		EXPECT_EQ(world.stepSimulation(.002, 0), 1);
+		EXPECT_FALSE(world.hasCoupledStepFailed());
+	}
+	btTransform changed = btTransform::getIdentity();
+	changed.setOrigin(btVector3(.2, 0, 0));
+	body.setWorldTransform(changed);
+	EXPECT_EQ(world.stepSimulation(.002, 0), 1);
+	EXPECT_FALSE(world.hasCoupledStepFailed());
+	// Geometry positions are deliberately absent from the topology key.
+	// Change a vertex used only by the second triangle while reusing that key.
+	unsigned char *vertexBase, *indexBase;
+	int vertexCount, vertexStride, indexStride, faceCount;
+	PHY_ScalarType vertexType, indexType;
+	geometry.getLockedVertexIndexBase(&vertexBase, vertexCount, vertexType, vertexStride, &indexBase, indexStride, faceCount, indexType);
+	ASSERT_EQ(vertexCount, 4);
+	if (vertexType == PHY_DOUBLE)
+		reinterpret_cast<double *>(vertexBase + 3 * vertexStride)[0] += .01;
+	else
+		reinterpret_cast<float *>(vertexBase + 3 * vertexStride)[0] += .01f;
+	geometry.unLockVertexBase(0);
+	EXPECT_EQ(world.stepSimulation(.002, 0), 0);
+	EXPECT_TRUE(world.hasCoupledStepFailed());
+	world.removeForce(&material);
+	world.removeSoftBody(&body);
+}
 TEST(DeformableVbd, NativeBarrierQueriesMovingRigidAwayFromSoftSurface)
 {
 	btTriangleMesh geometry;
@@ -1656,5 +1728,1587 @@ TEST(DeformableVbd, DenseMappedMotionGuardMatchesSerialAcrossMappingChanges)
 		}
 		for (int i = 0; i < 4; ++i)
 			EXPECT_EQ(serial.x[i], parallel.x[i]);
+	}
+}
+
+TEST(DeformableVbd, DISABLED_GpuMappedMotionGuardMatchesCpuAcrossMappingChanges)
+{
+	btDeformableVbdSolver serial, parallel;
+	for (auto *s : {&serial, &parallel})
+	{
+		setupVbdGroundTest(*s, .01);
+		s->barriers.clear();
+		s->external.assign(4, btVector3(0, 0, 0));
+		s->mappedSurface = true;
+		s->settings.gap = .0002;
+		for (int i = 0; i < 40000; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			const btMatrix3x3 matrix(1.1, .02, -.03, -.015, 1.08, .04, .02, .03, 1.12);
+			v.support.push_back({i % 4, matrix});
+			v.support.push_back({(i + 1) % 4, btMatrix3x3::getIdentity() - matrix});
+			v.offset = btVector3(.0001 * (i % 3), -.0002 * (i % 5), .0001 * (i % 7));
+			s->surfaceVertices.push_back(v);
+		}
+		s->surface.push_back({{0, 1, 2}});
+		ASSERT_TRUE(s->initialize());
+	}
+	parallel.settings.workers = 8;
+	parallel.settings.gpuGuards = true;
+	for (int step = 0; step < 8; ++step)
+	{
+		for (auto *s : {&serial, &parallel})
+		{
+			if (step == 4)
+			{
+				for (auto &v : s->surfaceVertices)
+					for (auto &support : v.support)
+					{
+						support.node = (support.node + 1) % 4;
+						support.jacobian = btMatrix3x3::getIdentity() * (support.jacobian[0][0] > 0 ? btScalar(1.1) : btScalar(-.1));
+					}
+				ASSERT_TRUE(s->initialize());
+			}
+			else
+			{
+				const auto topology = s->surfaceTopology();
+				ASSERT_TRUE(s->initialize(&topology));
+			}
+			s->velocity.assign(4, btVector3(.8, -.1, .2));
+			ASSERT_TRUE(s->step(.002));
+			EXPECT_GT(s->minimumJ, 0);
+		}
+		for (int i = 0; i < 4; ++i)
+			EXPECT_NEAR((serial.x[i] - parallel.x[i]).length(), 0, 1e-10);
+		EXPECT_GT(parallel.gpuGuardCalls, 0);
+		if (step < 4)
+			EXPECT_GT(parallel.gpuSurfaceCalls, 0);
+		else
+			EXPECT_EQ(parallel.gpuSurfaceCalls, 0);
+		EXPECT_EQ(parallel.gpuSurfaceFallbacks, 0);
+		EXPECT_EQ(parallel.gpuGuardFallbacks, 0) << parallel.gpuError;
+	}
+}
+
+TEST(DeformableVbd, DISABLED_GpuMappedGuardRetainsContactAndVolumeProtection)
+{
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, .01005);
+	s.mappedSurface = true;
+	s.settings.gpuGuards = true;
+	for (int i = 0; i < 8193; ++i)
+	{
+		btDeformableVbdSolver::SurfaceVertex v;
+		v.support.push_back({i % 3, btMatrix3x3::getIdentity()});
+		v.support.push_back({0, btMatrix3x3::getIdentity() * btScalar(.1)});
+		v.support.push_back({3, btMatrix3x3::getIdentity() * btScalar(-.1)});
+		s.surfaceVertices.push_back(v);
+	}
+	s.surface.push_back({{0, 1, 2}});
+	s.settings.gap = .0002;
+	ASSERT_TRUE(s.initialize());
+	for (int step = 0; step < 80; ++step)
+	{
+		s.velocity.assign(4, btVector3(0, 0, 0));
+		s.velocity[step % 4] = btVector3(.2 * ((step % 3) - 1), .1, -1);
+		ASSERT_TRUE(s.step(.0002)) << "step=" << step;
+		for (const auto &v : s.surfaceVertices)
+			EXPECT_GT(v.position(s.x).z(), 0);
+		EXPECT_GT(s.minimumJ, 0);
+	}
+	EXPECT_GT(s.gpuGuardCalls, 0);
+	EXPECT_EQ(s.gpuGuardFallbacks, 0) << s.gpuError;
+}
+
+TEST(DeformableVbd, DISABLED_GpuMappedGuardCoversSharedAndDuplicateSupports)
+{
+	btDeformableVbdGpu gpu;
+	ASSERT_TRUE(gpu.ready()) << gpu.error();
+	std::vector<btVbdGpuMapping> maps;
+	std::vector<btVbdGpuSupport> supports;
+	std::vector<btVbdGpuVec> reference(129), current(129), proposed(129);
+	for (int node = 0; node < 129; ++node)
+		reference[node] = {.001 * node, -.002 * node, .003 * node};
+	for (int v = 0; v < 8192; ++v)
+	{
+		btVbdGpuMapping map{};
+		map.begin = int(supports.size());
+		map.offset = {.0001 * (v % 3), -.0002 * (v % 7), .0003 * (v % 5)};
+		for (int k = 0; k < 3; ++k)
+		{
+			btVbdGpuSupport support{};
+			support.node = (v + (k == 1 ? 1 : 0)) % 128;
+			const double weight = k == 0 ? 1.2 : (k == 1 ? -.3 : .1);
+			support.j[0] = support.j[4] = support.j[8] = weight;
+			support.j[1] = .02 * weight;
+			support.j[5] = -.03 * weight;
+			supports.push_back(support);
+		}
+		map.end = int(supports.size());
+		maps.push_back(map);
+	}
+	ASSERT_TRUE(gpu.mapping(maps, supports)) << gpu.error();
+	const double bound = .001;
+	auto position = [&](const btVbdGpuMapping &map, const std::vector<btVbdGpuVec> &nodes)
+	{
+		btVector3 result(map.offset.x, map.offset.y, map.offset.z);
+		for (int k = map.begin; k < map.end; ++k)
+		{
+			const auto &s = supports[k];
+			const auto &x = nodes[s.node];
+			for (int row = 0; row < 3; ++row)
+				result[row] += (s.j[3 * row] * x.x + s.j[3 * row + 1] * x.y) + s.j[3 * row + 2] * x.z;
+		}
+		return result;
+	};
+	for (int trial = 0; trial < 9; ++trial)
+	{
+		if (trial == 2 || trial == 4 || trial == 7)
+		{
+			for (auto &support : supports)
+			{
+				support.j[1] = trial == 4 ? .02 * support.j[0] : 0;
+				support.j[5] = trial == 4 ? -.03 * support.j[0] : 0;
+			}
+			ASSERT_TRUE(gpu.mapping(maps, supports)) << gpu.error();
+		}
+		ASSERT_TRUE(gpu.evaluate(reference, int(maps.size()))) << gpu.error();
+		for (size_t v = 0; v < maps.size(); ++v)
+		{
+			const auto expectedPosition = position(maps[v], reference);
+			const auto actualPosition = gpu.positions()[v];
+			EXPECT_NEAR(expectedPosition.x(), actualPosition.x, 1e-14);
+			EXPECT_NEAR(expectedPosition.y(), actualPosition.y, 1e-14);
+			EXPECT_NEAR(expectedPosition.z(), actualPosition.z, 1e-14);
+		}
+
+		if (trial == 5)
+			for (auto &x : reference)
+				x.z += .01;
+		if (trial == 6)
+		{
+			for (auto &s : supports)
+				s.node = (s.node + 17) % 128;
+			ASSERT_TRUE(gpu.mapping(maps, supports)) << gpu.error();
+		}
+		current = reference;
+		for (auto &x : current)
+			x.x += .0001;
+		proposed = current;
+		for (int node = 0; node < 129; ++node)
+			if (trial == 0 || trial == 4 || (trial != 3 && trial != 8 && (node == 13 || (trial == 2 && node == 14))) ||
+				(trial == 3 && node == 128))
+				proposed[node].y += .004;
+		double expected = 1;
+		for (const auto &map : maps)
+		{
+			const btVector3 start = position(map, current), d = position(map, proposed) - start;
+			const btVector3 a0 = start - position(map, reference);
+			if ((a0 + d).length2() > bound * bound && d.length2() > 0)
+			{
+				const double a = d.length2(), b = a0.dot(d), c = a0.length2() - bound * bound;
+				expected = btMin(expected, btMax(0., (-b + btSqrt(btMax(0., b * b - a * c))) / a));
+			}
+		}
+		double actual = -1;
+		ASSERT_TRUE(gpu.guard(current, proposed, reference, trial == 0 || trial == 5, bound, actual)) << gpu.error();
+		EXPECT_NEAR(actual, expected, 1e-12) << "trial=" << trial;
+	}
+}
+
+TEST(DeformableVbd, DISABLED_GpuUnavailableFallsBackToCpu)
+{
+	btDeformableVbdSolver serial, parallel;
+	for (auto *s : {&serial, &parallel})
+	{
+		setupVbdGroundTest(*s, .01);
+		s->barriers.clear();
+		s->external.assign(4, btVector3(0, 0, 0));
+		s->mappedSurface = true;
+		s->settings.gap = .0002;
+		for (int i = 0; i < 40000; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			btMatrix3x3 matrix = btMatrix3x3::getIdentity() * btScalar(1.1);
+			matrix[0][1] = .01;
+			v.support.push_back({i % 4, matrix});
+			v.support.push_back({(i + 1) % 4, btMatrix3x3::getIdentity() * btScalar(-.1)});
+			s->surfaceVertices.push_back(v);
+		}
+		s->surface.push_back({{0, 1, 2}});
+		ASSERT_TRUE(s->initialize());
+	}
+	parallel.settings.workers = 8;
+	parallel.settings.gpuGuards = true;
+	for (int step = 0; step < 8; ++step)
+	{
+		for (auto *s : {&serial, &parallel})
+		{
+			if (step == 4)
+			{
+				for (auto &v : s->surfaceVertices)
+					for (auto &support : v.support)
+						support.node = (support.node + 1) % 4;
+				ASSERT_TRUE(s->initialize());
+			}
+			s->velocity.assign(4, btVector3(.8, -.1, .2));
+			ASSERT_TRUE(s->step(.002));
+			EXPECT_GT(s->minimumJ, 0);
+		}
+		for (int i = 0; i < 4; ++i)
+			EXPECT_EQ(serial.x[i], parallel.x[i]);
+		EXPECT_EQ(parallel.gpuGuardCalls, 0);
+		EXPECT_GT(parallel.gpuGuardFallbacks, 0);
+		EXPECT_GT(parallel.gpuSurfaceFallbacks, 0);
+		EXPECT_EQ(parallel.gpuSurfaceCalls, 0);
+		EXPECT_FALSE(parallel.gpuError.empty());
+	}
+}
+
+TEST(DeformableVbd, DISABLED_GpuSurfaceEvaluationMatchesCpuAndBenchmarksDownloads)
+{
+	btDeformableVbdGpu gpu;
+	for (int count : {0, 1, 8193, 301797})
+	{
+		std::vector<btDeformableVbdSolver::SurfaceVertex> vertices(count);
+		std::vector<btVbdGpuMapping> maps(count);
+		std::vector<btVbdGpuSupport> supports;
+		std::vector<btVector3> x(732), cpu(count), converted(count);
+		std::vector<btVbdGpuVec> nodes(732);
+		for (int i = 0; i < count; ++i)
+		{
+			auto &v = vertices[i];
+			v.offset = btVector3(.01 * (i % 7), -.02 * (i % 11), .03);
+			maps[i].begin = int(supports.size());
+			maps[i].offset = {v.offset.x(), v.offset.y(), v.offset.z()};
+			for (int j = 0; j < 4; ++j)
+			{
+				int node = (i + j * 7) % 732;
+				btMatrix3x3 matrix(.2, -.01, .03, -.04, .3, .02, .01, -.02, j == 0 ? -.1 : .4);
+				v.support.push_back({node, matrix});
+				btVbdGpuSupport item{};
+				item.node = node;
+				for (int r = 0; r < 3; ++r)
+					for (int c = 0; c < 3; ++c)
+						item.j[3 * r + c] = matrix[r][c];
+				supports.push_back(item);
+			}
+			maps[i].end = int(supports.size());
+		}
+		ASSERT_TRUE(gpu.mapping(maps, supports)) << gpu.error();
+		double cpuMs = 0, gpuMs = 0;
+		for (int step = 0; step < 55; ++step)
+		{
+			for (int i = 0; i < 732; ++i)
+				x[i] = btVector3(.01 * (i % 17) + .001 * step, .03 * (i % 11) - .002 * step, .07 * (i % 3) + .003 * step);
+			auto a = std::chrono::steady_clock::now();
+			btVbdParallelGeometry(count, 8, [&](int i) { cpu[i] = vertices[i].position(x); });
+			auto b = std::chrono::steady_clock::now();
+			for (int i = 0; i < 732; ++i)
+				nodes[i] = {x[i].x(), x[i].y(), x[i].z()};
+			ASSERT_TRUE(gpu.evaluate(nodes, count)) << gpu.error();
+			btVbdParallelGeometry(count, 8,
+								  [&](int i)
+								  {
+									  const auto &p = gpu.positions()[i];
+									  converted[i] = btVector3(p.x, p.y, p.z);
+								  });
+			auto c = std::chrono::steady_clock::now();
+			if (step >= 5)
+			{
+				cpuMs += std::chrono::duration<double, std::milli>(b - a).count();
+				gpuMs += std::chrono::duration<double, std::milli>(c - b).count();
+			}
+			if (step == 0 || step == 54)
+			{
+				double difference = 0;
+				for (int i = 0; i < count; ++i)
+					difference = btMax(difference, double((cpu[i] - converted[i]).length()));
+				EXPECT_LT(difference, 1e-14);
+			}
+		}
+		printf("SURFACE_EVAL count=%d cpu8_ms=%.6f gpu_download_convert_ms=%.6f\n", count, cpuMs / 50, gpuMs / 50);
+	}
+}
+
+TEST(DeformableVbd, ParallelTriangleUpdatesPreservePlanesAndChangeDetection)
+{
+	btDeformableVbdCollisionMesh serial, parallel;
+	for (int count : {32771, 17, 0, 40001})
+		for (int change = 0; change < 4; ++change)
+		{
+			const btScalar margin = change >= 2 ? .2 : .1;
+			const btScalar padding = change >= 2 ? .7 : .4;
+			auto position = [&](int i, int j)
+			{
+				return btVector3(i % 137, i / 137, (i % 7) * .1) + btVector3(j == 1 ? .8 : 0, j == 2 ? .7 : 0, j * .2) +
+					   (change == 3 ? btVector3(.01, .03, -.05) : btVector3(0, 0, 0));
+			};
+			const bool a = serial.updateTriangles(count, margin, padding, 1, position);
+			const bool b = parallel.updateTriangles(count, margin, padding, 8, position);
+			EXPECT_EQ(a, b);
+			EXPECT_EQ(a, change == 0 || (count > 0 && change >= 2));
+			ASSERT_EQ(serial.triangles.size(), parallel.triangles.size());
+			for (int i = 0; i < count; ++i)
+			{
+				const auto &x = serial.triangles[i], &y = parallel.triangles[i];
+				for (int j = 0; j < 3; ++j)
+					EXPECT_EQ(x.m_vertices[j], y.m_vertices[j]);
+				for (int j = 0; j < 4; ++j)
+					EXPECT_EQ(x.m_plane[j], y.m_plane[j]);
+				EXPECT_EQ(x.m_margin, y.m_margin);
+				EXPECT_EQ(x.m_discoveryPadding, y.m_discoveryPadding);
+			}
+		}
+}
+
+TEST(DeformableVbd, ContiguousPairSortPreservesLegacyOrderAndDuplicates)
+{
+	std::vector<GIM_PAIR> scratch;
+	for (int count : {0, 1, 511, 512, 17000, 50000, 17})
+	{
+		btPairSet reference;
+		btVbdPairSet actual;
+		for (int i = count - 1; i >= 0; --i)
+			reference.push_back(GIM_PAIR(((i / 2) * 977) % 137 - 61, ((i / 2) * 71) % 509 - 207));
+		actual.assign(reference.begin(), reference.end());
+		reference.sort([](const GIM_PAIR &a, const GIM_PAIR &b)
+					   { return a.m_index1 != b.m_index1 ? a.m_index1 < b.m_index1 : a.m_index2 < b.m_index2; });
+		btVbdSortCollisionPairs(actual, scratch);
+		ASSERT_EQ(reference.size(), actual.size());
+		auto a = actual.begin();
+		for (const auto &r : reference)
+		{
+			EXPECT_EQ(r.m_index1, a->m_index1);
+			EXPECT_EQ(r.m_index2, a->m_index2);
+			++a;
+		}
+	}
+}
+TEST(DeformableVbd, DISABLED_CandidatePairSortBenchmark)
+{
+	std::vector<GIM_PAIR> scratch;
+	for (int count : {17000, 50000})
+	{
+		btPairSet source;
+		for (int i = count - 1; i >= 0; --i)
+			source.push_back(GIM_PAIR((i * 977) % 137, (i * 71) % 509));
+		double listMs = 0, contiguousMs = 0;
+		for (int run = 0; run < 25; ++run)
+		{
+			auto a = source;
+			btVbdPairSet b(source.begin(), source.end());
+			auto start = std::chrono::steady_clock::now();
+			a.sort([](const GIM_PAIR &x, const GIM_PAIR &y)
+				   { return x.m_index1 != y.m_index1 ? x.m_index1 < y.m_index1 : x.m_index2 < y.m_index2; });
+			auto middle = std::chrono::steady_clock::now();
+			btVbdSortCollisionPairs(b, scratch);
+			auto end = std::chrono::steady_clock::now();
+			if (run >= 5)
+			{
+				listMs += std::chrono::duration<double, std::milli>(middle - start).count();
+				contiguousMs += std::chrono::duration<double, std::milli>(end - middle).count();
+			}
+		}
+		printf("PAIR_SORT count=%d list_ms=%.6f contiguous_ms=%.6f\n", count, listMs / 20, contiguousMs / 20);
+	}
+}
+
+#include <limits>
+TEST(DeformableVbd, DISABLED_GpuScalarMappingsRejectNonFinitePositions)
+{
+	for (double invalid : {std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
+		for (double weight : {0., 1., -.3})
+			for (bool evaluate : {false, true})
+			{
+				btDeformableVbdGpu gpu;
+				std::vector<btVbdGpuMapping> maps(1);
+				maps[0].end = 1;
+				std::vector<btVbdGpuSupport> supports(1);
+				supports[0].j[0] = supports[0].j[4] = supports[0].j[8] = weight;
+				ASSERT_TRUE(gpu.mapping(maps, supports)) << gpu.error();
+				std::vector<btVbdGpuVec> current(1), proposed(1), reference(1);
+				proposed[0].y = invalid;
+				double limit = 1;
+				if (evaluate)
+					EXPECT_FALSE(gpu.evaluate(proposed, 1));
+				else
+					EXPECT_FALSE(gpu.guard(current, proposed, reference, true, .001, limit));
+				EXPECT_FALSE(gpu.error().empty());
+			}
+}
+
+TEST(DeformableVbd, DenseParallelMappingValidationRejectsLateGeometryEdits)
+{
+	for (int workers : {1, 8})
+	{
+		btSoftBodyRigidBodyCollisionConfiguration config;
+		btCollisionDispatcher dispatcher(&config);
+		btDbvtBroadphase broadphase;
+		btDeformableBodySolver solver;
+		btDeformableMultiBodyConstraintSolver constraints;
+		constraints.setDeformableSolver(&solver);
+		btDeformableMultiBodyDynamicsWorld world(&dispatcher, &broadphase, &constraints, &config, &solver);
+		world.setVbdSolver(true);
+		btDeformableVbdSettings settings;
+		settings.workers = workers;
+		world.setVbdSettings(settings);
+		world.setGravity(btVector3(0, 0, 0));
+		btVector3 positions[] = {btVector3(0, 0, 0), btVector3(.1, 0, 0), btVector3(0, .1, 0), btVector3(0, 0, .1)};
+		btScalar masses[] = {.25, .25, .25, .25};
+		struct MappedBody : btSoftBody
+		{
+			using btSoftBody::btSoftBody;
+			std::vector<btVertexToTetraMapping> mapping;
+			const std::vector<btVertexToTetraMapping> *getCollisionShapeVertexToSimTetra() const override
+			{
+				return &mapping;
+			}
+		} body(&world.getWorldInfo(), 4, positions, masses);
+		body.appendTetra(0, 1, 2, 3);
+		body.initializeDmInverse();
+		body.m_tetraScratches.resize(1);
+		body.m_tetraScratchesTn.resize(1);
+		for (int i = 0; i < 4; ++i)
+			body.m_nodes[i].m_frozen = 1;
+		btTriangleMesh geometry;
+		for (int i = 0; i < 6001; ++i)
+			geometry.addTriangle(positions[0], positions[1], positions[2], false);
+		btGImpactMeshShape shape(&geometry);
+		shape.updateBound();
+		body.setCollisionShape(&shape);
+		body.mapping.resize(18003);
+		for (int i = 0; i < 18003; ++i)
+		{
+			body.mapping[i].vertexToTetra = 0;
+			body.mapping[i].baryCoordInTetra = btVector4(0, 0, 0, 0);
+			body.mapping[i].baryCoordInTetra[i % 3] = 1;
+		}
+		btDeformableLinearElasticityForce material(1000, 4000, 0, 0);
+		material.addSoftBody(&body);
+		world.addSoftBody(&body);
+		world.addForce(&material);
+		for (int step = 0; step < 3; ++step)
+		{
+			EXPECT_EQ(world.stepSimulation(.002, 0), 1);
+			EXPECT_FALSE(world.hasCoupledStepFailed());
+		}
+		btTransform changed = btTransform::getIdentity();
+		changed.setOrigin(btVector3(.2, 0, 0));
+		body.setWorldTransform(changed);
+		EXPECT_EQ(world.stepSimulation(.002, 0), 1);
+		EXPECT_FALSE(world.hasCoupledStepFailed());
+		// Geometry positions are deliberately absent from the topology key.
+		// Change a vertex in the last parallel block while reusing that key.
+		unsigned char *vertexBase, *indexBase;
+		int vertexCount, vertexStride, indexStride, faceCount;
+		PHY_ScalarType vertexType, indexType;
+		geometry.getLockedVertexIndexBase(&vertexBase, vertexCount, vertexType, vertexStride, &indexBase, indexStride, faceCount,
+										  indexType);
+		ASSERT_EQ(vertexCount, 18003);
+		if (vertexType == PHY_DOUBLE)
+			reinterpret_cast<double *>(vertexBase + (vertexCount - 1) * vertexStride)[0] += .01;
+		else
+			reinterpret_cast<float *>(vertexBase + (vertexCount - 1) * vertexStride)[0] += .01f;
+		geometry.unLockVertexBase(0);
+		EXPECT_EQ(world.stepSimulation(.002, 0), 0);
+		EXPECT_TRUE(world.hasCoupledStepFailed());
+		world.removeForce(&material);
+		world.removeSoftBody(&body);
+	}
+}
+
+TEST(DeformableVbd, ParallelBvhBuildPreservesEveryNodeAndPrimitiveOrder)
+{
+	for (int count : {0, 1, 2, 7, 4097, 32771})
+		for (int pattern = 0; pattern < 3; ++pattern)
+		{
+			GIM_BVH_DATA_ARRAY input;
+			input.resize(count);
+			for (int i = 0; i < count; ++i)
+			{
+				const btVector3 center =
+					pattern == 0 ? btVector3(1, 2, 3)
+								 : (pattern == 1 ? btVector3(i * .01, 0, 0) : btVector3((i * 7919) % 101, (i * 3571) % 127, (i * 37) % 61));
+				input[i].m_bound.m_min = center - btVector3(.2, .3, .4);
+				input[i].m_bound.m_max = center + btVector3(.2, .3, .4);
+				input[i].m_data = count - 1 - i;
+			}
+			auto serialBoxes = input;
+			btBvhTree serial;
+			if (count)
+				serial.build_tree(serialBoxes);
+			for (int workers : {1, 8, 31})
+			{
+				auto boxes = input;
+				btBvhTree parallel;
+				parallel.build_tree_parallel(boxes, workers * 4, [&](int n, const auto &fn) { btVbdParallelFor(n, workers, fn, 2, 1); });
+				ASSERT_EQ(serial.getNodeCount(), parallel.getNodeCount());
+				for (int i = 0; i < serial.getNodeCount(); ++i)
+				{
+					ASSERT_EQ(serial.isLeafNode(i), parallel.isLeafNode(i));
+					btAABB a, b;
+					serial.getNodeBound(i, a);
+					parallel.getNodeBound(i, b);
+					EXPECT_EQ(a.m_min, b.m_min);
+					EXPECT_EQ(a.m_max, b.m_max);
+					if (serial.isLeafNode(i))
+						EXPECT_EQ(serial.getNodeData(i), parallel.getNodeData(i));
+					else
+						EXPECT_EQ(serial.getEscapeNodeIndex(i), parallel.getEscapeNodeIndex(i));
+				}
+				for (int i = 0; i < count; ++i)
+					EXPECT_EQ(serialBoxes[i].m_data, boxes[i].m_data);
+			}
+		}
+}
+
+TEST(DeformableVbd, NativePrimitiveLookupHandlesGrowingSourceAndKeepsEarlierIndices)
+{
+	btTriangleMesh geometry;
+	for (int i = 0; i < 2; ++i)
+	{
+		const btVector3 offset(i * 10000, 0, 0);
+		geometry.addTriangle(offset + btVector3(-1000, -1000, 0), offset + btVector3(3000, -1000, 0), offset + btVector3(-1000, 3000, 0));
+	}
+	btGImpactMeshShape shape(&geometry);
+	shape.updateBound();
+	btTriangleMesh firstGeometry;
+	firstGeometry.addTriangle(btVector3(-1000, -1000, 0), btVector3(3000, -1000, 0), btVector3(-1000, 3000, 0));
+	btGImpactMeshShape firstShape(&firstGeometry);
+	firstShape.updateBound();
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, .003);
+	// Keep the fixture geometry inside its explicit discovery range.
+	s.settings.gap = .005;
+	s.external.assign(4, btVector3(0, 0, 0));
+	s.barriers.clear();
+	s.nativeBarriers.push_back({firstShape.getMeshPart(0), btTransform::getIdentity(), .5, 1, {}});
+	ASSERT_TRUE(s.initialize());
+	ASSERT_TRUE(s.step(.002));
+	ASSERT_EQ(s.barriers.size(), 1u);
+	const auto first = s.barriers[0];
+	s.nativeBarriers[0].shape = shape.getMeshPart(0);
+	for (auto &p : s.x)
+		p.setX(p.x() + 10);
+	s.velocity.assign(4, btVector3(0, 0, 0));
+	ASSERT_TRUE(s.initialize());
+	ASSERT_TRUE(s.step(.002));
+	ASSERT_EQ(s.barriers.size(), 2u);
+	for (int i = 0; i < 3; ++i)
+		EXPECT_EQ(first.x[i], s.barriers[0].x[i]);
+	ASSERT_TRUE(s.step(.002));
+	EXPECT_EQ(s.barriers.size(), 2u);
+}
+
+TEST(DeformableVbd, ParallelSurfaceValidationRejectsLateCrossingAmongManySafePairs)
+{
+	for (int workers : {1, 8, 31})
+		for (bool crossing : {false, true})
+		{
+			btDeformableVbdSolver s;
+			setupVbdGroundTest(s, .002);
+			s.settings.workers = workers;
+			s.settings.gap = .005;
+			s.settings.recoveryDistance = 0;
+			const auto ground = s.barriers[0];
+			s.barriers.assign(8193, ground);
+			if (crossing)
+			{
+				auto &tri = s.barriers.back();
+				tri.x[0] = btVector3(.05, -1, -1);
+				tri.x[1] = btVector3(.05, 3, -1);
+				tri.x[2] = btVector3(.05, -1, 3);
+			}
+			const auto original = s.x;
+			ASSERT_TRUE(s.initialize());
+			const bool accepted = s.step(.002);
+			EXPECT_EQ(accepted, !crossing) << "workers=" << workers;
+			if (crossing)
+			{
+				EXPECT_STREQ(s.error, "initial_surface_intersection");
+				for (int i = 0; i < 4; ++i)
+					EXPECT_EQ(original[i], s.x[i]);
+			}
+			else
+				EXPECT_GT(s.minimumJ, .99);
+		}
+}
+
+TEST(DeformableVbd, CollectedNativeBranchesPreserveEveryTriangleAcrossMotion)
+{
+	btTriangleMesh geometry;
+	for (int group = 0; group < 2; ++group)
+		for (int i = 0; i < 64; ++i)
+		{
+			const btVector3 offset(group * 10000 + i, 0, 0);
+			geometry.addTriangle(offset + btVector3(-1000, -1000, 0), offset + btVector3(3000, -1000, 0),
+								 offset + btVector3(-1000, 3000, 0));
+		}
+	btGImpactMeshShape shape(&geometry);
+	shape.updateBound();
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, .003);
+	s.settings.gap = .005;
+	s.barriers.clear();
+	s.nativeBarriers.push_back({shape.getMeshPart(0), btTransform::getIdentity(), .5, 1, {}});
+	for (int visit = 0; visit < 3; ++visit)
+	{
+		if (visit)
+			for (auto &p : s.x)
+				p.setX(p.x() + (visit == 1 ? 10 : -10));
+		s.velocity.assign(4, btVector3(0, 0, 0));
+		ASSERT_TRUE(s.initialize());
+		ASSERT_TRUE(s.step(.002));
+		EXPECT_EQ(s.barriers.size(), visit ? 128u : 64u);
+		const auto &indices = s.nativeBarriers[0].triangles;
+		ASSERT_EQ(indices.size(), 128u);
+		std::unordered_set<int> unique;
+		for (int i = 0; i < (visit ? 128 : 64); ++i)
+		{
+			ASSERT_GE(indices[i], 0);
+			ASSERT_LT(indices[i], int(s.barriers.size()));
+			unique.insert(indices[i]);
+			const btScalar expected = btScalar((i / 64) * 10000 + i % 64 - 1000) / s.settings.collisionUnitsPerMeter;
+			EXPECT_EQ(s.barriers[indices[i]].x[0].x(), expected);
+		}
+		EXPECT_EQ(unique.size(), visit ? 128u : 64u);
+		ASSERT_TRUE(s.step(.002));
+		EXPECT_EQ(s.barriers.size(), visit ? 128u : 64u);
+	}
+}
+
+TEST(DeformableVbd, ContiguousGImpactTraversalPreservesListCoverageAndOrder)
+{
+	for (int count : {0, 1, 7, 129, 513})
+	{
+		btDeformableVbdCollisionMesh a, b;
+		for (int side = 0; side < 2; ++side)
+		{
+			auto &mesh = side ? b : a;
+			mesh.updateTriangles(count, .01, .1, 1,
+								 [&](int i, int j)
+								 {
+									 const btVector3 offset((i * 31) % 13, (i * 17) % 11, (i * 7) % 5);
+									 return offset + (j == 0 ? btVector3(0, 0, 0) : j == 1 ? btVector3(2, 0, 0) : btVector3(0, 2, 0));
+								 });
+			mesh.update(1);
+		}
+		for (int transform = 0; transform < 4; ++transform)
+		{
+			btTransform ta = btTransform::getIdentity(), tb = btTransform::getIdentity();
+			tb.setOrigin(btVector3(transform * .37, -.2 * transform, transform == 3 ? 100 : .05));
+			tb.setRotation(btQuaternion(btVector3(0, 0, 1), transform * .19));
+			btPairSet reference;
+			btVbdPairSet actual;
+			// Both APIs append to the caller's existing results.
+			reference.push_back({-1, -2});
+			actual.push_back({-1, -2});
+			btGImpactBvh::find_collision(&a.tree, ta, &b.tree, tb, reference);
+			btGImpactBvh::find_collision(&a.tree, ta, &b.tree, tb, actual);
+			for (int workers : {1, 8, 31})
+			{
+				btVbdPairSet parallel{{-1, -2}};
+				btGImpactBvh::find_collision_parallel(&a.tree, ta, &b.tree, tb, parallel, workers * 4,
+													  [&](int n, const auto &fn) { btVbdParallelFor(n, workers, fn, 2, 1); });
+				ASSERT_EQ(actual.size(), parallel.size());
+				for (size_t i = 0; i < actual.size(); ++i)
+				{
+					EXPECT_EQ(actual[i].m_index1, parallel[i].m_index1);
+					EXPECT_EQ(actual[i].m_index2, parallel[i].m_index2);
+				}
+			}
+			ASSERT_EQ(reference.size(), actual.size());
+			int i = 0;
+			for (const auto &pair : reference)
+			{
+				EXPECT_EQ(pair.m_index1, actual[i].m_index1);
+				EXPECT_EQ(pair.m_index2, actual[i].m_index2);
+				++i;
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, IndexedPlaneGuardsMatchEquivalentSmallContactSet)
+{
+	btDeformableVbdSolver sparseGuard, dense;
+	for (auto *s : {&sparseGuard, &dense})
+	{
+		setupVbdGroundTest(*s, .00015);
+		s->mappedSurface = true;
+		s->settings.gap = .002;
+		for (int i = 0; i < 3; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.support.push_back({i, btMatrix3x3::getIdentity() * btScalar(1.1)});
+			v.support.push_back({(i + 1) % 3, btMatrix3x3::getIdentity() * btScalar(-.1)});
+			v.support.push_back({i, btMatrix3x3::getIdentity() * btScalar(0)});
+			s->surfaceVertices.push_back(v);
+		}
+		s->surface.push_back({{0, 1, 2}});
+	}
+	const auto ground = dense.barriers[0];
+	dense.barriers.assign(700, ground);
+	ASSERT_TRUE(sparseGuard.initialize());
+	ASSERT_TRUE(dense.initialize());
+	for (int step = 0; step < 40; ++step)
+	{
+		if (step == 20)
+		{
+			dense.barriers.assign(530, ground);
+			ASSERT_TRUE(sparseGuard.initialize());
+			ASSERT_TRUE(dense.initialize());
+		}
+		for (auto *s : {&sparseGuard, &dense})
+		{
+			s->velocity.assign(4, btVector3(0, 0, 0));
+			s->velocity[step % 4] = btVector3(.01 * ((step % 3) - 1), .003, -.02);
+			ASSERT_TRUE(s->step(.0002));
+			EXPECT_GT(s->minimumJ, 0);
+		}
+		ASSERT_GE(dense.planes.size(), 512u);
+		ASSERT_LT(sparseGuard.planes.size(), 512u);
+		ASSERT_EQ(sparseGuard.contacts.size(), dense.contacts.size());
+		for (int i = 0; i < 4; ++i)
+			EXPECT_EQ(sparseGuard.x[i], dense.x[i]) << "step=" << step << " node=" << i;
+	}
+}
+
+TEST(DeformableVbd, ParallelDistancesPreserveContactOrderAndMotion)
+{
+	for (int workers : {8, 31})
+	{
+		btDeformableVbdSolver serial, parallel;
+		for (auto *s : {&serial, &parallel})
+		{
+			setupVbdGroundTest(*s, .00015);
+			s->settings.gap = .002;
+			const auto ground = s->barriers[0];
+			s->barriers.assign(5000, ground);
+			for (int i = 0; i < 5000; ++i)
+				for (auto &p : s->barriers[i].x)
+					p.setZ(-.0000001 * (i % 11));
+			ASSERT_TRUE(s->initialize());
+		}
+		parallel.settings.workers = workers;
+		for (int step = 0; step < 8; ++step)
+		{
+			for (auto *s : {&serial, &parallel})
+			{
+				s->velocity.assign(4, btVector3(0, 0, 0));
+				s->velocity[step % 4] = btVector3(.01, .003, -.02);
+				ASSERT_TRUE(s->step(.0002));
+				ASSERT_GE(s->broadphasePairs, 64 * 256);
+			}
+			ASSERT_EQ(serial.contacts.size(), parallel.contacts.size());
+			ASSERT_EQ(serial.planes.size(), parallel.planes.size());
+			for (size_t i = 0; i < serial.contacts.size(); ++i)
+			{
+				const auto &a = serial.contacts[i];
+				const auto &b = parallel.contacts[i];
+				EXPECT_EQ(a.point, b.point);
+				EXPECT_EQ(a.normal, b.normal);
+				EXPECT_EQ(a.vertex.offset, b.vertex.offset);
+				ASSERT_EQ(a.vertex.support.size(), b.vertex.support.size());
+				for (size_t j = 0; j < a.vertex.support.size(); ++j)
+				{
+					EXPECT_EQ(a.vertex.support[j].node, b.vertex.support[j].node);
+					for (int row = 0; row < 3; ++row)
+						EXPECT_EQ(a.vertex.support[j].jacobian[row], b.vertex.support[j].jacobian[row]);
+				}
+			}
+			for (size_t i = 0; i < serial.planes.size(); ++i)
+			{
+				EXPECT_EQ(serial.planes[i].nodes, parallel.planes[i].nodes);
+				EXPECT_EQ(serial.planes[i].point, parallel.planes[i].point);
+				EXPECT_EQ(serial.planes[i].normal, parallel.planes[i].normal);
+			}
+			for (int i = 0; i < 4; ++i)
+			{
+				EXPECT_EQ(serial.x[i], parallel.x[i]);
+				EXPECT_EQ(serial.velocity[i], parallel.velocity[i]);
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, ParallelMappedBoundsMatchSerialIncludingSignedWeights)
+{
+	btDeformableVbdSolver s;
+	for (int i = 0; i < 97; ++i)
+		s.x.push_back(btVector3((i % 11) - 5, (i % 7) - 3, (i % 13) - 6) * btScalar(.001));
+	for (int count : {0, 1, 4095, 4096, 10003})
+	{
+		s.surfaceVertices.clear();
+		for (int i = 0; i < count; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.offset = btVector3(.00001 * (i % 3), -.00003, .00004);
+			v.support.push_back({i % 97, btMatrix3x3::getIdentity() * btScalar(1.2)});
+			v.support.push_back({(i * 7 + 3) % 97, btMatrix3x3::getIdentity() * btScalar(-.2)});
+			s.surfaceVertices.push_back(v);
+		}
+		for (btScalar scale : {btScalar(.001), btScalar(1), btScalar(2.5)})
+		{
+			btVector3 expectedLo(-.0001, -.0002, -.0003), expectedHi(.0002, .0001, .0003);
+			for (const auto &v : s.surfaceVertices)
+			{
+				const auto p = v.position(s.x) / scale;
+				expectedLo.setMin(p);
+				expectedHi.setMax(p);
+			}
+			for (int workers : {1, 8, 31})
+			{
+				s.settings.workers = workers;
+				btVector3 lo(-.0001, -.0002, -.0003), hi(.0002, .0001, .0003);
+				s.includeSurfaceBounds(scale, lo, hi);
+				// Optimized division can differ by one ULP between the serial and worker loops.
+				for (int d = 0; d < 3; ++d)
+				{
+					const btScalar tolerance = 8 * std::numeric_limits<btScalar>::epsilon() *
+											   btMax(btScalar(1), btMax(btFabs(expectedLo[d]), btFabs(expectedHi[d])));
+					EXPECT_NEAR(expectedLo[d], lo[d], tolerance);
+					EXPECT_NEAR(expectedHi[d], hi[d], tolerance);
+				}
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, SmallSurfaceUsesCpuGuardsWhenGpuAccelerationIsEnabled)
+{
+	btDeformableVbdSolver cpu, automatic;
+	for (auto *s : {&cpu, &automatic})
+	{
+		setupVbdGroundTest(*s, .01005);
+		s->mappedSurface = true;
+		s->settings.gap = .0002;
+		for (int i = 0; i < 3; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.support.push_back({i, btMatrix3x3::getIdentity()});
+			v.support.push_back({0, btMatrix3x3::getIdentity() * btScalar(.1)});
+			v.support.push_back({3, btMatrix3x3::getIdentity() * btScalar(-.1)});
+			s->surfaceVertices.push_back(v);
+		}
+		s->surface.push_back({{0, 1, 2}});
+		ASSERT_TRUE(s->initialize());
+	}
+	automatic.settings.gpuGuards = true;
+	for (int step = 0; step < 40; ++step)
+	{
+		for (auto *s : {&cpu, &automatic})
+		{
+			s->velocity.assign(4, btVector3(0, 0, 0));
+			s->velocity[step % 4] = btVector3(.2 * ((step % 3) - 1), .1, -1);
+			ASSERT_TRUE(s->step(.0002));
+			EXPECT_GT(s->minimumJ, 0);
+		}
+		for (int i = 0; i < 4; ++i)
+			EXPECT_EQ(cpu.x[i], automatic.x[i]);
+	}
+	EXPECT_EQ(automatic.gpuGuardCalls, 0);
+	EXPECT_EQ(automatic.gpuGuardFallbacks, 0);
+	EXPECT_TRUE(automatic.gpuError.empty());
+}
+
+TEST(DeformableVbd, UnchangedTetrahedraDoNotAlterActiveVolumeGuards)
+{
+	btDeformableVbdSolver fullScan, dense;
+	for (auto *s : {&fullScan, &dense})
+	{
+		setupVbdGroundTest(*s, 1);
+		s->barriers.clear();
+		s->mappedSurface = true;
+		s->settings.gap = .2;
+		s->settings.iterations = 2;
+		for (int i = 0; i < 4; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.support.push_back({i, btMatrix3x3::getIdentity()});
+			s->surfaceVertices.push_back(v);
+		}
+		s->surface.push_back({{0, 1, 2}});
+	}
+	for (int i = 0; i < 4; ++i)
+	{
+		dense.x.push_back(dense.x[i] + btVector3(2, 0, 0));
+		dense.velocity.push_back(btVector3(0, 0, 0));
+		dense.external.push_back(btVector3(0, 0, 0));
+		dense.mass.push_back(0);
+		dense.massDamping.push_back(0);
+	}
+	auto stationary = dense.tets[0];
+	stationary.nodes = {{4, 5, 6, 7}};
+	dense.tets.resize(512, stationary);
+	ASSERT_TRUE(fullScan.initialize());
+	ASSERT_TRUE(dense.initialize());
+	for (int step = 0; step < 30; ++step)
+	{
+		if (step == 10 || step == 20)
+		{
+			dense.tets.resize(step == 10 ? 511 : 700, stationary);
+			ASSERT_TRUE(fullScan.initialize());
+			ASSERT_TRUE(dense.initialize());
+		}
+		for (auto *s : {&fullScan, &dense})
+		{
+			s->velocity.assign(s->x.size(), btVector3(0, 0, 0));
+			s->velocity[step % 4] = btVector3(.2, -.1, -50);
+			ASSERT_TRUE(s->step(.002));
+			EXPECT_GT(s->minimumJ, 0);
+		}
+		for (int i = 0; i < 4; ++i)
+		{
+			EXPECT_EQ(fullScan.x[i], dense.x[i]);
+			EXPECT_EQ(fullScan.velocity[i], dense.velocity[i]);
+		}
+	}
+}
+
+TEST(DeformableVbd, DiagonalMappingBoundsCoverSignedAnisotropicDisplacements)
+{
+	for (const btMatrix3x3 &matrix :
+		 {btMatrix3x3::getIdentity(), btMatrix3x3(-2, 0, 0, 0, .5, 0, 0, 0, 3), btMatrix3x3(1, .2, 0, -.3, 2, .4, 0, .1, 1)})
+	{
+		btDeformableVbdSolver s;
+		setupVbdGroundTest(s, 1);
+		s.mappedSurface = true;
+		for (int i = 0; i < 3; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.support.push_back({i, matrix});
+			v.support.push_back({3, matrix * btScalar(-.25)});
+			s.surfaceVertices.push_back(v);
+		}
+		s.surface.push_back({{0, 1, 2}});
+		ASSERT_TRUE(s.initialize());
+		const auto topology = s.surfaceTopology();
+		const bool diagonal = matrix[0][1] == 0;
+		const btScalar expected = diagonal ? btMax(btFabs(matrix[0][0]), btMax(btFabs(matrix[1][1]), btFabs(matrix[2][2])))
+										   : btSqrt(matrix[0].length2() + matrix[1].length2() + matrix[2].length2());
+		EXPECT_NEAR(topology.amplification, 1.25 * expected, 1e-6);
+		for (int pass = 0; pass < 200; ++pass)
+		{
+			std::vector<btVector3> moved = s.x;
+			btScalar maximum = 0;
+			for (int i = 0; i < 4; ++i)
+			{
+				btVector3 d(btSin(btScalar(pass + i)), btCos(btScalar(pass * 3 + i)), btSin(btScalar(pass * 7 - i)));
+				moved[i] += d;
+				maximum = btMax(maximum, d.length());
+			}
+			for (const auto &v : s.surfaceVertices)
+				EXPECT_LE((v.position(moved) - v.position(s.x)).length(), topology.amplification * maximum + btScalar(1e-5));
+		}
+		ASSERT_TRUE(s.initialize(&topology));
+		EXPECT_EQ(s.surfaceTopology().amplification, topology.amplification);
+	}
+}
+
+TEST(DeformableVbd, ParallelNativeSourcesPreserveCollectionOrderAndMotion)
+{
+	// Three sources exercise serial extraction; six exceed the aggregate parallel threshold.
+	for (int sourceCount : {3, 6})
+	{
+		btTriangleMesh geometry;
+		for (int i = 0; i < 2048; ++i)
+		{
+			const btVector3 offset((i % 16) * .01, 0, 0);
+			geometry.addTriangle(offset + btVector3(-1000, -1000, 0), offset + btVector3(3000, -1000, 0),
+								 offset + btVector3(-1000, 3000, 0));
+		}
+		geometry.addTriangle(btVector3(0, 0, 0), btVector3(0, 0, 0), btVector3(0, 0, 0));
+		btGImpactMeshShape shape(&geometry);
+		shape.updateBound();
+		for (int workers : {8, 31})
+		{
+			btDeformableVbdSolver serial, parallel;
+			for (auto *s : {&serial, &parallel})
+			{
+				setupVbdGroundTest(*s, .003);
+				s->settings.gap = .005;
+				s->barriers.clear();
+				s->collisionAllowed.assign(sourceCount + 1, std::vector<bool>(sourceCount + 1, true));
+				s->collisionAllowed[0][2] = false;
+				for (int source = 0; source < sourceCount; ++source)
+				{
+					auto transform = btTransform::getIdentity();
+					transform.setOrigin(btVector3(source * 10, 0, -source * .1));
+					s->nativeBarriers.push_back({shape.getMeshPart(0), transform, .25, source + 1, {}});
+				}
+				ASSERT_TRUE(s->initialize());
+			}
+			parallel.settings.workers = workers;
+			for (int step = 0; step < 6; ++step)
+			{
+				for (auto *s : {&serial, &parallel})
+				{
+					s->velocity.assign(4, btVector3(.02, 0, -.1));
+					ASSERT_TRUE(s->step(.002));
+				}
+				ASSERT_EQ(serial.barriers.size(), parallel.barriers.size());
+				for (size_t k = 0; k < serial.barriers.size(); ++k)
+				{
+					EXPECT_EQ(serial.barriers[k].owner, parallel.barriers[k].owner);
+					for (int j = 0; j < 3; ++j)
+						EXPECT_EQ(serial.barriers[k].x[j], parallel.barriers[k].x[j]);
+				}
+				for (int source = 0; source < sourceCount; ++source)
+					EXPECT_EQ(serial.nativeBarriers[source].triangles, parallel.nativeBarriers[source].triangles);
+				EXPECT_TRUE(parallel.nativeBarriers[1].triangles.empty());
+				EXPECT_EQ(serial.contacts.size(), parallel.contacts.size());
+				EXPECT_EQ(serial.planes.size(), parallel.planes.size());
+				for (int i = 0; i < 4; ++i)
+				{
+					EXPECT_EQ(serial.x[i], parallel.x[i]);
+					EXPECT_EQ(serial.velocity[i], parallel.velocity[i]);
+				}
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, PersistentGuardStorageInvalidatesAcrossSolverRecreation)
+{
+	btDeformableVbdCollisionCache cache;
+	std::vector<btVector3> state;
+	for (int pass = 0; pass < 30; ++pass)
+	{
+		if (pass == 15)
+		{
+			cache.guardStamp = ~0u;
+			cache.guardReferenceStamp = ~0u;
+		}
+		btDeformableVbdSolver persistent(&cache), fresh;
+		for (auto *s : {&persistent, &fresh})
+		{
+			setupVbdGroundTest(*s, .00015);
+			s->mappedSurface = true;
+			s->settings.gap = .0002;
+			if (!state.empty())
+				s->x = state;
+			const int count = pass % 4 == 0 ? 39 : 3;
+			for (int i = 0; i < count; ++i)
+			{
+				btDeformableVbdSolver::SurfaceVertex v;
+				v.support.push_back({i % 3, btMatrix3x3::getIdentity() * btScalar(1.1)});
+				v.support.push_back({3, btMatrix3x3::getIdentity() * btScalar(-.1)});
+				v.offset = btVector3(0, 0, .01 + .000001 * pass);
+				s->surfaceVertices.push_back(v);
+			}
+			s->surface.push_back({{0, 1, 2}});
+			ASSERT_TRUE(s->initialize());
+			s->velocity.assign(4, btVector3(0, 0, 0));
+			s->velocity[pass % 4] = btVector3(.2, -.1, -2);
+			ASSERT_TRUE(s->step(.0002));
+			EXPECT_GT(s->minimumJ, 0);
+		}
+		for (int i = 0; i < 4; ++i)
+		{
+			EXPECT_EQ(persistent.x[i], fresh.x[i]);
+			EXPECT_EQ(persistent.velocity[i], fresh.velocity[i]);
+		}
+		state = fresh.x;
+		EXPECT_GT(cache.guardStamp, 0u);
+		EXPECT_GT(cache.guardReferenceStamp, 0u);
+	}
+	EXPECT_FALSE(cache.guardPositions.empty());
+}
+
+TEST(DeformableVbd, ContactDeduplicationUsesQuantizedMappingCoefficients)
+{
+	for (btScalar perturbation : {btScalar(0), btScalar(1e-10), btScalar(1e-5)})
+	{
+		btDeformableVbdSolver baseline, duplicate;
+		for (auto *s : {&baseline, &duplicate})
+		{
+			setupVbdGroundTest(*s, .00015);
+			s->mappedSurface = true;
+			s->settings.gap = .002;
+			for (int i = 0; i < 3; ++i)
+			{
+				btDeformableVbdSolver::SurfaceVertex v;
+				v.support.push_back({i, btMatrix3x3::getIdentity()});
+				s->surfaceVertices.push_back(v);
+			}
+			s->surface.push_back({{0, 1, 2}});
+		}
+		for (int i = 0; i < 3; ++i)
+		{
+			auto v = duplicate.surfaceVertices[i];
+			// The perturbed column multiplies a zero coordinate, leaving collision geometry identical.
+			v.support[0].jacobian[2][i == 2 ? 0 : 1] = perturbation;
+			duplicate.surfaceVertices.push_back(v);
+		}
+		duplicate.surface.push_back({{3, 4, 5}});
+		for (auto *s : {&baseline, &duplicate})
+		{
+			ASSERT_TRUE(s->initialize());
+			ASSERT_TRUE(s->step(.0002));
+		}
+		ASSERT_FALSE(baseline.contacts.empty());
+		if (perturbation < btScalar(1e-8))
+			EXPECT_EQ(baseline.contacts.size(), duplicate.contacts.size());
+		else
+			EXPECT_GT(duplicate.contacts.size(), baseline.contacts.size());
+	}
+}
+
+TEST(DeformableVbd, ParallelCommonVolumeGuardsMatchSerialForSharedNodes)
+{
+	for (int workers : {8, 31})
+	{
+		btDeformableVbdSolver serial, parallel;
+		for (auto *s : {&serial, &parallel})
+		{
+			setupVbdGroundTest(*s, 1);
+			s->barriers.clear();
+			s->mappedSurface = true;
+			s->settings.gap = 1;
+			s->settings.iterations = 2;
+			const auto tet = s->tets[0];
+			s->tets.assign(4200, tet);
+			for (int i = 0; i < 4; ++i)
+			{
+				btDeformableVbdSolver::SurfaceVertex v;
+				v.support.push_back({i, btMatrix3x3::getIdentity()});
+				s->surfaceVertices.push_back(v);
+			}
+			s->surface.push_back({{0, 1, 2}});
+			ASSERT_TRUE(s->initialize());
+		}
+		parallel.settings.workers = workers;
+		for (int step = 0; step < 6; ++step)
+		{
+			for (auto *s : {&serial, &parallel})
+			{
+				s->velocity.assign(4, btVector3(0, 0, 0));
+				s->velocity[1] = btVector3(-100, 0, 0);
+				s->velocity[2] = btVector3(0, -100, 0);
+				ASSERT_TRUE(s->step(.002));
+				EXPECT_GT(s->minimumJ, 0);
+			}
+			EXPECT_EQ(serial.minimumJ, parallel.minimumJ);
+			for (int i = 0; i < 4; ++i)
+			{
+				EXPECT_EQ(serial.x[i], parallel.x[i]);
+				EXPECT_EQ(serial.velocity[i], parallel.velocity[i]);
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, SharedSurfaceTopologySurvivesItsOriginalSolver)
+{
+	auto setup = [](btDeformableVbdSolver &s)
+	{
+		setupVbdGroundTest(s, .003);
+		s.mappedSurface = true;
+		s.settings.gap = .005;
+		for (int i = 0; i < 3; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.support.push_back({i, btMatrix3x3::getIdentity()});
+			s.surfaceVertices.push_back(v);
+		}
+		s.surface.push_back({{0, 1, 2}});
+	};
+	btDeformableVbdSolver cached, fresh;
+	setup(cached);
+	setup(fresh);
+	std::weak_ptr<const std::vector<std::set<int>>> lifetime;
+	{
+		btDeformableVbdSolver original;
+		setup(original);
+		ASSERT_TRUE(original.initialize());
+		const auto topology = original.surfaceTopology();
+		lifetime = topology.neighbors;
+		ASSERT_TRUE(cached.initialize(&topology));
+		EXPECT_EQ(cached.surfaceTopology().neighbors.get(), topology.neighbors.get());
+	}
+	EXPECT_FALSE(lifetime.expired());
+	ASSERT_TRUE(fresh.initialize());
+	for (int step = 0; step < 20; ++step)
+	{
+		for (auto *s : {&cached, &fresh})
+		{
+			s->velocity.assign(4, btVector3(.03, 0, -.1));
+			ASSERT_TRUE(s->step(.002));
+		}
+		for (int i = 0; i < 4; ++i)
+		{
+			EXPECT_EQ(cached.x[i], fresh.x[i]);
+			EXPECT_EQ(cached.velocity[i], fresh.velocity[i]);
+		}
+	}
+	const auto oldTopology = cached.surfaceTopology();
+	ASSERT_TRUE((*oldTopology.neighbors)[3].empty());
+	cached.surfaceVertices[0].support.push_back({3, btMatrix3x3::getIdentity() * btScalar(.1)});
+	ASSERT_TRUE(cached.initialize());
+	const auto newTopology = cached.surfaceTopology();
+	EXPECT_NE(oldTopology.neighbors.get(), newTopology.neighbors.get());
+	EXPECT_TRUE((*oldTopology.neighbors)[3].empty());
+	EXPECT_FALSE((*newTopology.neighbors)[3].empty());
+}
+
+TEST(DeformableVbd, PersistentPairWorkspaceDoesNotReuseOldContactResults)
+{
+	btDeformableVbdCollisionCache cache;
+	const int counts[] = {5000, 16, 0, 5200, 400, 5000, 1, 5000};
+	for (int pass = 0; pass < 8; ++pass)
+	{
+		for (auto &entry : cache.pairDistances)
+		{
+			entry.status = 3;
+			entry.distance2 = -1;
+			entry.closestSoft = entry.closestRigid = btVector3(1000, -1000, 1000);
+		}
+		for (auto &entry : cache.pairSortScratch)
+			entry.m_index1 = entry.m_index2 = -123;
+		btDeformableVbdSolver persistent(&cache), fresh;
+		for (auto *s : {&persistent, &fresh})
+		{
+			setupVbdGroundTest(*s, .00015);
+			s->settings.gap = .002;
+			s->settings.workers = pass % 3 == 1 ? 1 : (pass % 2 ? 31 : 8);
+			const auto ground = s->barriers[0];
+			s->barriers.assign(counts[pass], ground);
+			for (int i = 0; i < counts[pass]; ++i)
+				for (auto &p : s->barriers[i].x)
+					p.setZ(-.0000001 * ((i + pass) % 11));
+			ASSERT_TRUE(s->initialize());
+			s->velocity.assign(4, btVector3(0, 0, 0));
+			s->velocity[pass % 4] = btVector3(.01, .003, -.02);
+			ASSERT_TRUE(s->step(.0002));
+		}
+		EXPECT_EQ(persistent.broadphasePairs, fresh.broadphasePairs);
+		ASSERT_EQ(persistent.contacts.size(), fresh.contacts.size());
+		ASSERT_EQ(persistent.planes.size(), fresh.planes.size());
+		for (size_t i = 0; i < persistent.contacts.size(); ++i)
+		{
+			EXPECT_EQ(persistent.contacts[i].point, fresh.contacts[i].point);
+			EXPECT_EQ(persistent.contacts[i].normal, fresh.contacts[i].normal);
+		}
+		for (size_t i = 0; i < persistent.planes.size(); ++i)
+		{
+			EXPECT_EQ(persistent.planes[i].nodes, fresh.planes[i].nodes);
+			EXPECT_EQ(persistent.planes[i].point, fresh.planes[i].point);
+			EXPECT_EQ(persistent.planes[i].normal, fresh.planes[i].normal);
+		}
+		for (int i = 0; i < 4; ++i)
+		{
+			EXPECT_EQ(persistent.x[i], fresh.x[i]);
+			EXPECT_EQ(persistent.velocity[i], fresh.velocity[i]);
+		}
+		if (pass == 0)
+		{
+			EXPECT_GE(cache.pairDistances.size(), size_t(64 * 256));
+			EXPECT_FALSE(cache.pairSortScratch.empty());
+		}
+	}
+}
+
+TEST(DeformableVbd, ParallelPairSortPreservesSignedOrderAndDuplicates)
+{
+	std::vector<GIM_PAIR> scratch;
+	for (int count : {0, 511, 512, 131071, 131072, 200000, 600000, 17})
+	{
+		btVbdPairSet source;
+		unsigned random = 12345;
+		for (int i = 0; i < count; ++i)
+		{
+			random = random * 1664525u + 1013904223u;
+			const int a = int(random);
+			random = random * 1664525u + 1013904223u;
+			source.push_back(i % 5 ? GIM_PAIR(a, int(random)) : GIM_PAIR(-1, 2147483647));
+		}
+		auto expected = source;
+		std::sort(expected.begin(), expected.end(), [](const GIM_PAIR &a, const GIM_PAIR &b)
+				  { return a.m_index1 != b.m_index1 ? a.m_index1 < b.m_index1 : a.m_index2 < b.m_index2; });
+		for (int workers : {1, 8, 16, 31})
+		{
+			auto actual = source;
+			btVbdSortCollisionPairsParallel(actual, scratch, workers);
+			ASSERT_EQ(actual.size(), expected.size());
+			for (size_t i = 0; i < actual.size(); ++i)
+			{
+				ASSERT_EQ(actual[i].m_index1, expected[i].m_index1);
+				ASSERT_EQ(actual[i].m_index2, expected[i].m_index2);
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, ActiveVolumeGuardsCoverBitmapBoundaries)
+{
+	for (int activeIndex : {0, 1, 15, 31, 32, 63, 127, 511, 512, 6047})
+	{
+		btDeformableVbdSolver fullScan, dense;
+		for (auto *s : {&fullScan, &dense})
+		{
+			setupVbdGroundTest(*s, 1);
+			s->barriers.clear();
+			s->mappedSurface = true;
+			s->settings.gap = 1;
+			s->settings.iterations = 2;
+			for (int i = 0; i < 4; ++i)
+			{
+				btDeformableVbdSolver::SurfaceVertex v;
+				v.support.push_back({i, btMatrix3x3::getIdentity()});
+				s->surfaceVertices.push_back(v);
+			}
+			s->surface.push_back({{0, 1, 2}});
+		}
+		for (int i = 0; i < 4; ++i)
+		{
+			dense.x.push_back(dense.x[i] + btVector3(2, 0, 0));
+			dense.velocity.push_back(btVector3(0, 0, 0));
+			dense.external.push_back(btVector3(0, 0, 0));
+			dense.mass.push_back(0);
+			dense.massDamping.push_back(0);
+		}
+		const auto active = dense.tets[0];
+		auto stationary = active;
+		stationary.nodes = {{4, 5, 6, 7}};
+		dense.tets.assign(6048, stationary);
+		dense.tets[activeIndex] = active;
+		ASSERT_TRUE(fullScan.initialize());
+		ASSERT_TRUE(dense.initialize());
+		for (int step = 0; step < 4; ++step)
+		{
+			for (auto *s : {&fullScan, &dense})
+			{
+				s->velocity.assign(s->x.size(), btVector3(0, 0, 0));
+				s->velocity[step] = btVector3(.2, -.1, -500);
+				ASSERT_TRUE(s->step(.002));
+				EXPECT_GT(s->minimumJ, 0);
+			}
+			for (int i = 0; i < 4; ++i)
+			{
+				EXPECT_EQ(fullScan.x[i], dense.x[i]);
+				EXPECT_EQ(fullScan.velocity[i], dense.velocity[i]);
+			}
+		}
+	}
+}
+
+TEST(DeformableVbd, PackedSurfaceMappingsFollowTopologyChanges)
+{
+	btDeformableVbdSolver fresh, cached;
+	for (auto *s : {&fresh, &cached})
+	{
+		setupVbdGroundTest(*s, .1);
+		s->mappedSurface = true;
+		for (int i = 0; i < 4; ++i)
+		{
+			btDeformableVbdSolver::SurfaceVertex v;
+			v.support.push_back({i, btMatrix3x3::getIdentity() * btScalar(1.2)});
+			v.support.push_back({(i + 1) % 4, btMatrix3x3::getIdentity() * btScalar(-.2)});
+			if (i == 1)
+				v.support[0].jacobian[0][1] = .1;
+			if (i == 2)
+				v.support[0].jacobian[1][1] = 2;
+			s->surfaceVertices.push_back(v);
+		}
+		s->surface.push_back({{0, 1, 2}});
+	}
+	ASSERT_TRUE(fresh.initialize());
+	const auto topology = fresh.surfaceTopology();
+	ASSERT_TRUE(bool(topology.scalarMappings));
+	ASSERT_EQ(topology.scalarMappings->ranges.size(), 4u);
+	EXPECT_EQ(topology.scalarMappings->supports.size(), 4u);
+	EXPECT_EQ(topology.scalarMappings->ranges[0][0], 0);
+	EXPECT_EQ(topology.scalarMappings->ranges[1][0], -1);
+	EXPECT_EQ(topology.scalarMappings->ranges[2][0], -1);
+	EXPECT_EQ(topology.scalarMappings->ranges[3][0], 2);
+	ASSERT_TRUE(cached.initialize(&topology));
+	EXPECT_EQ(cached.surfaceTopology().scalarMappings.get(), topology.scalarMappings.get());
+	for (int pass = 0; pass < 8; ++pass)
+	{
+		for (auto *s : {&fresh, &cached})
+		{
+			s->velocity.assign(4, btVector3(.01, -.02, -.01));
+			ASSERT_TRUE(s->step(.0002));
+		}
+		for (int i = 0; i < 4; ++i)
+			EXPECT_EQ(fresh.x[i], cached.x[i]);
+	}
+	cached.surfaceVertices[0].support[0].jacobian[1][2] = .3;
+	ASSERT_TRUE(cached.initialize());
+	EXPECT_EQ(cached.surfaceTopology().scalarMappings->ranges[0][0], -1);
+	EXPECT_EQ(topology.scalarMappings->ranges[0][0], 0);
+}
+
+TEST(DeformableVbd, PackedScalarPositionsMatchMatrixAccumulation)
+{
+	unsigned random = 29751;
+	auto value = [&]()
+	{
+		random = random * 1664525u + 1013904223u;
+		return btScalar(int(random % 20001) - 10000) / 10000;
+	};
+	std::vector<btVector3> positions;
+	for (int i = 0; i < 128; ++i)
+		positions.push_back(btVector3(value(), value(), value()));
+	for (int i = 0; i < 4096; ++i)
+	{
+		btDeformableVbdSolver::SurfaceVertex mapping;
+		mapping.offset = btVector3(value(), value(), value());
+		std::vector<btVbd::ScalarMappingSupport> packed;
+		for (int j = 0; j < 4; ++j)
+		{
+			const btScalar weight = i % 7 == 0 ? btScalar(0) : value() * 2;
+			const int node = (i * 977 + j * 31) % int(positions.size());
+			mapping.support.push_back({node, btMatrix3x3::getIdentity() * weight});
+			packed.push_back({node, weight});
+		}
+		const auto expected = mapping.position(positions);
+		const auto actual = btVbd::scalarMappingPosition(mapping.offset, positions.data(), packed.data(), packed.data() + packed.size());
+		for (int d = 0; d < 4; ++d)
+			ASSERT_EQ(expected[d], actual[d]);
+	}
+}
+
+TEST(DeformableVbd, NativeCollectionFindsMovingTrianglesAmongStaticEntries)
+{
+	btTriangleMesh geometry;
+	for (int region = 0; region < 2; ++region)
+	{
+		const btVector3 offset(region * 5000, 0, 0);
+		geometry.addTriangle(offset + btVector3(-1000, -1000, 0), offset + btVector3(3000, -1000, 0), offset + btVector3(-1000, 3000, 0));
+	}
+	btGImpactMeshShape shape(&geometry);
+	shape.updateBound();
+	for (int ignored : {0, 16})
+	{
+		btDeformableVbdSolver s;
+		setupVbdGroundTest(s, 5);
+		s.settings.gap = .005;
+		s.barriers.clear();
+		s.nativeBarriers.push_back({shape.getMeshPart(0), btTransform::getIdentity(), .5, 1, {}});
+		btDeformableVbdSolver::Rigid rigid;
+		rigid.mass = 1;
+		rigid.inertia = btVector3(.01, .01, .01);
+		rigid.radius = .1;
+		rigid.pose = btTransform::getIdentity();
+		s.rigids.push_back(rigid);
+		for (int i = 0; i < ignored; ++i)
+		{
+			btDeformableVbdSolver::Triangle t;
+			t.owner = 3;
+			t.friction = .5;
+			t.x[0] = btVector3(10 + i, 10, 10);
+			t.x[1] = t.x[0] + btVector3(.1, 0, 0);
+			t.x[2] = t.x[0] + btVector3(0, .1, 0);
+			s.barriers.push_back(t);
+		}
+		btDeformableVbdSolver::Triangle moving;
+		moving.owner = 2;
+		moving.rigid = 0;
+		moving.friction = .5;
+		moving.local[0] = btVector3(0, 0, .003);
+		moving.local[1] = btVector3(.01, 0, .003);
+		moving.local[2] = btVector3(0, .01, .003);
+		for (int j = 0; j < 3; ++j)
+			moving.x[j] = moving.local[j];
+		s.barriers.push_back(moving);
+		ASSERT_TRUE(s.initialize());
+		for (int region = 0; region < 2; ++region)
+		{
+			s.rigids[0].pose.setOrigin(btVector3(region * 5, 0, 0));
+			ASSERT_TRUE(s.step(.0002));
+			EXPECT_EQ(s.barriers.size(), size_t(ignored + 2 + region));
+			EXPECT_EQ(s.barriers[ignored].rigid, 0);
+			EXPECT_GE(s.nativeBarriers[0].triangles[region], ignored + 1);
+		}
+	}
+}
+
+TEST(DeformableVbd, PackedScalarSurfaceAvoidsGpuRoundTripWithCpuWorkers)
+{
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, .01);
+	s.barriers.clear();
+	s.mappedSurface = true;
+	s.settings.workers = 8;
+	s.settings.gpuGuards = true;
+	s.settings.gap = .002;
+	for (int i = 0; i < 40000; ++i)
+	{
+		btDeformableVbdSolver::SurfaceVertex v;
+		v.support.push_back({i % 4, btMatrix3x3::getIdentity()});
+		s.surfaceVertices.push_back(v);
+	}
+	s.surface.push_back({{0, 1, 2}});
+	ASSERT_TRUE(s.initialize());
+	const auto topology = s.surfaceTopology();
+	ASSERT_TRUE(topology.scalarMappings->allScalar);
+	ASSERT_TRUE(s.initialize(&topology));
+	ASSERT_TRUE(s.step(.0002));
+	EXPECT_EQ(s.gpuSurfaceCalls, 0);
+	EXPECT_EQ(s.gpuSurfaceFallbacks, 0);
+	EXPECT_TRUE(s.gpuError.empty());
+	s.surfaceVertices.back().support[0].jacobian[0][1] = .01;
+	ASSERT_TRUE(s.initialize());
+	EXPECT_FALSE(s.surfaceTopology().scalarMappings->allScalar);
+	EXPECT_TRUE(topology.scalarMappings->allScalar);
+}
+
+TEST(GImpactVertexCache, ParallelFullSnapshotPreservesCurrentSafeAndNestedQueries)
+{
+	btGImpactVertexCache serial, parallel;
+	for (int pass = 0; pass < 5; ++pass)
+	{
+		const int count = pass % 2 ? 32777 : 19001;
+		std::vector<unsigned char> calls(count, 0);
+		auto reconstruct = [&](int i, btVector3 &current, btVector3 &safe)
+		{
+			current = btVector3(i * .001 + pass, i * .003 - pass, i * .007 + 2 * pass);
+			safe = btVector3(current.x() - .1, current.y() + .2, current.z() - .3);
+		};
+		serial.begin(count, reconstruct);
+		parallel.begin(
+			count,
+			[&](int i, btVector3 &current, btVector3 &safe)
+			{
+				++calls[i];
+				reconstruct(i, current, safe);
+			},
+			[&](int n, const auto &operation) { btVbdParallelGeometry(n, 8, operation); });
+		for (int i = 0; i < count; ++i)
+		{
+			ASSERT_EQ(calls[i], 1);
+			ASSERT_TRUE(parallel.current(i) != nullptr);
+			ASSERT_TRUE(parallel.safe(i) != nullptr);
+			EXPECT_EQ(*serial.current(i), *parallel.current(i));
+			EXPECT_EQ(*serial.safe(i), *parallel.safe(i));
+		}
+		int nestedDispatches = 0;
+		parallel.begin(count, reconstruct, [&](int, const auto &) { ++nestedDispatches; });
+		EXPECT_EQ(nestedDispatches, 0);
+		parallel.end();
+		ASSERT_TRUE(parallel.current(0) != nullptr);
+		parallel.end();
+		serial.end();
+		EXPECT_TRUE(parallel.current(0) == nullptr);
+		EXPECT_TRUE(parallel.safe(0) == nullptr);
+		parallel.beginCurrent(count,
+							  [&](int i, btVector3 &current)
+							  {
+								  btVector3 safe;
+								  reconstruct(i, current, safe);
+							  });
+		EXPECT_TRUE(parallel.safe(0) == nullptr);
+		parallel.begin(count, reconstruct, [&](int n, const auto &operation) { btVbdParallelGeometry(n, 8, operation); });
+		ASSERT_TRUE(parallel.safe(count - 1) != nullptr);
+		btVector3 current, safe;
+		reconstruct(count - 1, current, safe);
+		EXPECT_EQ(*parallel.current(count - 1), current);
+		EXPECT_EQ(*parallel.safe(count - 1), safe);
+		parallel.end();
+		parallel.end();
+		EXPECT_TRUE(parallel.current(0) == nullptr);
 	}
 }

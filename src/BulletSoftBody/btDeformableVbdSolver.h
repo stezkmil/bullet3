@@ -14,6 +14,7 @@
 #include "BulletCollision/NarrowPhaseCollision/btGjkEpaPenetrationDepthSolver.h"
 #include "BulletCollision/NarrowPhaseCollision/btPointCollector.h"
 #include <array>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -21,6 +22,25 @@
 #include <unordered_set>
 #include <algorithm>
 #include <vector>
+#include <limits>
+
+// Use the same dot, translation, and unit-conversion order as nativeTriangle.
+static btVector3 btVbdNativeExtractPosition(const btTransform &transform, const btVector3 &vertex, btScalar units)
+{
+	const btScalar inverse = btScalar(1) / units;
+	const auto &basis = transform.getBasis();
+	const auto &origin = transform.getOrigin();
+	btVector3 result;
+	for (int axis = 0; axis < 3; ++axis)
+	{
+		const auto &row = basis[axis];
+		const btScalar first = vertex.x() * row.x() + vertex.y() * row.y();
+		const btScalar rotated = first + vertex.z() * row.z();
+		result[axis] = (rotated + origin[axis]) * inverse;
+	}
+	result[3] = 0;
+	return result;
+}
 
 // All quantities are SI. This backend deliberately does not invoke Bullet's coupled Newton solve.
 class btDeformableVbdSolver
@@ -29,7 +49,13 @@ class btDeformableVbdSolver
 	using Settings = btDeformableVbdSettings;
 	explicit btDeformableVbdSolver(btDeformableVbdCollisionCache *cache = nullptr)
 		: ownedCollisionCache(cache ? nullptr : new btDeformableVbdCollisionCache()),
-		  softMesh((cache ? cache : ownedCollisionCache.get())->soft), barrierMesh((cache ? cache : ownedCollisionCache.get())->barrier)
+		  softMesh((cache ? cache : ownedCollisionCache.get())->soft), barrierMesh((cache ? cache : ownedCollisionCache.get())->barrier),
+		  gpu((cache ? cache : ownedCollisionCache.get())->gpu),
+		  guardPositions((cache ? cache : ownedCollisionCache.get())->guardPositions),
+		  guardStamp((cache ? cache : ownedCollisionCache.get())->guardStamp),
+		  guardReferenceStamp((cache ? cache : ownedCollisionCache.get())->guardReferenceStamp),
+		  pairDistances((cache ? cache : ownedCollisionCache.get())->pairDistances),
+		  pairSortScratch((cache ? cache : ownedCollisionCache.get())->pairSortScratch)
 	{
 	}
 	struct Tet
@@ -132,6 +158,9 @@ class btDeformableVbdSolver
 	};
 	std::vector<Attachment> attachments;
 	Settings settings;
+	int gpuGuardCalls = 0, gpuGuardFallbacks = 0;
+	int gpuSurfaceCalls = 0, gpuSurfaceFallbacks = 0;
+	std::string gpuError;
 	std::vector<btVector3> x, velocity, external;
 	std::vector<btVector3> recoveryPositions;
 	std::vector<btScalar> mass, massDamping;
@@ -146,7 +175,7 @@ class btDeformableVbdSolver
 		btTransform transform; // Existing shape coordinates to Bullet world units.
 		btScalar friction;
 		int owner;
-		std::unordered_map<int, int> triangles;
+		std::vector<int> triangles;
 	};
 	std::vector<NativeBarrier> nativeBarriers;
 	struct ConvexBarrier
@@ -245,20 +274,71 @@ class btDeformableVbdSolver
 		btVbd::contactBlock(c.normal.dot(p - target), settings.radius, c.normal, (p - p0) - (target - oldTarget), settings.ke, settings.kd,
 							c.friction, settings.frictionEpsilon, dt, force, hessian);
 	}
+	struct ScalarMappingData
+	{
+		std::vector<std::array<int, 2>> ranges;
+		std::vector<btVbd::ScalarMappingSupport> supports;
+		bool allScalar = true;
+	};
 	struct SurfaceTopology
 	{
-		std::vector<std::set<int>> neighbors;
+		std::shared_ptr<const std::vector<std::set<int>>> neighbors;
 		btScalar amplification = 0;
+		std::shared_ptr<const ScalarMappingData> scalarMappings;
 	};
 	SurfaceTopology surfaceTopology() const
 	{
-		return {baseNeighbors, mappingAmplification};
+		return {baseNeighbors, mappingAmplification, scalarMappings};
+	}
+
+	void includeSurfaceBounds(btScalar scale, btVector3 &lo, btVector3 &hi) const
+	{
+		if (settings.workers <= 1 || surfaceVertices.size() < 4096)
+		{
+			for (int i = 0; i < int(surfaceVertices.size()); ++i)
+			{
+				const btVector3 point = surfacePosition(i, x) / scale;
+				lo.setMin(point);
+				hi.setMax(point);
+			}
+			return;
+		}
+		const int count = int(surfaceVertices.size()), blockSize = 256;
+		std::vector<std::pair<btVector3, btVector3>> bounds((count + blockSize - 1) / blockSize, {lo, hi});
+		btVbdParallelFor(
+			int(bounds.size()), settings.workers,
+			[&](int block)
+			{
+				auto &range = bounds[block];
+				const int end = btMin(count, (block + 1) * blockSize);
+				for (int i = block * blockSize; i < end; ++i)
+				{
+					const btVector3 point = surfacePosition(i, x) / scale;
+					range.first.setMin(point);
+					range.second.setMax(point);
+				}
+			},
+			2, 1);
+		for (const auto &range : bounds)
+		{
+			lo.setMin(range.first);
+			hi.setMax(range.second);
+		}
 	}
 	// Reuse requires an exact match of mapping, connectivity, transforms, and node indices.
 	bool initialize(const SurfaceTopology *cachedTopology = nullptr)
 	{
 		error = nullptr;
 		guardSurfaceVertices.clear();
+		guardPlaneNodes.clear();
+		if (!cachedTopology)
+			gpu.invalidateMapping();
+		gpuPrepared = cachedTopology && gpu.hasMapping();
+		gpuReferenceValid = false;
+		gpuReferenceStamp = 0;
+		gpuGuardCalls = gpuGuardFallbacks = 0;
+		gpuSurfaceCalls = gpuSurfaceFallbacks = 0;
+		gpuError.clear();
 		const int n = int(x.size());
 		if (!n || tets.empty() || velocity.size() != x.size() || external.size() != x.size() || mass.size() != x.size() ||
 			massDamping.size() != x.size())
@@ -315,13 +395,16 @@ class btDeformableVbdSolver
 					return false;
 				}
 				adjacency[tet.nodes[j]].push_back(std::make_pair(k, j));
-				std::array<int, 3> face;
-				int c = 0;
-				for (int i = 0; i < 4; ++i)
-					if (i != j)
-						face[c++] = tet.nodes[i];
-				std::sort(face.begin(), face.end());
-				++faces[face];
+				if (!mappedSurface)
+				{
+					std::array<int, 3> face;
+					int c = 0;
+					for (int i = 0; i < 4; ++i)
+						if (i != j)
+							face[c++] = tet.nodes[i];
+					std::sort(face.begin(), face.end());
+					++faces[face];
+				}
 			}
 		}
 		if (!mappedSurface)
@@ -341,17 +424,22 @@ class btDeformableVbdSolver
 			error = "empty_collision_surface";
 			return false;
 		}
-		if (cachedTopology && mappedSurface && cachedTopology->neighbors.size() == x.size())
+		if (cachedTopology && mappedSurface && cachedTopology->neighbors && cachedTopology->neighbors->size() == x.size() &&
+			cachedTopology->scalarMappings && cachedTopology->scalarMappings->ranges.size() == surfaceVertices.size())
 		{
 			baseNeighbors = cachedTopology->neighbors;
 			mappingAmplification = cachedTopology->amplification;
+			scalarMappings = cachedTopology->scalarMappings;
 		}
 		else
 		{
 			mappingAmplification = 0;
+			auto scalarData = std::make_shared<ScalarMappingData>();
+			scalarData->ranges.reserve(surfaceVertices.size());
 			for (const auto &v : surfaceVertices)
 			{
 				btScalar amplification = 0;
+				bool scalar = true;
 				if (v.support.empty() || !std::isfinite(double(v.offset.length2())))
 				{
 					error = "invalid_surface_mapping";
@@ -372,11 +460,28 @@ class btDeformableVbdSolver
 						}
 				}
 				for (const auto &a : v.support)
-					amplification += btSqrt(a.jacobian[0].length2() + a.jacobian[1].length2() + a.jacobian[2].length2());
+				{
+					const auto &j = a.jacobian;
+					scalar = scalar && j[0][1] == 0 && j[0][2] == 0 && j[1][0] == 0 && j[1][2] == 0 && j[2][0] == 0 && j[2][1] == 0 &&
+							 j[0][0] == j[1][1] && j[0][0] == j[2][2];
+					// A diagonal mapping's exact operator norm avoids unnecessary detailed guards.
+					if (j[0][1] == 0 && j[0][2] == 0 && j[1][0] == 0 && j[1][2] == 0 && j[2][0] == 0 && j[2][1] == 0)
+						amplification += btMax(btFabs(j[0][0]), btMax(btFabs(j[1][1]), btFabs(j[2][2])));
+					else
+						amplification += btSqrt(j[0].length2() + j[1].length2() + j[2].length2());
+				}
 				mappingAmplification = btMax(mappingAmplification, amplification);
+				const int begin = int(scalarData->supports.size());
+				if (scalar)
+					for (const auto &support : v.support)
+						scalarData->supports.push_back({support.node, support.jacobian[0][0]});
+				scalarData->ranges.push_back({{scalar ? begin : -1, int(scalarData->supports.size())}});
+				scalarData->allScalar = scalarData->allScalar && scalar;
 			}
-			baseNeighbors.assign(n, {});
-			auto &surfaceNeighbors = baseNeighbors;
+			scalarMappings = scalarData;
+			auto mutableNeighbors = std::make_shared<std::vector<std::set<int>>>(n);
+			baseNeighbors = mutableNeighbors;
+			auto &surfaceNeighbors = *mutableNeighbors;
 			for (const auto &face : surface)
 			{
 				std::set<int> nodes;
@@ -445,7 +550,10 @@ class btDeformableVbdSolver
 			}
 		}
 		recoveredIntersections = 0;
-		if (!validSurface())
+		// Validation and initial contacts see identical geometry; share this one snapshot.
+		btVbdPairSet initialPairs = collisionPairs();
+		const bool reuseInitialPairs = validSurface(&initialPairs);
+		if (!reuseInitialPairs)
 		{
 			if (!recoverAcceptedPositions() && !recoverConvexIntersections())
 			{
@@ -454,8 +562,9 @@ class btDeformableVbdSolver
 			}
 			previous = x;
 		}
-		if (!detect())
+		if (!detect(reuseInitialPairs ? &initialPairs : nullptr))
 			return false;
+		initialPairs.clear();
 		inertia = x;
 		for (int i = 0; i < int(x.size()); ++i)
 			if (mass[i] > 0)
@@ -566,22 +675,98 @@ class btDeformableVbdSolver
 	}
 
   private:
+	std::unique_ptr<btDeformableVbdCollisionCache> ownedCollisionCache;
+	btDeformableVbdCollisionMesh &softMesh, &barrierMesh;
+	btDeformableVbdGpu &gpu;
 	std::vector<std::vector<std::pair<int, int>>> adjacency;
 	std::vector<std::vector<int>> groups, contactAdjacency, springAdjacency, attachmentAdjacency;
 	std::vector<int> colors;
 	std::vector<btVector3> previous, reference, inertia;
-	struct GuardPosition
-	{
-		btVector3 reference, current, proposed;
-		unsigned int stamp = 0, referenceStamp = 0, affectedStamp = 0;
-		bool changed = false;
-	};
-	std::vector<GuardPosition> guardPositions;
+	using GuardPosition = btDeformableVbdGuardPosition;
+	std::vector<GuardPosition> &guardPositions;
 	std::vector<unsigned char> guardChangedNodes;
 	std::vector<std::vector<int>> guardSurfaceVertices;
 	std::vector<int> guardAffectedVertices;
+	std::vector<std::vector<int>> guardPlaneNodes;
+	std::vector<unsigned int> guardPlaneStamps;
+	std::vector<int> guardAffectedPlanes;
+	void affectedGuardPlanes()
+	{
+		if (guardPlaneNodes.empty())
+		{
+			guardPlaneNodes.resize(x.size());
+			guardPlaneStamps.assign(planes.size(), 0);
+			std::vector<int> seen(x.size(), -1);
+			for (int p = 0; p < int(planes.size()); ++p)
+				for (int v : planes[p].nodes)
+					for (const auto &support : surfaceVertices[v].support)
+						if (seen[support.node] != p)
+						{
+							seen[support.node] = p;
+							guardPlaneNodes[support.node].push_back(p);
+						}
+		}
+		guardAffectedPlanes.clear();
+		for (int node = 0; node < int(x.size()); ++node)
+			if (guardChangedNodes[node])
+				for (int p : guardPlaneNodes[node])
+					if (guardPlaneStamps[p] != guardStamp)
+					{
+						guardPlaneStamps[p] = guardStamp;
+						guardAffectedPlanes.push_back(p);
+					}
+		// Each feature only tightens the common minimum; selection order does not change its bound.
+	}
+
+	std::vector<int> guardTets;
+	std::vector<btScalar> guardCommonLimits;
+	std::vector<std::uint32_t> guardTetMasks;
+	bool selectGuardTets(const std::vector<btVector3> &proposed)
+	{
+		if (tets.size() < 512)
+			return false;
+		// Bounded coordinates guarantee finite determinants for unchanged tetrahedra.
+		static const btScalar safeCoordinate = btScalar(std::cbrt(double(std::numeric_limits<btScalar>::max())) / 8);
+		for (const auto &p : x)
+			for (int d = 0; d < 3; ++d)
+				if (!std::isfinite(double(p[d])) || btFabs(p[d]) > safeCoordinate)
+					return false;
+		guardTetMasks.assign((tets.size() + 31) / 32, 0);
+		for (int node = 0; node < int(x.size()); ++node)
+			if (proposed[node] != x[node])
+				for (const auto &entry : adjacency[node])
+					guardTetMasks[entry.first / 32] |= std::uint32_t(1) << (entry.first % 32);
+		guardTets.clear();
+		// Enumerate marked tetrahedra in original order without sorting the affected set.
+		static const unsigned char bitIndex[32] = {0,  1,  28, 2,  29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4,  8,
+												   31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6,  11, 5,  10, 9};
+		for (int word = 0; word < int(guardTetMasks.size()); ++word)
+		{
+			std::uint32_t mask = guardTetMasks[word];
+			while (mask)
+			{
+				const std::uint32_t lowest = mask & (std::uint32_t(0) - mask);
+				guardTets.push_back(word * 32 + bitIndex[(lowest * std::uint32_t(0x077CB531)) >> 27]);
+				mask &= mask - 1;
+			}
+		}
+		return true;
+	}
 	std::vector<btScalar> guardVertexLimits;
-	unsigned int guardStamp = 0, guardReferenceStamp = 0;
+	unsigned int &guardStamp, &guardReferenceStamp;
+	btVector3 surfacePosition(int vertex, const std::vector<btVector3> &positions) const
+	{
+		const auto &mapping = surfaceVertices[vertex];
+		if (!scalarMappings || scalarMappings->ranges[vertex][0] < 0)
+			return mapping.position(positions);
+		const auto &range = scalarMappings->ranges[vertex];
+		const auto *data = scalarMappings->supports.data();
+		const btVector3 result = btVbd::scalarMappingPosition(mapping.offset, positions.data(), data + range[0], data + range[1]);
+		// Preserve the matrix path's invalid-input and overflow propagation.
+		if (!std::isfinite(double(result.x())) || !std::isfinite(double(result.y())) || !std::isfinite(double(result.z())))
+			return mapping.position(positions);
+		return result;
+	}
 	GuardPosition &guardPosition(int vertex, const std::vector<btVector3> &proposed)
 	{
 		auto &entry = guardPositions[vertex];
@@ -591,11 +776,11 @@ class btDeformableVbdSolver
 			entry.changed = false;
 			for (const auto &support : mapping.support)
 				entry.changed = entry.changed || guardChangedNodes[support.node];
-			entry.current = mapping.position(x);
-			entry.proposed = entry.changed ? mapping.position(proposed) : entry.current;
+			entry.current = surfacePosition(vertex, x);
+			entry.proposed = entry.changed ? surfacePosition(vertex, proposed) : entry.current;
 			if (entry.referenceStamp != guardReferenceStamp)
 			{
-				entry.reference = mapping.position(reference);
+				entry.reference = surfacePosition(vertex, reference);
 				entry.referenceStamp = guardReferenceStamp;
 			}
 			entry.stamp = guardStamp;
@@ -614,33 +799,124 @@ class btDeformableVbdSolver
 	};
 	std::unordered_set<std::vector<long long>, ContactKeyHash> contactKeys;
 	std::vector<Support> contactSupportScratch;
-	std::unique_ptr<btDeformableVbdCollisionCache> ownedCollisionCache;
-	btDeformableVbdCollisionMesh &softMesh, &barrierMesh;
+	using PairDistance = btDeformableVbdPairDistance;
+	std::vector<PairDistance> &pairDistances;
+	std::vector<GIM_PAIR> &pairSortScratch;
+	std::vector<unsigned char> validationBlockFlags, nativeCollectedNodes;
+	std::vector<std::vector<unsigned char>> nativeSourceCollected;
+	std::vector<std::vector<int>> nativeSourceCandidates;
+	std::vector<int> nativeRigidTriangles;
+
+	bool gpuPrepared = false, gpuReferenceValid = false;
+	unsigned int gpuReferenceStamp = 0;
+	std::vector<btVbdGpuVec> gpuCurrent, gpuProposed, gpuReference;
+	bool prepareGpuMapping()
+	{
+		if (sizeof(btScalar) != sizeof(double))
+		{
+			gpuError = "GPU guard prototype requires double-precision Bullet";
+			return false;
+		}
+		if (!gpu.ready())
+		{
+			gpuError = gpu.error();
+			return false;
+		}
+		if (!gpuPrepared)
+		{
+			std::vector<btVbdGpuMapping> maps(surfaceVertices.size());
+			std::vector<btVbdGpuSupport> supports;
+			supports.reserve(surfaceVertices.size() * 4);
+			for (int v = 0; v < int(surfaceVertices.size()); ++v)
+			{
+				const auto &source = surfaceVertices[v];
+				auto &target = maps[v];
+				target.begin = int(supports.size());
+				target.offset = {double(source.offset.x()), double(source.offset.y()), double(source.offset.z())};
+				for (const auto &support : source.support)
+				{
+					btVbdGpuSupport item{};
+					item.node = support.node;
+					for (int row = 0; row < 3; ++row)
+						for (int col = 0; col < 3; ++col)
+							item.j[3 * row + col] = double(support.jacobian[row][col]);
+					supports.push_back(item);
+				}
+				target.end = int(supports.size());
+			}
+			if (!gpu.mapping(maps, supports))
+			{
+				gpuError = gpu.error();
+				return false;
+			}
+			gpuPrepared = true;
+		}
+		return true;
+	}
+	bool gpuMappedBound(const std::vector<btVector3> &proposed, btScalar bound, btScalar &limit)
+	{
+		if (!prepareGpuMapping())
+		{
+			++gpuGuardFallbacks;
+			return false;
+		}
+		const bool refresh = !gpuReferenceValid || gpuReferenceStamp != guardReferenceStamp;
+		gpuCurrent.resize(x.size());
+		gpuProposed.resize(x.size());
+		gpuReference.resize(x.size());
+		for (int i = 0; i < int(x.size()); ++i)
+		{
+			gpuCurrent[i] = {double(x[i].x()), double(x[i].y()), double(x[i].z())};
+			gpuProposed[i] = {double(proposed[i].x()), double(proposed[i].y()), double(proposed[i].z())};
+			if (refresh)
+				gpuReference[i] = {double(reference[i].x()), double(reference[i].y()), double(reference[i].z())};
+		}
+		double result = 1;
+		if (!gpu.guard(gpuCurrent, gpuProposed, gpuReference, refresh, double(bound), result))
+		{
+			gpuError = gpu.error();
+			++gpuGuardFallbacks;
+			return false;
+		}
+		gpuReferenceStamp = guardReferenceStamp;
+		gpuReferenceValid = true;
+		// The CUDA kernel uses double precision without fused multiply-add contractions.
+		limit = btMin(limit, btScalar(result));
+		++gpuGuardCalls;
+		return true;
+	}
 	btScalar mappingAmplification = 0;
-	std::vector<std::set<int>> baseNeighbors;
+	std::shared_ptr<const std::vector<std::set<int>>> baseNeighbors;
+	std::shared_ptr<const ScalarMappingData> scalarMappings;
 	void colorVertices(bool includeContacts)
 	{
 		const int n = int(x.size());
-		auto neighbors = baseNeighbors;
+		std::vector<std::set<int>> contactNeighbors;
+		const auto *neighbors = baseNeighbors.get();
+		if (includeContacts)
+		{
+			contactNeighbors = *baseNeighbors;
+			neighbors = &contactNeighbors;
+		}
 		if (includeContacts)
 			for (const auto &contact : contacts)
 				for (const auto &a : contact.vertex.support)
 					for (const auto &b : contact.vertex.support)
-						neighbors[a.node].insert(b.node);
+						contactNeighbors[a.node].insert(b.node);
 		colors.assign(n, -1);
 		groups.clear();
+		std::vector<int> used(n, -1);
 		for (int i = 0; i < n; ++i)
 		{
-			std::set<int> used;
-			for (int j : neighbors[i])
+			for (int j : (*neighbors)[i])
 				if (colors[j] >= 0)
-					used.insert(colors[j]);
+					used[colors[j]] = i;
 			for (const auto &a : adjacency[i])
 				for (int j : tets[a.first].nodes)
 					if (colors[j] >= 0)
-						used.insert(colors[j]);
+						used[colors[j]] = i;
 			int color = 0;
-			while (used.count(color))
+			while (color < n && used[color] == i)
 				++color;
 			colors[i] = color;
 			if (int(groups.size()) <= color)
@@ -672,7 +948,7 @@ class btDeformableVbdSolver
 							return false;
 		return true;
 	}
-	void movingPairsRecursive(int a, int b, const std::vector<int> &owners, btPairSet &pairs)
+	void movingPairsRecursive(int a, int b, const std::vector<int> &owners, btVbdPairSet &pairs)
 	{
 		const int mixed = (-2147483647 - 1), ownerA = owners[a], ownerB = owners[b];
 		if (ownerA != mixed && ownerB != mixed)
@@ -714,9 +990,9 @@ class btDeformableVbdSolver
 			movingPairsRecursive(a, tree.getRightNode(b), owners, pairs);
 		}
 	}
-	btPairSet movingPairs()
+	btVbdPairSet movingPairs()
 	{
-		btPairSet pairs;
+		btVbdPairSet pairs;
 		if (surface.empty())
 			return pairs;
 		// Reject disabled same-body subtrees before generating dense render-mesh self pairs.
@@ -964,7 +1240,7 @@ class btDeformableVbdSolver
 		}
 		const btVector3 normal = delta / length;
 		std::vector<long long> key;
-		key.reserve(10 + 10 * vertex.support.size());
+		key.reserve(10 + 5 * vertex.support.size());
 		key.push_back(rigid);
 		for (int d = 0; d < 3; ++d)
 		{
@@ -975,9 +1251,22 @@ class btDeformableVbdSolver
 		for (const auto &a : vertex.support)
 		{
 			key.push_back(a.node);
+			// Encode the same quantized matrix without storing its zero entries.
+			const size_t maskIndex = key.size();
+			key.push_back(0);
+			long long mask = 0;
 			for (int row = 0; row < 3; ++row)
 				for (int col = 0; col < 3; ++col)
-					key.push_back(std::llround(double(a.jacobian[row][col]) * 1e8));
+				{
+					const btScalar component = a.jacobian[row][col];
+					const long long value = component == 0 ? 0 : std::llround(double(component) * 1e8);
+					if (value)
+					{
+						mask |= 1LL << (3 * row + col);
+						key.push_back(value);
+					}
+				}
+			key[maskIndex] = mask;
 		}
 		if (contactKeys.insert(std::move(key)).second)
 		{
@@ -990,9 +1279,11 @@ class btDeformableVbdSolver
 	}
 	int nativeTriangle(NativeBarrier &source, int primitive)
 	{
-		auto found = source.triangles.find(primitive);
-		if (found != source.triangles.end())
-			return found->second;
+		// Native primitive IDs are dense; allocate only when this source contributes.
+		if (primitive >= int(source.triangles.size()))
+			source.triangles.resize(source.shape->getPrimitiveManager()->get_primitive_count(), -1);
+		if (source.triangles[primitive] >= 0)
+			return source.triangles[primitive];
 		btPrimitiveTriangle input;
 		source.shape->getPrimitiveManager()->get_primitive_triangle(primitive, input, false);
 		Triangle output;
@@ -1004,17 +1295,110 @@ class btDeformableVbdSolver
 		output.owner = source.owner;
 		const int index = int(barriers.size());
 		barriers.push_back(output);
-		source.triangles.emplace(primitive, index);
+		source.triangles[primitive] = index;
 		return index;
 	}
-	void nativeSoftPairs(NativeBarrier &source, int softNode, int nativeNode, const std::vector<int> &owners)
+	std::vector<int> nativeExtractOffsets;
+	std::vector<std::array<btVector3, 3>> nativeExtractVertices;
+	std::vector<unsigned char> nativeExtractValid;
+	bool prepareNativeTriangles()
+	{
+		nativeExtractOffsets.resize(nativeBarriers.size() + 1);
+		int count = 0;
+		for (int i = 0; i < int(nativeBarriers.size()); ++i)
+		{
+			nativeExtractOffsets[i] = count;
+			count += int(nativeSourceCandidates[i].size());
+		}
+		nativeExtractOffsets.back() = count;
+		if (settings.workers <= 1 || count < 8192)
+			return false;
+		nativeExtractVertices.resize(count);
+		nativeExtractValid.resize(count);
+		// Prepare immutable primitive data before dispatching readers across source boundaries.
+		for (int i = 0; i < int(nativeBarriers.size()); ++i)
+			if (nativeExtractOffsets[i] != nativeExtractOffsets[i + 1])
+			{
+				auto &source = nativeBarriers[i];
+				source.shape->lockChildShapes();
+				const auto *manager = source.shape->getPrimitiveManager();
+				if (source.triangles.size() < size_t(manager->get_primitive_count()))
+					source.triangles.resize(manager->get_primitive_count(), -1);
+				manager->begin_geometry_query();
+			}
+		btVbdParallelFor((count + 255) / 256, settings.workers,
+						 [&](int block)
+						 {
+							 const int begin = block * 256, end = btMin(count, begin + 256);
+							 int sourceIndex = int(std::upper_bound(nativeExtractOffsets.begin(), nativeExtractOffsets.end(), begin) -
+												   nativeExtractOffsets.begin()) -
+											   1;
+							 for (int i = begin; i < end; ++i)
+							 {
+								 while (i >= nativeExtractOffsets[sourceIndex + 1])
+									 ++sourceIndex;
+								 const auto &source = nativeBarriers[sourceIndex];
+								 const int primitive = nativeSourceCandidates[sourceIndex][i - nativeExtractOffsets[sourceIndex]];
+								 nativeExtractValid[i] = 0;
+								 if (source.triangles[primitive] >= 0)
+									 continue;
+								 btPrimitiveTriangle input;
+								 source.shape->getPrimitiveManager()->get_primitive_triangle(primitive, input, false);
+								 Triangle output;
+								 for (int j = 0; j < 3; ++j)
+									 output.x[j] =
+										 btVbdNativeExtractPosition(source.transform, input.m_vertices[j], settings.collisionUnitsPerMeter);
+								 nativeExtractValid[i] = !((output.x[1] - output.x[0]).cross(output.x[2] - output.x[0]).length2() < 1e-30);
+								 for (int j = 0; j < 3; ++j)
+									 nativeExtractVertices[i][j] = output.x[j];
+							 }
+						 },
+						 2, 1);
+		for (int i = int(nativeBarriers.size()) - 1; i >= 0; --i)
+			if (nativeExtractOffsets[i] != nativeExtractOffsets[i + 1])
+			{
+				const auto &source = nativeBarriers[i];
+				source.shape->getPrimitiveManager()->end_geometry_query();
+				source.shape->unlockChildShapes();
+			}
+		barriers.reserve(barriers.size() + count);
+		return true;
+	}
+	void appendNativeTriangles(int sourceIndex)
+	{
+		auto &source = nativeBarriers[sourceIndex];
+		for (int i = nativeExtractOffsets[sourceIndex]; i < nativeExtractOffsets[sourceIndex + 1]; ++i)
+		{
+			const int primitive = nativeSourceCandidates[sourceIndex][i - nativeExtractOffsets[sourceIndex]];
+			if (!nativeExtractValid[i] || source.triangles[primitive] >= 0)
+				continue;
+			Triangle output;
+			for (int j = 0; j < 3; ++j)
+				output.x[j] = nativeExtractVertices[i][j];
+			output.friction = source.friction;
+			output.owner = source.owner;
+			const int index = int(barriers.size());
+			barriers.push_back(output);
+			source.triangles[primitive] = index;
+		}
+	}
+
+	template <class Collect>
+	void nativeSoftPairs(const NativeBarrier &source, int softNode, int nativeNode, const std::vector<int> &owners,
+						 std::vector<unsigned char> &collected, const Collect &collect)
 	{
 		if (owners[softNode] != (-2147483647 - 1) && !allowed(owners[softNode], source.owner))
 			return;
 		const auto &native = *source.shape->getBoxSet();
-		// Collection needs a triangle only once; later passes still test all soft/rigid pairs.
-		if (native.isLeafNode(nativeNode) && source.triangles.find(native.getNodeData(nativeNode)) != source.triangles.end())
+		if (collected[nativeNode])
 			return;
+		// Collection needs a triangle only once; later passes still test all soft/rigid pairs.
+		if (native.isLeafNode(nativeNode) && native.getNodeData(nativeNode) < int(source.triangles.size()) &&
+			source.triangles[native.getNodeData(nativeNode)] >= 0)
+		{
+			collected[nativeNode] = 1;
+			return;
+		}
 		btAABB a, b;
 		softMesh.tree.getNodeBound(softNode, a);
 		native.getNodeBound(nativeNode, b);
@@ -1027,30 +1411,78 @@ class btDeformableVbdSolver
 			return;
 		const bool softLeaf = softMesh.tree.isLeafNode(softNode), nativeLeaf = native.isLeafNode(nativeNode);
 		if (softLeaf && nativeLeaf)
-			nativeTriangle(source, native.getNodeData(nativeNode));
+			collected[nativeNode] = collect(native.getNodeData(nativeNode));
 		else if (!softLeaf && (nativeLeaf || (a.m_max - a.m_min).length2() > (b.m_max - b.m_min).length2()))
 		{
-			nativeSoftPairs(source, softMesh.tree.getLeftNode(softNode), nativeNode, owners);
-			nativeSoftPairs(source, softMesh.tree.getRightNode(softNode), nativeNode, owners);
+			nativeSoftPairs(source, softMesh.tree.getLeftNode(softNode), nativeNode, owners, collected, collect);
+			nativeSoftPairs(source, softMesh.tree.getRightNode(softNode), nativeNode, owners, collected, collect);
 		}
 		else
 		{
-			nativeSoftPairs(source, softNode, native.getLeftNode(nativeNode), owners);
-			nativeSoftPairs(source, softNode, native.getRightNode(nativeNode), owners);
+			nativeSoftPairs(source, softNode, native.getLeftNode(nativeNode), owners, collected, collect);
+			nativeSoftPairs(source, softNode, native.getRightNode(nativeNode), owners, collected, collect);
+			collected[nativeNode] = collected[native.getLeftNode(nativeNode)] && collected[native.getRightNode(nativeNode)];
 		}
 	}
 	void collectNativeBarriers()
 	{
 		if (nativeBarriers.empty())
 			return;
+		// Native extraction only appends static triangles; collect moving query sources once per pass.
+		nativeRigidTriangles.clear();
+		for (int k = 0; k < int(barriers.size()); ++k)
+			if (barriers[k].rigid >= 0)
+				nativeRigidTriangles.push_back(k);
 		const auto &owners = softMesh.subtreeOwners(surfaceOwners);
-		for (auto &source : nativeBarriers)
+		size_t nativeNodes = 0;
+		if (settings.workers > 1 && nativeBarriers.size() > 1 && !owners.empty())
+			for (const auto &source : nativeBarriers)
+				nativeNodes += source.shape->getBoxSet()->getNodeCount();
+		const bool parallelSources = nativeNodes >= 4096;
+		if (parallelSources)
 		{
+			nativeSourceCollected.resize(nativeBarriers.size());
+			nativeSourceCandidates.resize(nativeBarriers.size());
+			// Queries read immutable trees; extraction below preserves source and triangle order.
+			btVbdParallelFor(
+				int(nativeBarriers.size()), settings.workers,
+				[&](int i)
+				{
+					const auto &source = nativeBarriers[i];
+					const int count = source.shape->getBoxSet()->getNodeCount();
+					auto &collected = nativeSourceCollected[i];
+					auto &candidates = nativeSourceCandidates[i];
+					collected.assign(count, 0);
+					candidates.clear();
+					if (count)
+						nativeSoftPairs(source, 0, 0, owners, collected,
+										[&](int primitive)
+										{
+											candidates.push_back(primitive);
+											return true;
+										});
+				},
+				2, 1);
+		}
+		const bool preparedTriangles = parallelSources && prepareNativeTriangles();
+		for (int sourceIndex = 0; sourceIndex < int(nativeBarriers.size()); ++sourceIndex)
+		{
+			auto &source = nativeBarriers[sourceIndex];
 			if (!source.shape->getBoxSet()->getNodeCount())
 				continue;
 			source.shape->lockChildShapes();
-			if (!owners.empty())
-				nativeSoftPairs(source, 0, 0, owners);
+			if (preparedTriangles)
+				appendNativeTriangles(sourceIndex);
+			else if (parallelSources)
+				for (int primitive : nativeSourceCandidates[sourceIndex])
+					nativeTriangle(source, primitive);
+			else if (!owners.empty())
+			{
+				// Only collected leaves justify pruning; reset for each source and discovery pass.
+				nativeCollectedNodes.assign(source.shape->getBoxSet()->getNodeCount(), 0);
+				nativeSoftPairs(source, 0, 0, owners, nativeCollectedNodes,
+								[&](int primitive) { return nativeTriangle(source, primitive) >= 0; });
+			}
 			auto collectBox = [&](btAABB box, int owner)
 			{
 				if (!allowed(owner, source.owner))
@@ -1072,17 +1504,15 @@ class btDeformableVbdSolver
 					shape.shape->getAabb(shape.transform, box.m_min, box.m_max);
 					collectBox(box, shape.owner);
 				}
-			const int count = int(barriers.size());
-			for (int k = 0; k < count; ++k)
-				if (barriers[k].rigid >= 0)
-				{
-					btAABB box;
-					box.calc_from_triangle(barriers[k].x[0] * settings.collisionUnitsPerMeter,
-										   barriers[k].x[1] * settings.collisionUnitsPerMeter,
-										   barriers[k].x[2] * settings.collisionUnitsPerMeter);
-					const int owner = barriers[k].owner;
-					collectBox(box, owner);
-				}
+			for (int k : nativeRigidTriangles)
+			{
+				btAABB box;
+				box.calc_from_triangle(barriers[k].x[0] * settings.collisionUnitsPerMeter,
+									   barriers[k].x[1] * settings.collisionUnitsPerMeter,
+									   barriers[k].x[2] * settings.collisionUnitsPerMeter);
+				const int owner = barriers[k].owner;
+				collectBox(box, owner);
+			}
 			source.shape->unlockChildShapes();
 		}
 	}
@@ -1090,12 +1520,46 @@ class btDeformableVbdSolver
 	{
 		return *softMesh.candidatePositions.current(vertex);
 	}
+	bool gpuSurfacePositions()
+	{
+		if (!prepareGpuMapping())
+		{
+			++gpuSurfaceFallbacks;
+			return false;
+		}
+		gpuCurrent.resize(x.size());
+		for (int i = 0; i < int(x.size()); ++i)
+			gpuCurrent[i] = {double(x[i].x()), double(x[i].y()), double(x[i].z())};
+		if (!gpu.evaluate(gpuCurrent, int(surfaceVertices.size())))
+		{
+			gpuError = gpu.error();
+			++gpuSurfaceFallbacks;
+			return false;
+		}
+		++gpuSurfaceCalls;
+		return true;
+	}
 	void updateCollisionMeshes()
 	{
 		// A collision pass owns a snapshot; solver iterations keep evaluating their changing state directly.
 		softMesh.candidatePositions.end();
+		// Small surfaces do not amortize the CUDA launch and download overhead.
+		// Packed tetrahedral interpolation can avoid the GPU round trip with several CPU workers.
+		const bool packedCpuSurface = settings.workers >= 4 && scalarMappings && scalarMappings->allScalar &&
+									  scalarMappings->supports.size() <= 4 * surfaceVertices.size();
+		const bool gpuSurface = settings.gpuGuards && !packedCpuSurface && surfaceVertices.size() >= 32768 && gpuSurfacePositions();
 		softMesh.candidatePositions.beginCurrent(
-			int(surfaceVertices.size()), [&](int i, btVector3 &p) { p = surfaceVertices[i].position(x); },
+			int(surfaceVertices.size()),
+			[&](int i, btVector3 &p)
+			{
+				if (gpuSurface)
+				{
+					const auto &v = gpu.positions()[i];
+					p = btVector3(v.x, v.y, v.z);
+				}
+				else
+					p = surfacePosition(i, x);
+			},
 			[&](int count, const auto &operation) { btVbdParallelGeometry(count, settings.workers, operation); });
 		for (auto &triangle : barriers)
 			if (triangle.rigid >= 0)
@@ -1116,41 +1580,31 @@ class btDeformableVbdSolver
 				collectNativeBarriers();
 			auto &mesh = side ? barrierMesh : softMesh;
 			const size_t count = side ? barriers.size() : surface.size();
-			const bool resized = mesh.triangles.size() != count;
-			mesh.triangles.resize(count);
-			bool changed = resized;
-			for (int k = 0; k < int(count); ++k)
-			{
-				auto &t = mesh.triangles[k];
-				const btScalar margin = settings.radius * units / 2;
-				const btScalar padding = (settings.gap - settings.radius) * units / 2;
-				bool triangleChanged = resized || t.m_margin != margin || t.m_discoveryPadding != padding;
-				for (int j = 0; j < 3; ++j)
-				{
-					const btVector3 point = (side ? barriers[k].x[j] : collisionPosition(surface[k][j])) * units;
-					triangleChanged = triangleChanged || t.m_vertices[j] != point;
-					t.m_vertices[j] = point;
-				}
-				t.m_margin = margin;
-				t.m_discoveryPadding = padding;
-				if (triangleChanged)
-					t.buildTriPlane();
-				changed = changed || triangleChanged;
-			}
+			const btScalar margin = settings.radius * units / 2;
+			const btScalar padding = (settings.gap - settings.radius) * units / 2;
+			const bool changed = mesh.updateTriangles(int(count), margin, padding, settings.workers, [&](int k, int j)
+													  { return (side ? barriers[k].x[j] : collisionPosition(surface[k][j])) * units; });
 			// Static geometry retains valid bounds, including when only body ownership changes.
 			if (changed)
 				mesh.update(settings.workers);
 		}
 	}
-	btPairSet collisionPairs()
+	btVbdPairSet collisionPairs()
 	{
 		updateCollisionMeshes();
-		btPairSet pairs;
+		btVbdPairSet pairs;
 		if (!surface.empty() && !barriers.empty())
-			btGImpactBvh::find_collision(&softMesh.tree, btTransform::getIdentity(), &barrierMesh.tree, btTransform::getIdentity(), pairs);
+		{
+			if (settings.workers > 1 && surface.size() + barriers.size() >= 4096)
+				btGImpactBvh::find_collision_parallel(&softMesh.tree, btTransform::getIdentity(), &barrierMesh.tree,
+													  btTransform::getIdentity(), pairs, settings.workers * 4,
+													  [&](int n, const auto &fn) { btVbdParallelFor(n, settings.workers, fn, 2, 1); });
+			else
+				btGImpactBvh::find_collision(&softMesh.tree, btTransform::getIdentity(), &barrierMesh.tree, btTransform::getIdentity(),
+											 pairs);
+		}
 		// Contact reduction must not depend on BVH layout or unrelated distant triangles.
-		pairs.sort([](const GIM_PAIR &a, const GIM_PAIR &b)
-				   { return a.m_index1 != b.m_index1 ? a.m_index1 < b.m_index1 : a.m_index2 < b.m_index2; });
+		btVbdSortCollisionPairsParallel(pairs, pairSortScratch, settings.workers);
 		return pairs;
 	}
 	btVector3 contactSupport(const Contact &c, bool sideA) const
@@ -1377,10 +1831,11 @@ class btDeformableVbdSolver
 		}
 		return true;
 	}
-	bool detect()
+	bool detect(const btVbdPairSet *checkedPairs = nullptr)
 	{
 		contacts.clear();
 		planes.clear();
+		guardPlaneNodes.clear();
 		movingPlanes.clear();
 		contactKeys.clear();
 		reference = x;
@@ -1392,33 +1847,61 @@ class btDeformableVbdSolver
 		}
 		for (auto &rigid : rigids)
 			rigid.reference = rigid.pose;
-		const auto pairs = collisionPairs();
+		const auto freshPairs = checkedPairs ? btVbdPairSet() : collisionPairs();
+		const auto &pairs = checkedPairs ? *checkedPairs : freshPairs;
+
 		broadphasePairs = pairs.size();
-		for (const auto &pair : pairs)
+		auto evaluatePair = [&](int index, PairDistance &result)
 		{
+			result.status = 0;
+			const auto &pair = pairs[index];
 			const int a = pair.m_index1, b = pair.m_index2;
 			if (!allowed(surfaceOwners[a], barriers[b].owner))
-				continue;
-			auto &ta = softMesh.triangles[a];
-			auto &tb = barrierMesh.triangles[b];
+				return;
+			auto ta = softMesh.triangles[a];
+			const auto &tb = barrierMesh.triangles[b];
 			if (!ta.overlap_test(tb))
-				continue;
-			btScalar distance2;
-			btVector3 closestSoft, closestRigid;
-			if (!ta.triangle_triangle_distance(tb, distance2, closestSoft, closestRigid))
+				return;
+			if (!ta.triangle_triangle_distance(tb, result.distance2, result.closestSoft, result.closestRigid))
 			{
-				error = "gimpact_distance_failed";
-				return false;
+				result.status = 1;
+				return;
 			}
-			// No last-safe triangle history exists here: never use penetration recovery normals.
-			if (!(distance2 > 0) || !std::isfinite(double(distance2)))
+			// No last-safe history exists here; ambiguous touches remain errors.
+			if (!(result.distance2 > 0) || !std::isfinite(double(result.distance2)))
 			{
-				error = "gimpact_intersection_or_ambiguous_touch";
-				return false;
+				result.status = 2;
+				return;
 			}
 			const btScalar search = ta.m_margin + tb.m_margin + ta.m_discoveryPadding + tb.m_discoveryPadding;
-			if (distance2 >= search * search)
+			if (result.distance2 >= search * search)
+				return;
+			result.status = 3;
+		};
+		const bool parallelDistances = settings.workers > 1 && pairs.size() >= 1024;
+		if (parallelDistances)
+		{
+			pairDistances.resize(pairs.size());
+			btVbdParallelGeometry(int(pairs.size()), settings.workers, [&](int i) { evaluatePair(i, pairDistances[i]); });
+		}
+		// Read-only distances run independently; errors and contacts retain pair order.
+		for (int pairIndex = 0; pairIndex < int(pairs.size()); ++pairIndex)
+		{
+			PairDistance local;
+			if (!parallelDistances)
+				evaluatePair(pairIndex, local);
+			const auto &result = parallelDistances ? pairDistances[pairIndex] : local;
+			if (!result.status)
 				continue;
+			if (result.status != 3)
+			{
+				error = result.status == 1 ? "gimpact_distance_failed" : "gimpact_intersection_or_ambiguous_touch";
+				return false;
+			}
+			const auto &pair = pairs[pairIndex];
+			const int a = pair.m_index1, b = pair.m_index2;
+			const auto &closestSoft = result.closestSoft;
+			const auto &closestRigid = result.closestRigid;
 			const btVector3 normal = (closestSoft - closestRigid).normalized();
 			const btVector3 point = closestSoft / settings.collisionUnitsPerMeter;
 			const btVector3 other = closestRigid / settings.collisionUnitsPerMeter;
@@ -1638,39 +2121,74 @@ class btDeformableVbdSolver
 		x = original;
 		return false;
 	}
-	bool validSurface()
+	template <class Valid> bool validPairs(const btVbdPairSet &pairs, const Valid &valid)
 	{
-		const auto pairs = collisionPairs();
-		for (const auto &pair : pairs)
+		if (settings.workers <= 1 || pairs.size() < 4096)
 		{
-			if (!allowed(surfaceOwners[pair.m_index1], barriers[pair.m_index2].owner))
-				continue;
-			const auto &face = surface[pair.m_index1];
-			const auto &tri = barriers[pair.m_index2];
-			const btVector3 p[] = {collisionPosition(face[0]), collisionPosition(face[1]), collisionPosition(face[2])};
-			for (int j = 0; j < 3; ++j)
-				if (segmentCrossesTriangle(p[j], p[(j + 1) % 3], tri.x) || segmentCrossesTriangle(tri.x[j], tri.x[(j + 1) % 3], p))
+			for (const auto &pair : pairs)
+				if (!valid(pair))
 					return false;
+			return true;
 		}
+		const int batch = 64, count = int(pairs.size()), blocks = (count + batch - 1) / batch;
+		validationBlockFlags.resize(blocks);
+		btVbdParallelFor(blocks, settings.workers,
+						 [&](int block)
+						 {
+							 const int end = btMin(count, (block + 1) * batch);
+							 bool accepted = true;
+							 for (int i = block * batch; i < end; ++i)
+								 if (!valid(pairs[i]))
+								 {
+									 accepted = false;
+									 break;
+								 }
+							 validationBlockFlags[block] = accepted;
+						 });
+		return std::find(validationBlockFlags.begin(), validationBlockFlags.end(), 0) == validationBlockFlags.end();
+	}
+	bool validSurface(const btVbdPairSet *checkedPairs = nullptr)
+	{
+		const auto freshPairs = checkedPairs ? btVbdPairSet() : collisionPairs();
+		const auto &pairs = checkedPairs ? *checkedPairs : freshPairs;
+		// Pair checks only read geometry; error-producing convex/rigid queries stay serial.
+		if (!validPairs(pairs,
+						[&](const GIM_PAIR &pair)
+						{
+							if (!allowed(surfaceOwners[pair.m_index1], barriers[pair.m_index2].owner))
+								return true;
+							const auto &face = surface[pair.m_index1];
+							const auto &tri = barriers[pair.m_index2];
+							const btVector3 p[] = {collisionPosition(face[0]), collisionPosition(face[1]), collisionPosition(face[2])};
+							for (int j = 0; j < 3; ++j)
+								if (segmentCrossesTriangle(p[j], p[(j + 1) % 3], tri.x) ||
+									segmentCrossesTriangle(tri.x[j], tri.x[(j + 1) % 3], p))
+									return false;
+							return true;
+						}))
+			return false;
 		if (!convexContacts(false) || !rigidContacts(false))
 			return false;
-		for (const auto &pair : movingPairs())
-		{
-			const int a = pair.m_index1, b = pair.m_index2;
-			if (!movingPairAllowed(a, b))
-				continue;
-			btVector3 av[3], bv[3];
-			for (int j = 0; j < 3; ++j)
-			{
-				av[j] = collisionPosition(surface[a][j]);
-				bv[j] = collisionPosition(surface[b][j]);
-			}
-			for (int j = 0; j < 3; ++j)
-				if (segmentCrossesTriangle(av[j], av[(j + 1) % 3], bv) || segmentCrossesTriangle(bv[j], bv[(j + 1) % 3], av))
-					return false;
-		}
-		return true;
+		return validPairs(movingPairs(),
+						  [&](const GIM_PAIR &pair)
+						  {
+							  const int a = pair.m_index1, b = pair.m_index2;
+							  if (!movingPairAllowed(a, b))
+								  return true;
+							  btVector3 av[3], bv[3];
+							  for (int j = 0; j < 3; ++j)
+							  {
+								  av[j] = collisionPosition(surface[a][j]);
+								  bv[j] = collisionPosition(surface[b][j]);
+							  }
+							  for (int j = 0; j < 3; ++j)
+								  if (segmentCrossesTriangle(av[j], av[(j + 1) % 3], bv) ||
+									  segmentCrossesTriangle(bv[j], bv[(j + 1) % 3], av))
+									  return false;
+							  return true;
+						  });
 	}
+
 	void truncate(std::vector<btVector3> &proposed)
 	{
 		std::vector<btScalar> factors(x.size(), 1);
@@ -1707,8 +2225,11 @@ class btDeformableVbdSolver
 			proposed[i] = reference[i] + (proposed[i] - reference[i]) * factors[i];
 		// Local bounds avoid slowing unrelated vertices; the common bound covers prediction.
 		factors.assign(x.size(), 1);
-		for (const Tet &tet : tets)
+		const bool indexedTets = selectGuardTets(proposed);
+		const int guardTetCount = int(indexedTets ? guardTets.size() : tets.size());
+		for (int guardTet = 0; guardTet < guardTetCount; ++guardTet)
 		{
+			const Tet &tet = tets[indexedTets ? guardTets[guardTet] : guardTet];
 			btVector3 old[4], next[4];
 			int changed = -1, count = 0;
 			for (int j = 0; j < 4; ++j)
@@ -1728,15 +2249,43 @@ class btDeformableVbdSolver
 		for (int i = 0; i < int(x.size()); ++i)
 			proposed[i] = x[i] + (proposed[i] - x[i]) * factors[i];
 		btScalar common = 1;
-		for (const Tet &tet : tets)
+		if (settings.workers > 1 && guardTetCount >= 4096)
 		{
-			btVector3 old[4], next[4];
-			for (int j = 0; j < 4; ++j)
+			guardCommonLimits.resize(guardTetCount);
+			// Volume work is heavier than geometry batches; dispatch explicit independent blocks.
+			btVbdParallelFor((guardTetCount + 127) / 128, settings.workers,
+							 [&](int block)
+							 {
+								 const int end = btMin(guardTetCount, (block + 1) * 128);
+								 for (int guardTet = block * 128; guardTet < end; ++guardTet)
+								 {
+									 const Tet &tet = tets[indexedTets ? guardTets[guardTet] : guardTet];
+									 btVector3 old[4], next[4];
+									 for (int j = 0; j < 4; ++j)
+									 {
+										 old[j] = x[tet.nodes[j]];
+										 next[j] = proposed[tet.nodes[j]];
+									 }
+									 guardCommonLimits[guardTet] = btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor);
+								 }
+							 },
+							 2, 1);
+			for (btScalar limit : guardCommonLimits)
+				common = btMin(common, limit);
+		}
+		else
+		{
+			for (int guardTet = 0; guardTet < guardTetCount; ++guardTet)
 			{
-				old[j] = x[tet.nodes[j]];
-				next[j] = proposed[tet.nodes[j]];
+				const Tet &tet = tets[indexedTets ? guardTets[guardTet] : guardTet];
+				btVector3 old[4], next[4];
+				for (int j = 0; j < 4; ++j)
+				{
+					old[j] = x[tet.nodes[j]];
+					next[j] = proposed[tet.nodes[j]];
+				}
+				common = btMin(common, btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor));
 			}
-			common = btMin(common, btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor));
 		}
 		if (common < 1)
 			for (int i = 0; i < int(x.size()); ++i)
@@ -1751,19 +2300,21 @@ class btDeformableVbdSolver
 			{
 				for (auto &entry : guardPositions)
 					entry.stamp = entry.affectedStamp = 0;
+				std::fill(guardPlaneStamps.begin(), guardPlaneStamps.end(), 0);
 				++guardStamp;
 			}
 			// One common factor preserves signed mapping weights and every accepted volume path.
 			btScalar limit = 1;
 			const btScalar bound = btScalar(.5 * .85) * settings.gap;
-			// The Frobenius norm certifies small mapped displacements, including signed weights.
+			// Mapping norm bounds certify small displacements, including signed weights.
 			btScalar maximumMove2 = 0;
 			for (int i = 0; i < int(proposed.size()); ++i)
 				maximumMove2 = btMax(maximumMove2, (proposed[i] - reference[i]).length2());
 			const bool detailed = !(mappingAmplification * btSqrt(maximumMove2) < btScalar(.99) * bound);
 			if (detailed || !planes.empty() || !movingPlanes.empty())
 				guardPositions.resize(surfaceVertices.size());
-			if (detailed)
+			// Small mapped surfaces do not amortize GPU guard launch and synchronization costs.
+			if (detailed && !(settings.gpuGuards && surfaceVertices.size() >= 8192 && gpuMappedBound(proposed, bound, limit)))
 			{
 				// Build only when needed; mappings stay fixed between initialize calls.
 				if (guardSurfaceVertices.empty())
@@ -1801,11 +2352,17 @@ class btDeformableVbdSolver
 				for (btScalar vertexLimit : guardVertexLimits)
 					limit = btMin(limit, vertexLimit);
 			}
-			for (const auto &c : planes)
+			const bool indexedPlanes = planes.size() >= 512;
+			if (indexedPlanes)
+				affectedGuardPlanes();
+			const int planeCount = int(indexedPlanes ? guardAffectedPlanes.size() : planes.size());
+			for (int planeIndex = 0; planeIndex < planeCount; ++planeIndex)
 			{
-				bool changed = false;
-				for (int v : c.nodes)
-					changed = guardPosition(v, proposed).changed || changed;
+				const auto &c = planes[indexedPlanes ? guardAffectedPlanes[planeIndex] : planeIndex];
+				bool changed = indexedPlanes;
+				if (!changed)
+					for (int v : c.nodes)
+						changed = guardPosition(v, proposed).changed || changed;
 				// An unchanged feature contributes exactly one to the displacement bound.
 				if (!changed)
 					continue;

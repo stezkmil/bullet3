@@ -24,13 +24,20 @@ public:
 	template <class Reconstruct>
 	void begin(int count, const Reconstruct& reconstruct)
 	{
+		begin(count, reconstruct, [](int n, const auto& operation) {
+			for (int i = 0; i < n; ++i) operation(i);
+		});
+	}
+	// The dispatcher completes all reconstruction before the snapshot becomes readable.
+	template <class Reconstruct, class Execute>
+	void begin(int count, const Reconstruct& reconstruct, const Execute& execute)
+	{
 		if (m_depth == 0 || !m_hasSafe)
 		{
 			m_hasSafe = true;
 			m_current.resize(count);
 			m_safe.resize(count);
-			for (int i = 0; i < count; ++i)
-				reconstruct(i, m_current[i], m_safe[i]);
+			execute(count, [&](int i) { reconstruct(i, m_current[i], m_safe[i]); });
 		}
 		++m_depth;
 	}

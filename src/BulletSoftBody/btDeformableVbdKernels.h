@@ -137,5 +137,30 @@ inline btScalar volumeBound(const btVector3 *old, const btVector3 *proposed, btS
 	return firstVolumeBound(u1.dot(u2.cross(u3)), u1.dot(u2.cross(e3)) + u1.dot(e2.cross(u3)) + e1.dot(u2.cross(u3)),
 							u1.dot(e2.cross(e3)) + e1.dot(u2.cross(e3)) + e1.dot(e2.cross(u3)), det - btMin(floor * restDet, det));
 }
+struct ScalarMappingSupport
+{
+	int node;
+	btScalar weight;
+};
+#ifdef _MSC_VER
+#pragma float_control(precise, on, push)
+#endif
+// Keep scalar accumulation ordered like the matrix evaluation it replaces.
+inline btVector3 scalarMappingPosition(const btVector3 &offset, const btVector3 *positions, const ScalarMappingSupport *begin,
+									   const ScalarMappingSupport *end)
+{
+	btVector3 result = offset;
+	for (auto support = begin; support != end; ++support)
+	{
+		const auto &p = positions[support->node];
+		const btScalar weight = support->weight;
+		result += btVector3(p.x() * weight, p.y() * weight, p.z() * weight);
+	}
+	return result;
+}
+#ifdef _MSC_VER
+#pragma float_control(pop)
+#endif
+
 } // namespace btVbd
 #endif
