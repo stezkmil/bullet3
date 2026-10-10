@@ -17,6 +17,11 @@
 #define BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD_H
 
 #include "btDeformableVbdSettings.h"
+#include <map>
+#include <memory>
+#include <vector>
+struct btDeformableVbdCollisionCache;
+struct btDeformableVbdMappingCache;
 #include "btSoftMultiBodyDynamicsWorld.h"
 #include "btDeformableLagrangianForce.h"
 #include "btDeformableMassSpringForce.h"
@@ -25,14 +30,8 @@
 #include "btSoftBodyHelpers.h"
 #include "BulletCollision/CollisionDispatch/btSimulationIslandManager.h"
 #include <functional>
-#include <map>
-#include <memory>
-#include <vector>
-#include "btDeformableContactForce.h"
 typedef btAlignedObjectArray<btSoftBody*> btSoftBodyArray;
 
-struct btDeformableVbdCollisionCache;
-struct btDeformableVbdMappingCache;
 class btDeformableBodySolver;
 class btDeformableLagrangianForce;
 struct MultiBodyInplaceSolverIslandCallback;
@@ -57,7 +56,7 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_implicit;
 	bool m_lineSearch;
 	bool m_useProjection;
-	bool m_coupledContact = false;
+	bool m_vbdStepFailed = false;
 	bool m_vbdEnabled = false;
 	btScalar m_vbdLengthScale = 1;
 	int m_vbdIterations = 10;
@@ -67,24 +66,7 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	std::map<btSoftBody*, std::vector<btVector3>> m_vbdAcceptedPositions;
 	btScalar m_contactDiscoveryPadding = -1;
 	void vbdSingleStepSimulation(btScalar timeStep);
-	bool m_contactWarmStartEnabled = true;
-	btAlignedObjectArray<btDeformableContactForce::Contact> m_contactWarmStart, m_contactWarmCandidate;
-	btScalar m_contactWarmDt = 0, m_contactCandidateDt = 0;
-	void clearContactWarmStart()
-	{
-		m_contactWarmStart.clear();
-		m_contactWarmCandidate.clear();
-		m_contactWarmDt = m_contactCandidateDt = 0;
-	}
-	bool m_coupledStepFailed = false;
-	bool m_coupledSolveConverged = false;
-	int m_coupledContactIterations = 0;
-	btAlignedObjectArray<btVector3> m_coupledRefreshVelocity;
-	bool m_adaptiveCoupledTimesteps = false;
-	int m_coupledSubdivision = 0;
-	btScalar m_coupledPreviousTimeStep = 0;
-	void coupledSingleStepSimulation(btScalar timeStep);
-	void refreshDeformableContacts();
+
 	DeformableBodyInplaceSolverIslandCallback* m_solverDeformableBodyIslandCallback;
 
 	typedef void (*btSolverCallback)(btScalar time, btDeformableMultiBodyDynamicsWorld* world);
@@ -112,33 +94,9 @@ public:
 	void setVbdSettings(const btDeformableVbdSettings& settings) { m_vbdSettings=settings; m_vbdIterations=settings.iterations; }
 	void setContactDiscoveryPadding(btScalar padding) { m_contactDiscoveryPadding = padding; }
 	// Experimental Newton-style VBD for tetrahedral bodies and coupled rigid contacts.
-	void setVbdSolver(bool enabled, btScalar metersPerUnit = 1, int iterations = 10)
-	{
-		if(m_vbdEnabled != enabled || m_vbdLengthScale != metersPerUnit) { m_coupledStepFailed = false; m_vbdAcceptedPositions.clear(); }
-		m_vbdEnabled = enabled; m_vbdLengthScale = metersPerUnit; m_vbdIterations = iterations;
-	}
+	void setVbdSolver(bool enabled, btScalar metersPerUnit = 1, int iterations = 10);
+	bool hasVbdStepFailed() const { return m_vbdStepFailed; }
 	btDeformableMultiBodyDynamicsWorld(btDispatcher* dispatcher, btBroadphaseInterface* pairCache, btDeformableMultiBodyConstraintSolver* constraintSolver, btCollisionConfiguration* collisionConfiguration, btDeformableBodySolver* deformableBodySolver = 0);
-
-	// Experimental: implicit deformables against static rigid geometry only.
-	void setCoupledContact(bool enabled)
-	{
-		clearContactWarmStart();
-		if (enabled != m_coupledContact || m_coupledStepFailed) m_coupledPreviousTimeStep = 0;
-		m_coupledContact = enabled; m_coupledStepFailed = false;
-		for (int b = 0; b < m_softBodies.size(); ++b) m_softBodies[b]->m_useSurfaceContact = enabled;
-	}
-	// Experimental initial guess; acceptance checks and contact penalties are unchanged.
-	void setContactWarmStart(bool enabled)
-	{
-		m_contactWarmStartEnabled = enabled;
-		clearContactWarmStart();
-	}
-	// Status of the last stepSimulation call; failure does not disable later calls.
-	bool hasCoupledStepFailed() const { return m_coupledStepFailed; }
-	void setAdaptiveCoupledTimesteps(bool enabled)
-	{
-		m_adaptiveCoupledTimesteps = enabled; m_coupledPreviousTimeStep = 0;
-	}
 
 	virtual int stepSimulation(btScalar timeStep, int maxSubSteps = 1, btScalar fixedTimeStep = btScalar(1.) / btScalar(60.));
 

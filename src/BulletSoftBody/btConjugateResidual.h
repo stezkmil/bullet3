@@ -56,13 +56,13 @@ public:
 	// Explicit integration uses false to retain the absolute tolerance and
 	// full iteration budget. Implicit Newton calls select the weighted residual
 	// and may continue to a verified physical residual target.
-	int solveWithConvergencePolicy(MatrixX& A, TVStack& x, const TVStack& b, bool verbose, bool useRelativeConvergence, bool useWeightedResidual = false, int iterationLimit = 0, btScalar trueResidualTarget = 0, btScalar weightedResidualTarget = 0, btScalar relativeForcingTolerance = 0)
+	int solveWithConvergencePolicy(MatrixX& A, TVStack& x, const TVStack& b, bool verbose, bool useRelativeConvergence, bool useWeightedResidual = false, int iterationLimit = 0, btScalar trueResidualTarget = 0)
 	{
 		BT_PROFILE("CRSolve");
 		btAssert(x.size() == b.size());
 		reinitialize(b);
 		const int maxIterations = iterationLimit > 0 ? iterationLimit : Base::m_maxIterations;
-		if (trueResidualTarget > 0 || weightedResidualTarget > 0) useWeightedResidual = true;
+		if (trueResidualTarget > 0) useWeightedResidual = true;
 		// r = b - A * x --with assigned dof zeroed out
 		A.multiply(x, temp_r);  // borrow temp_r here to store A*x
 		this->subtractInto(b, temp_r, r);
@@ -74,11 +74,6 @@ public:
 		m_initialResidual = residual_norm;
 		m_finalResidual = residual_norm;
 		m_targetResidual = useRelativeConvergence ? btMax(Base::m_tolerance, m_relativeTolerance * residual_norm) : Base::m_tolerance;
-		// Inexact Newton corrections still verify b-A*x; final nonlinear checks remain strict.
-		if (weightedResidualTarget > 0)
-			m_targetResidual = relativeForcingTolerance > 0
-				? btMax(weightedResidualTarget, btMin(btScalar(.5), relativeForcingTolerance) * residual_norm)
-				: btMin(m_targetResidual, weightedResidualTarget);
 		m_stagnated = false;
 		best_x = x;
 		best_r = residual_norm;
@@ -102,7 +97,7 @@ public:
 			A.precondition(temp_p, z);
 			// alpha = r^T * A * r / (Ap)^T * M^-1 * Ap)
 			const btScalar denominator = this->dot(temp_p, z);
-			if ((trueResidualTarget > 0 || weightedResidualTarget > 0) && (!(denominator > 0) || !std::isfinite((double)denominator) || !std::isfinite((double)r_dot_Ar)))
+			if (trueResidualTarget > 0 && (!(denominator > 0) || !std::isfinite((double)denominator) || !std::isfinite((double)r_dot_Ar)))
 			{
 				x = best_x; m_finalResidual = best_r; m_stagnated = true;
 				return k - 1;
@@ -119,23 +114,10 @@ public:
 				best_x = x;
 				best_r = norm_r;
 				m_finalResidual = norm_r;
-				if (trueResidualTarget <= 0 && weightedResidualTarget <= 0 && norm_r <= m_targetResidual)
+				if (trueResidualTarget <= 0 && norm_r <= m_targetResidual)
 				{
 					return k;
 				}
-			}
-			if (weightedResidualTarget > 0 && norm_r <= m_targetResidual)
-			{
-				verifiedResidual.resize(b.size());
-				A.multiply(x, verifiedResidual);
-				for (int n = 0; n < b.size(); ++n) verifiedResidual[n] = b[n] - verifiedResidual[n];
-				// Verify the actual residual; the recurrence can drift on stiff systems.
-				TVStack preconditioned;
-				preconditioned.resize(b.size());
-				A.precondition(verifiedResidual, preconditioned);
-				const btScalar squared = this->dot(verifiedResidual, preconditioned);
-				if (squared >= 0 && squared <= m_targetResidual * m_targetResidual)
-				{ m_finalResidual = btSqrt(squared); return k; }
 			}
 			// The recurrence is only a cheap candidate check. Confirm b-A*x
 			// before accepting Newton's physical residual target.
@@ -153,7 +135,7 @@ public:
 			// Returning the best iterate after a flat residual window avoids spending
 			// the remainder of the iteration budget on roundoff-level progress.  The
 			// test uses the best residual, so temporary CR oscillations do not trigger it.
-			if (trueResidualTarget <= 0 && weightedResidualTarget <= 0 && useRelativeConvergence && k % stagnationWindow == 0)
+			if (trueResidualTarget <= 0 && useRelativeConvergence && k % stagnationWindow == 0)
 			{
 				const btScalar requiredBest = windowInitialBest * (btScalar(1) - minimumWindowReduction);
 				if (!(best_r < requiredBest))

@@ -29,8 +29,6 @@ struct btCollisionObjectWrapper;
 
 class btDeformableBodySolver : public btSoftBodySolver
 {
-	friend class btDeformableNewtonSnapshot;
-	long long m_lastCapturedStep = -1;
 	typedef btAlignedObjectArray<btVector3> TVStack;
 
 protected:
@@ -49,8 +47,7 @@ protected:
 	btScalar m_lastLinearMomentumResidual = SIMD_INFINITY;
 	btScalar m_lastLinearConstraintResidual = SIMD_INFINITY;
 	btScalar m_lastStationarityResidual = SIMD_INFINITY;
-	btScalar m_contactWeightedTarget = 0;
-	void solveImplicitKKT(TVStack& x, const TVStack& rhs, bool preconditionerReady = false);
+	void solveImplicitKKT(TVStack& x, const TVStack& rhs);
 	void measureImplicitLinearResidual(const TVStack& x, const TVStack& rhs);
 	btScalar implicitConstraintError(const TVStack& dv) const;
 	bool m_implicit;                                               // use implicit scheme if true, explicit scheme if false
@@ -62,8 +59,6 @@ public:
 	// handles data related to objective function
 	btDeformableBackwardEulerObjective* m_objective;
 	bool m_useProjection;
-	bool m_lastSolveConverged = false;
-	bool m_lastSolveInvalidPredictor = false;
 
 	btDeformableBodySolver();
 
@@ -118,11 +113,10 @@ public:
 	bool updateNodes();
 
 	// calculate the change in dv resulting from the momentum solve
-	void computeStep(TVStack& ddv, const TVStack& residual, bool preconditionerReady = false);
-	bool setImplicitVelocityGuess(const btAlignedObjectArray<btVector3>& velocity);
+	void computeStep(TVStack& ddv, const TVStack& residual);
 
 	// calculate the change in dv resulting from the momentum solve when line search is turned on
-	btScalar computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose = false, bool preconditionerReady = false);
+	btScalar computeDescentStep(TVStack& ddv, const TVStack& residual, bool verbose = false);
 
 	virtual void copySoftBodyToVertexBuffer(const btSoftBody* const softBody, btVertexBufferDescriptor* vertexBuffer) {}
 

@@ -2,6 +2,16 @@
 #include "BulletSoftBody/btDeformableVbdSolver.h"
 #include "BulletCollision/CollisionShapes/btTriangleMesh.h"
 
+// Soft bodies own their default shape; borrowed fixture meshes must outlive use.
+struct VbdBorrowedShape
+{
+ btSoftBody& body;
+ btCollisionShape* original;
+ VbdBorrowedShape(btSoftBody& b, btCollisionShape* shape) : body(b), original(b.getCollisionShape()) { body.setCollisionShape(shape); }
+ ~VbdBorrowedShape() { body.setCollisionShape(original); }
+};
+
+
 TEST(DeformableVbd, GImpactPaddingDoesNotChangeClearance)
 {
 	btPrimitiveTriangle a, b;
@@ -429,7 +439,7 @@ TEST(DeformableVbd, GrabWorldSupportsRotationReleaseAndMillimeterUnits)
 		for (int step = 0; step < 80; ++step)
 		{
 			ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-			ASSERT_FALSE(world.hasCoupledStepFailed());
+			ASSERT_FALSE(world.hasVbdStepFailed());
 		}
 		EXPECT_GT(body.m_nodes[0].m_x.x() * unit, .003);
 		EXPECT_GT(body.m_nodes[0].m_x.z() * unit, .001);
@@ -437,7 +447,7 @@ TEST(DeformableVbd, GrabWorldSupportsRotationReleaseAndMillimeterUnits)
 		for (int step = 0; step < 20; ++step)
 		{
 			ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-			ASSERT_FALSE(world.hasCoupledStepFailed());
+			ASSERT_FALSE(world.hasVbdStepFailed());
 		}
 		world.removeForce(&elastic);
 		world.removeSoftBody(&body);
@@ -587,13 +597,13 @@ TEST(DeformableVbd, WorldStepsMultipleBodiesAndRejectsTogether)
 	for (int step = 0; step < 100; ++step)
 	{
 		ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-		ASSERT_FALSE(world.hasCoupledStepFailed());
+		ASSERT_FALSE(world.hasVbdStepFailed());
 	}
 	for (int i = 0; i < 4; ++i)
 		b.m_nodes[i].m_x.setZ(b.m_nodes[i].m_x.z() - .005);
 	const btVector3 oldA = a.m_nodes[0].m_x, oldB = b.m_nodes[0].m_x;
 	EXPECT_EQ(world.stepSimulation(.002, 0), 0);
-	EXPECT_TRUE(world.hasCoupledStepFailed());
+	EXPECT_TRUE(world.hasVbdStepFailed());
 	EXPECT_EQ(a.m_nodes[0].m_x, oldA);
 	EXPECT_EQ(b.m_nodes[0].m_x, oldB);
 	world.removeForce(&material);
@@ -789,7 +799,7 @@ TEST(DeformableVbd, WorldAcceptsDynamicRigidAndDeformableAnchor)
 	{
 		rigid.applyCentralForce(btVector3(0, 1, 0));
 		ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-		ASSERT_FALSE(world.hasCoupledStepFailed());
+		ASSERT_FALSE(world.hasVbdStepFailed());
 	}
 	EXPECT_GT(rigid.getWorldTransform().getOrigin().y(), 0);
 	EXPECT_GT(body.m_nodes[0].m_x.y(), 0);
@@ -872,7 +882,7 @@ TEST(DeformableVbd, WorldPreservesPointJointInMetresAndMillimetres)
 		for (int step = 0; step < 100; ++step)
 		{
 			ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-			ASSERT_FALSE(world.hasCoupledStepFailed());
+			ASSERT_FALSE(world.hasVbdStepFailed());
 		}
 		EXPECT_LT(rigid.getWorldTransform().getOrigin().length() * unit, 1e-5);
 		EXPECT_GT(joint.getAppliedImpulse(), 0);
@@ -921,7 +931,7 @@ TEST(DeformableVbd, WorldHingeMotorUsesAngularImpulseUnits)
 		for (int step = 0; step < 100; ++step)
 		{
 			ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-			ASSERT_FALSE(world.hasCoupledStepFailed());
+			ASSERT_FALSE(world.hasVbdStepFailed());
 		}
 		EXPECT_LT(rigid.getWorldTransform().getOrigin().length() * unit, 1e-5);
 		EXPECT_NEAR(btFabs(rigid.getAngularVelocity().z()), 1, .01);
@@ -1055,7 +1065,7 @@ TEST(DeformableVbd, WorldCompoundChildrenRespectLocalTransforms)
 		for (int n = 0; n < 4; ++n)
 			body.m_nodes[n].m_f = btVector3(0, 0, -.25);
 		ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-		ASSERT_FALSE(world.hasCoupledStepFailed());
+		ASSERT_FALSE(world.hasVbdStepFailed());
 		for (int n = 0; n < 4; ++n)
 			EXPECT_GT(body.m_nodes[n].m_x.z(), 0);
 	}
@@ -1084,7 +1094,7 @@ TEST(DeformableVbd, RigidOnlySceneRetainsOriginalBulletPath)
 	for (int step = 0; step < 50; ++step)
 	{
 		ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-		ASSERT_FALSE(world.hasCoupledStepFailed());
+		ASSERT_FALSE(world.hasVbdStepFailed());
 	}
 	EXPECT_NEAR(rigid.getLinearVelocity().z(), -.981, .001);
 	EXPECT_NEAR(rigid.getWorldTransform().getOrigin().z(), -.050031, .001);
@@ -1146,7 +1156,7 @@ TEST(DeformableVbd, WorldHingeLimitsBoundMotorMotion)
 			for (int step = 0; step < 100; ++step)
 			{
 				ASSERT_EQ(world.stepSimulation(.002, 0), 1);
-				ASSERT_FALSE(world.hasCoupledStepFailed());
+				ASSERT_FALSE(world.hasVbdStepFailed());
 			}
 			EXPECT_LT(rigid.getWorldTransform().getOrigin().length() * unit, 1e-5);
 			EXPECT_NEAR(rigid.getAngularVelocity().z(), 0, .02);
@@ -1293,6 +1303,8 @@ TEST(DeformableVbd, WorldMappingCacheChecksInPlaceEditsAndTransformChanges)
 	struct MappedBody : btSoftBody
 	{
 		using btSoftBody::btSoftBody;
+		int safeUpdates = 0;
+		void updateLastSafeWorldTransform() override { ++safeUpdates; btSoftBody::updateLastSafeWorldTransform(); }
 		std::vector<btVertexToTetraMapping> mapping;
 		const std::vector<btVertexToTetraMapping> *getCollisionShapeVertexToSimTetra() const override
 		{
@@ -1309,7 +1321,7 @@ TEST(DeformableVbd, WorldMappingCacheChecksInPlaceEditsAndTransformChanges)
 	geometry.addTriangle(positions[0], positions[1], positions[2]);
 	btGImpactMeshShape shape(&geometry);
 	shape.updateBound();
-	body.setCollisionShape(&shape);
+	VbdBorrowedShape borrowedShape(body, &shape);
 	body.mapping.resize(3);
 	for (int i = 0; i < 3; ++i)
 	{
@@ -1321,19 +1333,32 @@ TEST(DeformableVbd, WorldMappingCacheChecksInPlaceEditsAndTransformChanges)
 	material.addSoftBody(&body);
 	world.addSoftBody(&body);
 	world.addForce(&material);
+	body.setCollisionFlags(body.getCollisionFlags() | btCollisionObject::CF_DO_UNSTUCK | btCollisionObject::CF_APPLY_LAST_SAFE);
+	body.m_nodes[0].m_safe.m_x = btVector3(9,8,7);
 	for (int step = 0; step < 3; ++step)
 	{
 		EXPECT_EQ(world.stepSimulation(.002, 0), 1);
-		EXPECT_FALSE(world.hasCoupledStepFailed());
+		EXPECT_FALSE(world.hasVbdStepFailed());
 	}
+	EXPECT_EQ(body.safeUpdates, 0);
+	EXPECT_EQ(body.m_nodes[0].m_safe.m_x, btVector3(9,8,7));
+	world.setVbdSolver(false);
+	EXPECT_EQ(body.safeUpdates, 1);
+	EXPECT_EQ(body.m_nodes[0].m_safe.m_x, body.m_nodes[0].m_x);
+	world.setVbdSolver(false);
+	EXPECT_EQ(body.safeUpdates, 1);
+	world.setVbdSolver(true);
+	EXPECT_EQ(world.stepSimulation(.002, 0), 1);
+	EXPECT_FALSE(world.hasVbdStepFailed());
+	EXPECT_EQ(body.safeUpdates, 1);
 	btTransform changed = btTransform::getIdentity();
 	changed.setOrigin(btVector3(.2, 0, 0));
 	body.setWorldTransform(changed);
 	EXPECT_EQ(world.stepSimulation(.002, 0), 1);
-	EXPECT_FALSE(world.hasCoupledStepFailed());
+	EXPECT_FALSE(world.hasVbdStepFailed());
 	body.mapping[0].baryCoordInTetra = btVector4(0, 1, 0, 0);
 	EXPECT_EQ(world.stepSimulation(.002, 0), 0);
-	EXPECT_TRUE(world.hasCoupledStepFailed());
+	EXPECT_TRUE(world.hasVbdStepFailed());
 	world.removeForce(&material);
 	world.removeSoftBody(&body);
 }
@@ -1370,7 +1395,7 @@ TEST(DeformableVbd, WorldMappingCacheStillValidatesSharedVerticesAfterGeometryEd
 	geometry.addTriangle(positions[0], positions[2], positions[3], true);
 	btGImpactMeshShape shape(&geometry);
 	shape.updateBound();
-	body.setCollisionShape(&shape);
+	VbdBorrowedShape borrowedShape(body, &shape);
 	body.mapping.resize(4);
 	for (int i = 0; i < 4; ++i)
 	{
@@ -1385,13 +1410,13 @@ TEST(DeformableVbd, WorldMappingCacheStillValidatesSharedVerticesAfterGeometryEd
 	for (int step = 0; step < 3; ++step)
 	{
 		EXPECT_EQ(world.stepSimulation(.002, 0), 1);
-		EXPECT_FALSE(world.hasCoupledStepFailed());
+		EXPECT_FALSE(world.hasVbdStepFailed());
 	}
 	btTransform changed = btTransform::getIdentity();
 	changed.setOrigin(btVector3(.2, 0, 0));
 	body.setWorldTransform(changed);
 	EXPECT_EQ(world.stepSimulation(.002, 0), 1);
-	EXPECT_FALSE(world.hasCoupledStepFailed());
+	EXPECT_FALSE(world.hasVbdStepFailed());
 	// Geometry positions are deliberately absent from the topology key.
 	// Change a vertex used only by the second triangle while reusing that key.
 	unsigned char *vertexBase, *indexBase;
@@ -1405,7 +1430,7 @@ TEST(DeformableVbd, WorldMappingCacheStillValidatesSharedVerticesAfterGeometryEd
 		reinterpret_cast<float *>(vertexBase + 3 * vertexStride)[0] += .01f;
 	geometry.unLockVertexBase(0);
 	EXPECT_EQ(world.stepSimulation(.002, 0), 0);
-	EXPECT_TRUE(world.hasCoupledStepFailed());
+	EXPECT_TRUE(world.hasVbdStepFailed());
 	world.removeForce(&material);
 	world.removeSoftBody(&body);
 }
@@ -2176,7 +2201,7 @@ TEST(DeformableVbd, DenseParallelMappingValidationRejectsLateGeometryEdits)
 			geometry.addTriangle(positions[0], positions[1], positions[2], false);
 		btGImpactMeshShape shape(&geometry);
 		shape.updateBound();
-		body.setCollisionShape(&shape);
+		VbdBorrowedShape borrowedShape(body, &shape);
 		body.mapping.resize(18003);
 		for (int i = 0; i < 18003; ++i)
 		{
@@ -2191,13 +2216,13 @@ TEST(DeformableVbd, DenseParallelMappingValidationRejectsLateGeometryEdits)
 		for (int step = 0; step < 3; ++step)
 		{
 			EXPECT_EQ(world.stepSimulation(.002, 0), 1);
-			EXPECT_FALSE(world.hasCoupledStepFailed());
+			EXPECT_FALSE(world.hasVbdStepFailed());
 		}
 		btTransform changed = btTransform::getIdentity();
 		changed.setOrigin(btVector3(.2, 0, 0));
 		body.setWorldTransform(changed);
 		EXPECT_EQ(world.stepSimulation(.002, 0), 1);
-		EXPECT_FALSE(world.hasCoupledStepFailed());
+		EXPECT_FALSE(world.hasVbdStepFailed());
 		// Geometry positions are deliberately absent from the topology key.
 		// Change a vertex in the last parallel block while reusing that key.
 		unsigned char *vertexBase, *indexBase;
@@ -2212,7 +2237,7 @@ TEST(DeformableVbd, DenseParallelMappingValidationRejectsLateGeometryEdits)
 			reinterpret_cast<float *>(vertexBase + (vertexCount - 1) * vertexStride)[0] += .01f;
 		geometry.unLockVertexBase(0);
 		EXPECT_EQ(world.stepSimulation(.002, 0), 0);
-		EXPECT_TRUE(world.hasCoupledStepFailed());
+		EXPECT_TRUE(world.hasVbdStepFailed());
 		world.removeForce(&material);
 		world.removeSoftBody(&body);
 	}
