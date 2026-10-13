@@ -471,6 +471,11 @@ ELSE()
 ENDIF()
 
 
+OPTION(BUILD_VBD_GPU "Build the optional Windows CUDA VBD runtime backend" ON)
+IF(BUILD_VBD_GPU)
+  ADD_SUBDIRECTORY(Extras/VbdGpu)
+ENDIF()
+
 IF(INSTALL_LIBS)
 	#INSTALL of other files requires CMake 2.6
 	IF(BUILD_EXTRAS)

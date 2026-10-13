@@ -32,3 +32,12 @@ ADD_EXECUTABLE(Test_btDeformableBlockPreconditioner test_btDeformableBlockPrecon
 SET_TARGET_PROPERTIES(Test_btDeformableBlockPreconditioner PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 TARGET_LINK_LIBRARIES(Test_btDeformableBlockPreconditioner BulletSoftBody)
 ADD_TEST(Test_btDeformableBlockPreconditioner_PASS Test_btDeformableBlockPreconditioner)
+
+IF(TARGET BulletVbdGpu)
+    ADD_DEPENDENCIES(Test_btDeformableBlockPreconditioner BulletVbdGpu)
+    ADD_CUSTOM_COMMAND(TARGET Test_btDeformableBlockPreconditioner POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:BulletVbdGpu>
+            $<TARGET_FILE_DIR:Test_btDeformableBlockPreconditioner>
+        VERBATIM)
+ENDIF()
