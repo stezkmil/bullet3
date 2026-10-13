@@ -64,7 +64,15 @@ int main(int argc, char** argv)
         return 1;
     // Do not create an output on compilation failure: a subsequent build must retry.
     std::ofstream output(argv[2], std::ios::binary | std::ios::trunc);
-    output << "static const char vbdGuardPtx[] = R\"vbdptx(" << ptx.data() << ")vbdptx\";\n";
+    // Numeric bytes avoid MSVC's string-literal size limit; NVRTC includes the final NUL.
+    output << "static const char vbdGuardPtx[] = {\n";
+    for (size_t i = 0; i < ptx.size(); ++i)
+    {
+        output << static_cast<int>(ptx[i]) << ',';
+        if ((i + 1) % 32 == 0)
+            output << '\n';
+    }
+    output << "\n};\n";
     output.close();
     if (!output)
     {
