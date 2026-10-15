@@ -31,5 +31,5 @@ Conan / VRUT
 The Bullet recipe supplies CUDA::cuda_driver and VBD_PTX_COMPILER using pinned
 Conan packages. An explicit compiler path selects this mode and errors if it
 is missing, rather than silently choosing a system toolkit.
-The compiler source is also packaged in recipes/vbd-ptx-compiler: keep the
+The compiler source is also packaged in recipes/vrut-vbd-ptx-compiler: keep the
 standalone copy and that package source synchronized when updating the tool.
