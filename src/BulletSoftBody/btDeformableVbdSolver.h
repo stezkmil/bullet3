@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <vector>
 #include <limits>
+#include <string>
 
 // Use the same dot, translation, and unit-conversion order as nativeTriangle.
 static btVector3 btVbdNativeExtractPosition(const btTransform &transform, const btVector3 &vertex, btScalar units)
@@ -212,10 +213,46 @@ class btDeformableVbdSolver
 	int colorCount = 0;
 	btScalar minimumJ = 1;
 	const char *error = nullptr;
+	static bool finiteVector(const btVector3 &v)
+	{
+		return std::isfinite(double(v.x())) && std::isfinite(double(v.y())) && std::isfinite(double(v.z()));
+	}
+	static bool finiteMatrix(const btMatrix3x3 &m)
+	{
+		return finiteVector(m[0]) && finiteVector(m[1]) && finiteVector(m[2]);
+	}
 
 	static btVector3 closestWeights(const btVector3 &p, const btVector3 *t)
 	{
+		if (!finiteVector(p) || !finiteVector(t[0]) || !finiteVector(t[1]) || !finiteVector(t[2]))
+			return btVector3(std::numeric_limits<btScalar>::quiet_NaN(), 0, 0);
+		auto closestEdgeWeights = [&]()
+		{
+			btVector3 best(1, 0, 0);
+			btScalar bestDistance = (p - t[0]).length2();
+			for (int a = 0; a < 3; ++a)
+			{
+				const int b = (a + 1) % 3;
+				const btVector3 edge = t[b] - t[a];
+				const btScalar length2 = edge.length2();
+				const btScalar fraction = length2 > 0 ? btClamped(edge.dot(p - t[a]) / length2, btScalar(0), btScalar(1)) : 0;
+				const btScalar distance = (p - (t[a] + edge * fraction)).length2();
+				if (distance < bestDistance)
+				{
+					bestDistance = distance;
+					best.setZero();
+					best[a] = 1 - fraction;
+					best[b] = fraction;
+				}
+			}
+			return best;
+		};
 		const btVector3 ab = t[1] - t[0], ac = t[2] - t[0], ap = p - t[0];
+		const btScalar edgeScale2 = btMax(ab.length2(), btMax(ac.length2(), (t[2] - t[1]).length2()));
+		const btScalar epsilon = std::numeric_limits<btScalar>::epsilon();
+		// A collapsed face is a segment or point; never divide its zero-area barycentric expressions.
+		if (ab.cross(ac).length2() <= 64 * epsilon * epsilon * edgeScale2 * edgeScale2)
+			return closestEdgeWeights();
 		const btScalar d1 = ab.dot(ap), d2 = ac.dot(ap);
 		if (d1 <= 0 && d2 <= 0)
 			return btVector3(1, 0, 0);
@@ -226,6 +263,7 @@ class btDeformableVbdSolver
 		const btScalar vc = d1 * d4 - d3 * d2;
 		if (vc <= 0 && d1 >= 0 && d3 <= 0)
 		{
+			if (!(d1 - d3 > 0)) return closestEdgeWeights();
 			const btScalar v = d1 / (d1 - d3);
 			return btVector3(1 - v, v, 0);
 		}
@@ -236,16 +274,19 @@ class btDeformableVbdSolver
 		const btScalar vb = d5 * d2 - d1 * d6;
 		if (vb <= 0 && d2 >= 0 && d6 <= 0)
 		{
+			if (!(d2 - d6 > 0)) return closestEdgeWeights();
 			const btScalar w = d2 / (d2 - d6);
 			return btVector3(1 - w, 0, w);
 		}
 		const btScalar va = d3 * d6 - d5 * d4;
 		if (va <= 0 && d4 >= d3 && d5 >= d6)
 		{
+			if (!(d4 - d3 + d5 - d6 > 0)) return closestEdgeWeights();
 			const btScalar w = (d4 - d3) / (d4 - d3 + d5 - d6);
 			return btVector3(0, 1 - w, w);
 		}
 		const btScalar sum = va + vb + vc;
+		if (!(sum > 0) || !std::isfinite(double(sum))) return closestEdgeWeights();
 		return btVector3(va / sum, vb / sum, vc / sum);
 	}
 	static btVector3 rotationVector(btQuaternion q)
@@ -510,11 +551,24 @@ class btDeformableVbdSolver
 			return false;
 		}
 		colorVertices(false);
+		buildTranslationBlocks();
 		return true;
 	}
 	bool step(btScalar dt)
 	{
 		error = nullptr;
+		auto checkPositions = [&](const std::vector<btVector3> &values)
+		{
+			for (const auto &value : values)
+				if (!finiteVector(value))
+				{
+					error = "nonfinite_solver_update";
+					return false;
+				}
+			return true;
+		};
+		if (!checkPositions(x) || !checkPositions(velocity) || !checkPositions(external))
+			return false;
 		bool finite = std::isfinite(double(dt));
 		for (btScalar value : {settings.radius, settings.gap, settings.ke, settings.kd, settings.frictionEpsilon, settings.volumeFloor,
 							   settings.recoveryDistance, settings.collisionUnitsPerMeter})
@@ -570,7 +624,9 @@ class btDeformableVbdSolver
 			if (mass[i] > 0)
 				inertia[i] += velocity[i] * dt + (external[i] / mass[i] - velocity[i] * massDamping[i]) * (dt * dt);
 		std::vector<btVector3> proposed = inertia;
+		if (!checkPositions(proposed)) return false;
 		truncate(proposed);
+		if (!checkPositions(proposed)) return false;
 		x = proposed;
 		for (int r = 0; r < int(rigids.size()); ++r)
 			if (rigids[r].mass > 0)
@@ -579,6 +635,9 @@ class btDeformableVbdSolver
 			return false;
 		for (int iteration = 0; iteration < settings.iterations; ++iteration)
 		{
+			// Refresh collision references so discovery bounds do not become permanent motion limits.
+			if (iteration > 0 && !detect()) return false;
+			solveTranslations(dt);
 			for (const auto &group : groups)
 			{
 				proposed = x;
@@ -627,13 +686,21 @@ class btDeformableVbdSolver
 											 force += jacobian.transpose() * cf;
 											 hessian += jacobian.transpose() * ch * jacobian;
 										 }
+										 if (!finiteVector(force) || !finiteMatrix(hessian) || !std::isfinite(double(hessian.determinant())))
+										 {
+											 proposed[i].setX(std::numeric_limits<btScalar>::quiet_NaN());
+											 return;
+										 }
 										 if (btFabs(hessian.determinant()) > 1e-8)
 											 proposed[i] += hessian.inverse() * force;
 									 }
 								 });
+				if (!checkPositions(proposed)) return false;
 				truncate(proposed);
+				if (!checkPositions(proposed)) return false;
 				x = proposed;
 			}
+			solveTranslations(dt);
 			solveRigids(dt);
 			solveJoints(dt);
 		}
@@ -687,6 +754,7 @@ class btDeformableVbdSolver
 	std::vector<unsigned char> guardChangedNodes;
 	std::vector<std::vector<int>> guardSurfaceVertices;
 	std::vector<int> guardAffectedVertices;
+	std::vector<int> guardRecheckVertices, guardRecheckTets;
 	std::vector<std::vector<int>> guardPlaneNodes;
 	std::vector<unsigned int> guardPlaneStamps;
 	std::vector<int> guardAffectedPlanes;
@@ -1002,9 +1070,14 @@ class btDeformableVbdSolver
 			movingPairsRecursive(0, 0, owners, pairs);
 		return pairs;
 	}
-	SurfaceVertex interpolate(const std::array<int, 3> &face, const btVector3 &weights) const
+	SurfaceVertex interpolate(const std::array<int, 3> &face, const btVector3 &weights)
 	{
 		SurfaceVertex result;
+		if (!finiteVector(weights))
+		{
+			error = "nonfinite_contact_weights";
+			return result;
+		}
 		std::map<int, btMatrix3x3> support;
 		for (int j = 0; j < 3; ++j)
 		{
@@ -1020,8 +1093,16 @@ class btDeformableVbdSolver
 			}
 		}
 		for (const auto &a : support)
+		{
+			if (!finiteMatrix(a.second))
+			{
+				error = "nonfinite_contact_mapping";
+				return result;
+			}
 			if (a.second[0].length2() + a.second[1].length2() + a.second[2].length2() > 0)
 				result.support.push_back({a.first, a.second});
+		}
+		if (!finiteVector(result.offset)) error = "nonfinite_contact_offset";
 		return result;
 	}
 
@@ -1144,6 +1225,181 @@ class btDeformableVbdSolver
 			}
 		}
 	}
+	std::vector<int> translationBlock;
+	int translationBlockCount = 0;
+	void buildTranslationBlocks()
+	{
+		std::vector<int> root(x.size());
+		for (int i = 0; i < int(x.size()); ++i) root[i] = i;
+		auto find = [&](int i)
+		{ while(root[i]!=i){root[i]=root[root[i]];i=root[i];} return i; };
+		for (const auto &tet : tets)
+			for (int j = 1; j < 4; ++j) root[find(tet.nodes[j])] = find(tet.nodes[0]);
+		std::vector<bool> pinned(x.size(), false);
+		for (int i = 0; i < int(x.size()); ++i)
+			if (!(mass[i] > 0)) pinned[find(i)] = true;
+		std::map<int, int> blocks;
+		translationBlock.assign(x.size(), -1);
+		translationBlockCount = 0;
+		for (int i = 0; i < int(x.size()); ++i)
+		{
+			const int r = find(i);
+			if (pinned[r]) continue;
+			auto inserted = blocks.emplace(r, translationBlockCount);
+			if (inserted.second) ++translationBlockCount;
+			translationBlock[i] = inserted.first->second;
+		}
+	}
+	void solveTranslations(btScalar dt)
+	{
+		// Galerkin correction P^T H P: each column translates one free connected body.
+		// Internal elastic and strain-rate damping forces vanish in this subspace.
+		const int n = translationBlockCount;
+		if (!n) return;
+		// Dynamic rigid coupling uses the existing joint/rigid block solve.
+		for (const auto &rigid : rigids)
+			if (rigid.mass > 0) return;
+		const auto zero = btMatrix3x3::getIdentity() * btScalar(0);
+		std::vector<btVector3> rhs(n, btVector3(0, 0, 0)), delta(n, btVector3(0, 0, 0));
+		std::map<std::pair<int, int>, btMatrix3x3> blocks;
+		auto add = [&](int a, int b, const btMatrix3x3 &value)
+		{
+			auto entry = blocks.emplace(std::make_pair(a, b), zero);
+			entry.first->second += value;
+		};
+		for (int i = 0; i < int(x.size()); ++i)
+		{
+			const int b = translationBlock[i];
+			if (b < 0) continue;
+			const btScalar k = mass[i] / (dt * dt);
+			rhs[b] += (inertia[i] - x[i]) * k;
+			add(b, b, btMatrix3x3::getIdentity() * k);
+			for (int index : springAdjacency[i])
+			{
+				btVector3 f(0, 0, 0);
+				auto h = zero;
+				springBlock(springs[index], x[i], previous[i], dt, f, h);
+				rhs[b] += f;
+				add(b, b, h);
+			}
+			for (int index : attachmentAdjacency[i])
+			{
+				const auto &a = attachments[index];
+				const auto &r = rigids[a.rigid];
+				const auto target = r.pose * a.localPoint, oldTarget = r.previous * a.localPoint;
+				rhs[b] -= (x[i] - target) * a.stiffness + ((x[i] - previous[i]) - (target - oldTarget)) * (a.damping / dt);
+				add(b, b, btMatrix3x3::getIdentity() * (a.stiffness + a.damping / dt));
+			}
+		}
+		for (const auto &c : contacts)
+		{
+			if (c.rigidA >= 0) continue;
+			std::vector<std::pair<int, btMatrix3x3>> jacobians;
+			for (const auto &support : c.vertex.support)
+			{
+				const int b = translationBlock[support.node];
+				if (b < 0) continue;
+				auto it = std::find_if(jacobians.begin(), jacobians.end(), [&](const auto &a)
+									   { return a.first == b; });
+				if (it == jacobians.end())
+					jacobians.push_back({b, support.jacobian});
+				else
+					it->second += support.jacobian;
+			}
+			btVector3 f(0, 0, 0);
+			auto h = zero;
+			contactBlock(c, dt, f, h);
+			for (const auto &a : jacobians)
+			{
+				rhs[a.first] += a.second.transpose() * f;
+				for (const auto &b : jacobians) add(a.first, b.first, a.second.transpose() * h * b.second);
+			}
+		}
+		std::vector<btMatrix3x3> inverse(n);
+		for (int b = 0; b < n; ++b) inverse[b] = blocks.at({b, b}).inverse();
+		auto residual = rhs;
+		std::vector<btVector3> direction(n), z(n), product(n);
+		btScalar rz = 0;
+		for (int b = 0; b < n; ++b)
+		{
+			z[b] = inverse[b] * residual[b];
+			direction[b] = z[b];
+			rz += residual[b].dot(z[b]);
+		}
+		const btScalar initial = rz;
+		for (int iteration = 0; iteration < btMin(3 * n, 100) && rz > initial * btScalar(1e-20) && rz > 0; ++iteration)
+		{
+			std::fill(product.begin(), product.end(), btVector3(0, 0, 0));
+			for (const auto &entry : blocks) product[entry.first.first] += entry.second * direction[entry.first.second];
+			btScalar denominator = 0;
+			for (int b = 0; b < n; ++b) denominator += direction[b].dot(product[b]);
+			if (!(denominator > 0)) break;
+			const btScalar alpha = rz / denominator;
+			btScalar next = 0;
+			for (int b = 0; b < n; ++b)
+			{
+				delta[b] += direction[b] * alpha;
+				residual[b] -= product[b] * alpha;
+				z[b] = inverse[b] * residual[b];
+				next += residual[b].dot(z[b]);
+			}
+			for (int b = 0; b < n; ++b) direction[b] = z[b] + direction[b] * (next / rz);
+			rz = next;
+		}
+		for (const auto &d : delta)
+			if (!finiteVector(d)) return;
+		std::vector<btVector3> proposed = x;
+		for (int i = 0; i < int(x.size()); ++i)
+			if (translationBlock[i] >= 0) proposed[i] += delta[translationBlock[i]];
+		// A common line search keeps each component's update a pure translation.
+		// Unlike per-node clipping, this cannot change its tetrahedral volumes.
+		btScalar factor = 1;
+		const btScalar bound = settings.gap * btScalar(.425);
+		auto travel = [&](const btVector3 &start, const btVector3 &end, const btVector3 &ref)
+		{
+			const auto d = end - start, r = start - ref;
+			if ((r + d).length2() > bound * bound && d.length2() > 0)
+			{
+				const btScalar a = d.length2(), b = r.dot(d), c = r.length2() - bound * bound;
+				factor = btMin(factor, btClamped((-b + btSqrt(btMax(btScalar(0), b * b - a * c))) / a, btScalar(0), btScalar(1)));
+			}
+		};
+		for (int i = 0; i < int(x.size()); ++i) travel(x[i], proposed[i], reference[i]);
+		std::vector<btVector3> start(surfaceVertices.size()), end(surfaceVertices.size()), ref(surfaceVertices.size());
+		for (int v = 0; v < int(surfaceVertices.size()); ++v)
+		{
+			start[v] = surfacePosition(v, x);
+			end[v] = surfacePosition(v, proposed);
+			ref[v] = surfacePosition(v, reference);
+			travel(start[v], end[v], ref[v]);
+		}
+		for (const auto &c : planes)
+		{
+			const auto point = planePoint(c);
+			btScalar gap = SIMD_INFINITY, scale = 1;
+			for (int v : c.nodes)
+			{
+				gap = btMin(gap, c.normal.dot(ref[v] - point));
+				for (int d = 0; d < 3; ++d) scale = btMax(scale, btFabs(ref[v][d]));
+			}
+			for (int d = 0; d < 3; ++d) scale = btMax(scale, btFabs(point[d]));
+			const btScalar epsilon = btMax(btScalar(1e-6), btScalar(4 * 1.1920928955078125e-7) * scale);
+			const auto boundary = point + c.normal * (btScalar(.05) * btMax(btScalar(0), c.rigid >= 0 ? c.referenceGap : gap));
+			for (int v : c.nodes) factor = btMin(factor, btVbd::planarBound(start[v], end[v] - start[v], c.normal, boundary, epsilon));
+		}
+		for (const auto &p : movingPlanes)
+		{
+			btScalar gap = SIMD_INFINITY;
+			for (int a : surface[p.a])
+				for (int b : surface[p.b]) gap = btMin(gap, p.normal.dot(ref[a] - ref[b]));
+			const auto boundary = p.normal * (btScalar(.05) * btMax(btScalar(0), gap));
+			for (int a : surface[p.a])
+				for (int b : surface[p.b])
+					factor = btMin(factor, btVbd::planarBound(start[a] - start[b], (end[a] - end[b]) - (start[a] - start[b]), p.normal, boundary, btScalar(1e-6)));
+		}
+		for (int i = 0; i < int(x.size()); ++i)
+			if (translationBlock[i] >= 0) x[i] += delta[translationBlock[i]] * factor;
+	}
 	void solveRigids(btScalar dt)
 	{
 		for (int index = 0; index < int(rigids.size()); ++index)
@@ -1205,8 +1461,14 @@ class btDeformableVbdSolver
 			moveRigid(index, target);
 		}
 	}
-	void addContact(std::array<int, 3> vertices, btVector3 weights, const btVector3 &point, btScalar friction, int rigid = -1)
+	void addContact(std::array<int, 3> vertices, btVector3 weights, const btVector3 &point,
+					const btVector3 &collisionNormal, btScalar friction, int rigid = -1)
 	{
+		if (!finiteVector(weights) || !finiteVector(point))
+		{
+			error = "nonfinite_contact_weights_or_point";
+			return;
+		}
 		SurfaceVertex vertex;
 		// Construction is serial; reuse the small support buffer instead of allocating tree nodes.
 		auto &support = contactSupportScratch;
@@ -1227,18 +1489,38 @@ class btDeformableVbdSolver
 		std::sort(support.begin(), support.end(), [](const Support &a, const Support &b) { return a.node < b.node; });
 		vertex.support.reserve(support.size());
 		for (const auto &a : support)
+		{
+			if (!finiteMatrix(a.jacobian))
+			{
+				error = "nonfinite_contact_mapping";
+				return;
+			}
 			if (a.jacobian[0].length2() + a.jacobian[1].length2() + a.jacobian[2].length2() > 0)
 				vertex.support.push_back(a);
+		}
 		const btVector3 delta = vertex.position(x) - point;
+		if (!finiteVector(delta))
+		{
+			error = "nonfinite_contact_position";
+			return;
+		}
 		const btScalar length = delta.length();
 		if (length >= settings.gap)
 			return;
+		btVector3 normal;
 		if (length < 1e-12)
 		{
-			error = "initial_touch_requires_contact_normal";
-			return;
+			// Mapped-point reconstruction can erase a tiny separation resolved by collision detection.
+			const btScalar normalLength2 = collisionNormal.length2();
+			if (!std::isfinite(double(normalLength2)) || normalLength2 < 1e-12)
+			{
+				error = "initial_touch_requires_contact_normal";
+				return;
+			}
+			normal = collisionNormal / btSqrt(normalLength2);
 		}
-		const btVector3 normal = delta / length;
+		else
+			normal = delta / length;
 		std::vector<long long> key;
 		key.reserve(10 + 5 * vertex.support.size());
 		key.push_back(rigid);
@@ -1824,7 +2106,7 @@ class btDeformableVbdSolver
 				for (int j = 0; j < 3; ++j)
 					vertices[j] = collisionPosition(surface[a][j]);
 				const btVector3 onSoft = point + normal * (result.m_distance / units);
-				addContact(surface[a], closestWeights(onSoft, vertices), point, barrier.friction * surfaceFrictions[a], barrier.rigid);
+				addContact(surface[a], closestWeights(onSoft, vertices), point, normal, barrier.friction * surfaceFrictions[a], barrier.rigid);
 				planes.push_back({surface[a], point, normal, barrier.rigid, -1, int(&barrier - convexBarriers.data())});
 				setPlaneGap(planes.back());
 			}
@@ -1907,7 +2189,7 @@ class btDeformableVbdSolver
 			const btVector3 other = closestRigid / settings.collisionUnitsPerMeter;
 			const auto &face = surface[a];
 			const btVector3 vertices[] = {collisionPosition(face[0]), collisionPosition(face[1]), collisionPosition(face[2])};
-			addContact(face, closestWeights(point, vertices), other,
+			addContact(face, closestWeights(point, vertices), other, normal,
 					   barriers[b].friction * (barriers[b].owner < 0 ? btScalar(1) : surfaceFrictions[a]), barriers[b].rigid);
 			// DAT must protect the entire triangle, even if the closest point lies on one corner.
 			planes.push_back({face, other, normal, barriers[b].rigid, b, -1});
@@ -1944,6 +2226,7 @@ class btDeformableVbdSolver
 			}
 			SurfaceVertex relative = interpolate(surface[a], closestWeights(pa / units, av));
 			const SurfaceVertex other = interpolate(surface[b], closestWeights(pb / units, bv));
+			if (error) return false;
 			relative.offset -= other.offset;
 			for (const auto &entry : other.support)
 			{
@@ -2189,6 +2472,43 @@ class btDeformableVbdSolver
 						  });
 	}
 
+public:
+	// Budget only approaching contributions: other constraints may independently remove separating motion.
+	void localPlaneBound(int a, int b, const btVector3 &normal, btScalar clearance,
+						 const std::vector<btVector3> &proposed, std::vector<btScalar> &factors) const
+	{
+		std::array<std::pair<int, btScalar>, 16> inlineContributions;
+		std::vector<std::pair<int, btScalar>> largeContributions;
+		const size_t capacity = surfaceVertices[a].support.size() + (b >= 0 ? surfaceVertices[b].support.size() : 0);
+		if (capacity > inlineContributions.size()) largeContributions.resize(capacity);
+		auto *contributions = capacity > inlineContributions.size() ? largeContributions.data() : inlineContributions.data();
+		size_t count = 0;
+		for (int side = 0; side < 2; ++side)
+		{
+			const int v = side ? b : a;
+			if (v < 0) continue;
+			for (const auto &support : surfaceVertices[v].support)
+			{
+				const btScalar amount = normal.dot(support.jacobian * (proposed[support.node] - x[support.node])) * (side ? -1 : 1);
+				if (amount == 0) continue;
+				auto found = std::find_if(contributions, contributions + count, [&](const std::pair<int, btScalar> &entry)
+										  { return entry.first == support.node; });
+				if (found == contributions + count)
+					contributions[count++] = {support.node, amount};
+				else
+					found->second += amount;
+			}
+		}
+		btScalar approach = 0;
+		for (size_t k = 0; k < count; ++k)
+			if (contributions[k].second < 0) approach -= contributions[k].second;
+		if (approach <= 0) return;
+		const btScalar factor = btMin(btScalar(1), btScalar(.85) * btMax(btScalar(0), clearance) / approach);
+		for (size_t k = 0; k < count; ++k)
+			if (contributions[k].second < 0) factors[contributions[k].first] = btMin(factors[contributions[k].first], factor);
+	}
+
+private:
 	void truncate(std::vector<btVector3> &proposed)
 	{
 		std::vector<btScalar> factors(x.size(), 1);
@@ -2244,7 +2564,10 @@ class btDeformableVbdSolver
 				}
 			}
 			if (count == 1)
-				factors[changed] = btMin(factors[changed], btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor));
+			{
+				const btScalar candidate = btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor);
+				factors[changed] = btMin(factors[changed], candidate);
+			}
 		}
 		for (int i = 0; i < int(x.size()); ++i)
 			proposed[i] = x[i] + (proposed[i] - x[i]) * factors[i];
@@ -2270,8 +2593,10 @@ class btDeformableVbdSolver
 								 }
 							 },
 							 2, 1);
-			for (btScalar limit : guardCommonLimits)
-				common = btMin(common, limit);
+			for (int k = 0; k < guardTetCount; ++k)
+			{
+				common = btMin(common, guardCommonLimits[k]);
+			}
 		}
 		else
 		{
@@ -2284,7 +2609,8 @@ class btDeformableVbdSolver
 					old[j] = x[tet.nodes[j]];
 					next[j] = proposed[tet.nodes[j]];
 				}
-				common = btMin(common, btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor));
+				const btScalar candidate = btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor);
+				common = btMin(common, candidate);
 			}
 		}
 		if (common < 1)
@@ -2352,6 +2678,7 @@ class btDeformableVbdSolver
 				for (btScalar vertexLimit : guardVertexLimits)
 					limit = btMin(limit, vertexLimit);
 			}
+			std::vector<btScalar> contactFactors(x.size(), 1);
 			const bool indexedPlanes = planes.size() >= 512;
 			if (indexedPlanes)
 				affectedGuardPlanes();
@@ -2389,7 +2716,7 @@ class btDeformableVbdSolver
 				{
 					const auto &cached = guardPosition(v, proposed);
 					const btVector3 start = cached.current;
-					limit = btMin(limit, btVbd::planarBound(start, cached.proposed - start, c.normal, plane, epsilon));
+					localPlaneBound(v, -1, c.normal, c.normal.dot(start - plane) - epsilon, proposed, contactFactors);
 				}
 			}
 			for (const auto &plane : movingPlanes)
@@ -2411,10 +2738,68 @@ class btDeformableVbdSolver
 					for (int b : surface[plane.b])
 					{
 						const btVector3 start = guardPosition(a, proposed).current - guardPosition(b, proposed).current;
-						const btVector3 end = guardPosition(a, proposed).proposed - guardPosition(b, proposed).proposed;
-						limit = btMin(limit, btVbd::planarBound(start, end - start, plane.normal, boundary, epsilon));
+						localPlaneBound(a, b, plane.normal, plane.normal.dot(start - boundary) - epsilon, proposed, contactFactors);
 					}
 			}
+			bool localChanged = false;
+			guardRecheckVertices.clear();
+			guardRecheckTets.clear();
+			if (guardSurfaceVertices.empty())
+			{
+				guardSurfaceVertices.resize(x.size());
+				for (int v = 0; v < int(surfaceVertices.size()); ++v)
+					for (const auto &support : surfaceVertices[v].support) guardSurfaceVertices[support.node].push_back(v);
+			}
+			for (int i = 0; i < int(x.size()); ++i)
+			{
+				if (contactFactors[i] < 1 && proposed[i] != x[i])
+				{
+					localChanged = true;
+					guardRecheckVertices.insert(guardRecheckVertices.end(), guardSurfaceVertices[i].begin(), guardSurfaceVertices[i].end());
+					for (const auto &entry : adjacency[i]) guardRecheckTets.push_back(entry.first);
+				}
+				proposed[i] = x[i] + (proposed[i] - x[i]) * contactFactors[i];
+			}
+			// Local scaling changes the path; recertify mapped travel and volume before accepting it.
+			if (localChanged)
+			{
+				std::sort(guardRecheckVertices.begin(), guardRecheckVertices.end());
+				{
+					size_t count = 0;
+					for (int index : guardRecheckVertices)
+						if (!count || guardRecheckVertices[count - 1] != index) guardRecheckVertices[count++] = index;
+					guardRecheckVertices.resize(count);
+				}
+				std::sort(guardRecheckTets.begin(), guardRecheckTets.end());
+				{
+					size_t count = 0;
+					for (int index : guardRecheckTets)
+						if (!count || guardRecheckTets[count - 1] != index) guardRecheckTets[count++] = index;
+					guardRecheckTets.resize(count);
+				}
+				for (int v : guardRecheckVertices)
+				{
+					const auto start = surfacePosition(v, x), d = surfacePosition(v, proposed) - start, r = start - surfacePosition(v, reference);
+					if ((r + d).length2() > bound * bound && d.length2() > 0)
+					{
+						const btScalar aa = d.length2(), bb = r.dot(d), cc = r.length2() - bound * bound;
+						limit = btMin(limit, btClamped((-bb + btSqrt(btMax(btScalar(0), bb * bb - aa * cc))) / aa, btScalar(0), btScalar(1)));
+					}
+				}
+				for (int index : guardRecheckTets)
+				{
+					const auto &tet = tets[index];
+					btVector3 old[4], next[4];
+					for (int j = 0; j < 4; ++j)
+					{
+						old[j] = x[tet.nodes[j]];
+						next[j] = proposed[tet.nodes[j]];
+					}
+					const btScalar candidate = btVbd::volumeBound(old, next, tet.volume * 6, settings.volumeFloor);
+					limit = btMin(limit, candidate);
+				}
+			}
+
 			for (int i = 0; i < int(x.size()); ++i)
 				proposed[i] = x[i] + (proposed[i] - x[i]) * limit;
 		}

@@ -75,6 +75,72 @@ static void setupVbdGroundTest(btDeformableVbdSolver &s, btScalar height)
 	s.barriers.push_back(ground);
 }
 
+TEST(DeformableVbd, NearZeroContactUsesCollisionNormal)
+{
+	for (btScalar separation : {btScalar(1e-14), btScalar(1e-13), btScalar(1e-5)})
+	{
+		btDeformableVbdSolver s;
+		setupVbdGroundTest(s, separation);
+		ASSERT_TRUE(s.initialize());
+		ASSERT_TRUE(s.step(.0002)) << (s.error ? s.error : "unknown failure");
+		ASSERT_EQ(nullptr, s.error);
+		ASSERT_FALSE(s.contacts.empty());
+		for (const auto &contact : s.contacts)
+		{
+			EXPECT_NEAR(contact.normal.length(), 1, 1e-12);
+			EXPECT_GT(contact.normal.z(), .99);
+		}
+	}
+}
+TEST(DeformableVbd, CollapsedEdgeContactWeightsRemainFinite)
+{
+	const btVector3 triangle[] = {btVector3(0, 0, 0), btVector3(0, 0, 0), btVector3(1, 0, 0)};
+	const auto weights = btDeformableVbdSolver::closestWeights(btVector3(.5, .1, 0), triangle);
+	ASSERT_TRUE(btDeformableVbdSolver::finiteVector(weights));
+	EXPECT_NEAR(weights.x() + weights.y() + weights.z(), 1, 1e-12);
+	const auto point = triangle[0] * weights.x() + triangle[1] * weights.y() + triangle[2] * weights.z();
+	EXPECT_NEAR((point - btVector3(.5, 0, 0)).length(), 0, 1e-12);
+}
+TEST(DeformableVbd, DegenerateContactWeightsHandleVertexOrderAndScale)
+{
+	for (btScalar scale : {btScalar(.001), btScalar(1), btScalar(1000)})
+		for (int rotation = 0; rotation < 3; ++rotation)
+			for (bool reversed : {false, true})
+				for (int kind = 0; kind < 3; ++kind)
+				{
+					const btVector3 source[] = {btVector3(0, 0, 0), btVector3(kind == 1 ? .25 : 0, 0, 0),
+												btVector3(kind == 2 ? 0 : 1, 0, 0)};
+					btVector3 triangle[3];
+					for (int i = 0; i < 3; ++i)
+						triangle[i] = source[(rotation + (reversed ? 2 - i : i)) % 3] * scale;
+					const auto weights = btDeformableVbdSolver::closestWeights(btVector3(.5, .1, 0) * scale, triangle);
+					ASSERT_TRUE(btDeformableVbdSolver::finiteVector(weights));
+					EXPECT_NEAR(weights.x() + weights.y() + weights.z(), 1, 1e-12);
+					for (int i = 0; i < 3; ++i) EXPECT_GE(weights[i], 0);
+					const auto point = triangle[0] * weights.x() + triangle[1] * weights.y() + triangle[2] * weights.z();
+					EXPECT_NEAR((point - btVector3(kind == 2 ? 0 : .5, 0, 0) * scale).length(), 0, scale * 1e-12);
+				}
+}
+
+TEST(DeformableVbd, RegularContactWeightsPreserveInteriorProjection)
+{
+	const btVector3 triangle[] = {btVector3(0, 0, 0), btVector3(1, 0, 0), btVector3(0, 1, 0)};
+	const auto weights = btDeformableVbdSolver::closestWeights(btVector3(.2, .3, .5), triangle);
+	EXPECT_NEAR((weights - btVector3(.5, .2, .3)).length(), 0, 1e-12);
+}
+TEST(DeformableVbd, NonfinitePredictionDoesNotChangePositions)
+{
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, .1);
+	ASSERT_TRUE(s.initialize());
+	const auto original = s.x;
+	s.external[2].setX(std::numeric_limits<btScalar>::max());
+	ASSERT_FALSE(s.step(.0002));
+	EXPECT_STREQ("nonfinite_solver_update", s.error);
+	EXPECT_EQ(original, s.x);
+	s.external[2].setZero();
+	ASSERT_TRUE(s.step(.0002));
+}
 TEST(DeformableVbd, DiscoveryOnlyContactsExertNoForce)
 {
 	for (btScalar gap : {btScalar(.0005), btScalar(.005)})
@@ -3336,4 +3402,99 @@ TEST(GImpactVertexCache, ParallelFullSnapshotPreservesCurrentSafeAndNestedQuerie
 		parallel.end();
 		EXPECT_TRUE(parallel.current(0) == nullptr);
 	}
+}
+
+TEST(DeformableVbd, RefreshedTravelBoundsAllowFreeTranslation)
+{
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, 1);
+	s.barriers.clear();
+	s.settings.gap = .0001;
+	s.settings.iterations = 40;
+	for (auto &f : s.external) f = btVector3(250, 0, 0);
+	ASSERT_TRUE(s.initialize());
+	ASSERT_TRUE(s.step(.001));
+	btVector3 momentum(0, 0, 0);
+	for (int i = 0; i < 4; ++i)
+	{
+		momentum += s.velocity[i] * s.mass[i];
+	}
+	// Refreshed discovery bounds must not become a permanent speed limit.
+	EXPECT_NEAR(momentum.x(), 1, 1e-6);
+}
+
+TEST(DeformableVbd, LocalPlaneBoundsPreserveUnrelatedMotionAndSignedMappingSafety)
+{
+	btDeformableVbdSolver s;
+	s.x.assign(4, btVector3(0, 0, 0));
+	s.surfaceVertices.resize(2);
+	s.surfaceVertices[0].support = {{0, btMatrix3x3::getIdentity() * 2}, {1, btMatrix3x3::getIdentity() * -1}};
+	s.surfaceVertices[1].support = {{2, btMatrix3x3::getIdentity()}};
+	const std::vector<btVector3> next = {btVector3(-1, 0, 0), btVector3(-1, 0, 0), btVector3(-1, 0, 0), btVector3(10, 0, 0)};
+	std::vector<btScalar> factors(4, 1);
+	s.localPlaneBound(0, 1, btVector3(1, 0, 0), .1, next, factors);
+	EXPECT_LT(factors[0], .05);
+	EXPECT_EQ(factors[1], 1);
+	EXPECT_EQ(factors[2], 1);
+	EXPECT_EQ(factors[3], 1);
+	// Even if another constraint removes all separating contributions, this plane remains safe.
+	factors[1] = factors[2] = 0;
+	btScalar displacement = 2 * next[0].x() * factors[0] - next[1].x() * factors[1] - next[2].x() * factors[2];
+	EXPECT_GE(.1 + displacement, 0);
+}
+
+TEST(DeformableVbd, TranslationCorrectionTransfersLocalizedForceWithoutCompressingBody)
+{
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, 1);
+	s.barriers.clear();
+	s.settings.gap = 1;
+	s.settings.iterations = 10;
+	s.tets[0].mu = 1e12;
+	s.tets[0].lambda = 1e12;
+	s.external[0] = btVector3(1000, 0, 0);
+	ASSERT_TRUE(s.initialize());
+	ASSERT_TRUE(s.step(.001));
+	btVector3 momentum(0, 0, 0);
+	for (int i = 0; i < 4; ++i)
+	{
+		momentum += s.velocity[i] * s.mass[i];
+	}
+	EXPECT_NEAR(momentum.x(), 1, 1e-6);
+	EXPECT_NEAR(s.minimumJ, 1, 1e-5);
+}
+
+TEST(DeformableVbd, UnequalMassBodiesTransferMomentum)
+{
+	btDeformableVbdSolver s;
+	setupVbdTwoBodies(s);
+	s.settings.iterations = 20;
+	for (int i = 0; i < 8; ++i)
+	{
+		s.mass[i] = (i < 4 ? .083647 : .001) / 4;
+		s.velocity[i] = btVector3(0, 0, i < 4 ? .1 : 0);
+	}
+	ASSERT_TRUE(s.initialize());
+	for (int step = 0; step < 20; ++step) ASSERT_TRUE(s.step(.0002));
+	btVector3 momentum(0, 0, 0), clip(0, 0, 0);
+	for (int i = 0; i < 8; ++i)
+	{
+		momentum += s.velocity[i] * s.mass[i];
+		if (i >= 4) clip += s.velocity[i] * s.mass[i];
+	}
+	EXPECT_NEAR(momentum.z(), .0083647, 1e-6);
+	EXPECT_GT(clip.z() / .001, .01);
+	EXPECT_GT(s.minimumJ, .05);
+}
+TEST(DeformableVbd, TranslationCorrectionKeepsPinnedComponentFixed)
+{
+	btDeformableVbdSolver s;
+	setupVbdGroundTest(s, 1);
+	s.barriers.clear();
+	s.mass[0] = 0;
+	s.external[1] = btVector3(100, 0, 0);
+	const auto pinned = s.x[0];
+	ASSERT_TRUE(s.initialize());
+	for (int step = 0; step < 5; ++step) ASSERT_TRUE(s.step(.001));
+	EXPECT_EQ((s.x[0] - pinned).length2(), 0);
 }
