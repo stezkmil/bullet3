@@ -476,6 +476,11 @@ IF(BUILD_VBD_GPU)
   ADD_SUBDIRECTORY(Extras/VbdGpu)
 ENDIF()
 
+OPTION(BUILD_GPU_XPBD_TGS "Build the optional Windows CUDA XPBD TGS runtime backend" OFF)
+IF(BUILD_GPU_XPBD_TGS)
+  ADD_SUBDIRECTORY(Extras/XpbdGpu)
+ENDIF()
+
 IF(INSTALL_LIBS)
 	#INSTALL of other files requires CMake 2.6
 	IF(BUILD_EXTRAS)

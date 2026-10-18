@@ -33,6 +33,24 @@ SET_TARGET_PROPERTIES(Test_btDeformableBlockPreconditioner PROPERTIES CXX_STANDA
 TARGET_LINK_LIBRARIES(Test_btDeformableBlockPreconditioner BulletSoftBody)
 ADD_TEST(Test_btDeformableBlockPreconditioner_PASS Test_btDeformableBlockPreconditioner)
 
+IF(WIN32)
+    ADD_LIBRARY(XpbdWorldBridge SHARED xpbd_world_bridge.cpp)
+    SET_TARGET_PROPERTIES(XpbdWorldBridge PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    TARGET_COMPILE_OPTIONS(XpbdWorldBridge PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/fp:precise>")
+    TARGET_LINK_LIBRARIES(XpbdWorldBridge BulletSoftBody)
+    ADD_EXECUTABLE(Test_btGpuXpbdWorld test_btGpuXpbdWorld.cpp)
+    SET_TARGET_PROPERTIES(Test_btGpuXpbdWorld PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    TARGET_LINK_LIBRARIES(Test_btGpuXpbdWorld BulletSoftBody)
+    IF(TARGET BulletGpuXpbdTgs)
+        ADD_DEPENDENCIES(Test_btGpuXpbdWorld BulletGpuXpbdTgs)
+        ADD_CUSTOM_COMMAND(TARGET Test_btGpuXpbdWorld POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:BulletGpuXpbdTgs> $<TARGET_FILE_DIR:Test_btGpuXpbdWorld>
+            VERBATIM)
+        ADD_TEST(Test_btGpuXpbdWorld_PASS Test_btGpuXpbdWorld)
+    ENDIF()
+ENDIF()
+
 IF(TARGET BulletVbdGpu)
     ADD_DEPENDENCIES(Test_btDeformableBlockPreconditioner BulletVbdGpu)
     ADD_CUSTOM_COMMAND(TARGET Test_btDeformableBlockPreconditioner POST_BUILD

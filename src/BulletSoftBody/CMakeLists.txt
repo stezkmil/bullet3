@@ -22,6 +22,7 @@ SET(BulletSoftBody_SRCS
 	btDeformableMultiBodyConstraintSolver.cpp
 	btDeformableContactProjection.cpp
 	btDeformableMultiBodyDynamicsWorld.cpp
+	btDeformableGpuXpbdTgsWorld.cpp
 	btDeformableContactConstraint.cpp
 	poly34.cpp
 	btDeformableMousePickingForce.cpp
@@ -65,6 +66,8 @@ SET(BulletSoftBody_HDRS
 	btDeformableBodySolver.h
 	btDeformableVbdGpu.h
 	btDeformableVbdGpuApi.h
+	btGpuXpbdTgsApi.h
+	btGpuXpbdTgsBackend.h
 	btDeformableVbdSolver.h
 	btDeformableVbdKernels.h
 	btDeformableVbdCollision.h

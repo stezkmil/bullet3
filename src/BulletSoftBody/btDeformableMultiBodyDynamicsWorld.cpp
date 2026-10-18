@@ -120,6 +120,7 @@ void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlap
 
 void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 {
+	if (m_gpuXpbdTgsEnabled && m_softBodies.size()) { gpuXpbdTgsSingleStepSimulation(timeStep); return; }
 	if (m_vbdEnabled && m_softBodies.size()) { vbdSingleStepSimulation(timeStep); return; }
 	BT_PROFILE("internalSingleStepSimulation");
 
@@ -778,6 +779,8 @@ void btDeformableMultiBodyDynamicsWorld::removeSoftBodyForce(btSoftBody* psb)
 
 void btDeformableMultiBodyDynamicsWorld::removeSoftBody(btSoftBody* body)
 {
+	clearGpuXpbdTgsKinematicTargets(body);
+	if(m_gpuXpbdTgsSettlingBody==body) setGpuXpbdTgsSettling(nullptr,0,0);
 	m_vbdAcceptedPositions.erase(body);
 	removeSoftBodyForce(body);
 	m_softBodies.remove(body);
