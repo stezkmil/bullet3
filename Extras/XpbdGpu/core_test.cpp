@@ -13,12 +13,68 @@ namespace
 {
 int failures=0;
 void require(bool value,const char* label) { if(!value) { std::fprintf(stderr,"FAIL: %s\n",label);++failures; } }
-float distance(btGpuXpbdVec a,btGpuXpbdVec b)
+double distance(btGpuXpbdVec a,btGpuXpbdVec b)
 { return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z)); }
+void testDampedEquilibrium(const btGpuXpbdTgsApi* api,void* world)
+{
+    // Uniaxial StVK equilibrium with nu=0: F = E V stretch (stretch^2-1)/2.
+    // Damping must dissipate motion without changing this static load-extension relation.
+    double stretch=1;
+    for(int i=0;i<10;++i) stretch-=(10000./12*stretch*(stretch*stretch-1)-1)/(10000./12*(3*stretch*stretch-1));
+    for(double beta:{0.,.01,.1})
+    {
+        btGpuXpbdNode nodes[4]={{{0,0,0},0,{0,0,0},10},{{1,0,0},1,{0,0,0},10},
+            {{0,1,0},0,{0,0,0},10},{{0,0,1},0,{0,0,0},10}};
+        btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1./6,10000,0,beta};
+        btGpuXpbdVec force[4]={{0,0,0},{1,0,0},{0,0,0},{0,0,0}};
+        btGpuXpbdStep cfg={.001,1,{0,0,0},0,0,20,0,0,0};
+        require(api->upload(world,4,nodes,1,&tet)&&api->forces(world,4,force),"damped equilibrium upload");
+        for(int i=0;i<2000;++i) if(!api->step(world,&cfg)) { require(false,api->error(world));break; }
+        require(api->download(world,4,nodes)!=0,"damped equilibrium download");
+        require(std::fabs(nodes[1].position.x-stretch)<(stretch-1)*.002,"damping preserves static StVK stiffness");
+    }
+}
+void testMaterialScale(const btGpuXpbdTgsApi* api,void* world)
+{
+    // Analytic StVK energy/gradient for F=diag(1.01,1,1), in three unit systems.
+    // Metre-sized small elements used to lose all stiffness to an absolute epsilon.
+    for(double scale:{.001,1.,1000.}) for(double nu:{0.,.3,.49})
+    {
+        const double length=.01*scale,young=7.e10/scale,h=2.e-7;
+        btGpuXpbdNode nodes[4]={{{0,0,0},4000,{0,0,0},0},{{length*1.01,0,0},4000,{0,0,0},0},
+            {{0,length,0},4000,{0,0,0},0},{{0,0,length},4000,{0,0,0},0}};
+        auto before=std::vector<btGpuXpbdNode>(nodes,nodes+4);
+        const double volume=length*length*length/6;
+        btGpuXpbdTet tet={{0,1,2,3},{1/length,0,0,0,1/length,0,0,0,1/length},volume,young,nu,0};
+        const double strain=(1.01*1.01-1)*.5,mu=1/(2*(1+nu)),lambda=nu/((1+nu)*(1-2*nu));
+        const double c2=volume*(2*mu+lambda)*strain*strain;
+        const double gx=volume*1.01*(2*mu+lambda)*strain/length,gy=volume*lambda*strain/length;
+        const double multiplier=-c2/(8000*(gx*gx+2*gy*gy)+c2/(young*h*h));
+        btGpuXpbdVec gradient[4]={{-gx,-gy,-gy},{gx,0,0},{0,gy,0},{0,0,gy}};
+        btGpuXpbdStep cfg={h,1,{0,0,0},0,0,1,0,0,0};
+        require(api->upload(world,4,nodes,1,&tet)!=0&&api->step(world,&cfg)!=0&&api->download(world,4,nodes)!=0,"scaled material step");
+        for(int j=0;j<4;++j)
+        {
+            auto expected=before[j].position;const double factor=4000*multiplier;
+            expected.x+=factor*gradient[j].x;expected.y+=factor*gradient[j].y;expected.z+=factor*gradient[j].z;
+            require(distance(nodes[j].position,expected)<length*1.e-13,"StVK correction agrees with analytic XPBD at every scale");
+        }
+    }
+    // Regrouping identical advancing increments cannot change constant-force integration.
+    btGpuXpbdNode result[2];
+    for(int grouping=0;grouping<2;++grouping)
+    {
+        btGpuXpbdNode node={{0,0,0},2,{0,0,0},0};btGpuXpbdVec force={3,0,0};
+        btGpuXpbdStep cfg={.01,grouping?10:1,{0,0,0},0,0,grouping?1:10,0,0,0};
+        require(api->upload(world,1,&node,0,nullptr)&&api->forces(world,1,&force)&&api->step(world,&cfg)&&api->download(world,1,&result[grouping]),"force grouping step");
+    }
+    require(distance(result[0].position,result[1].position)<1.e-15,"force is integrated at every advancing increment");
+    require(std::fabs(result[0].position.x-.00033)<1.e-15&&std::fabs(result[0].velocity.x-.06)<1.e-15,"force displacement and impulse are correct");
+}
 void testPartitionMomentum(const btGpuXpbdTgsApi* api,void* world)
 {
-    // Nine elements sharing one node force unequal copy counts across two lanes.
-    for(float young:{5.f,1.e6f,7.e7f}) for(float damping:{0.f,.01f})
+    // Nine elements sharing one node exercise multiple graph colors and unequal valence.
+    for(double young:{5.,1.e6,7.e7}) for(double damping:{0.,.01})
     {
         std::vector<btGpuXpbdNode> nodes(28);
         nodes[0]={{0,0,0},2,{1,0,0},0};
@@ -29,10 +85,10 @@ void testPartitionMomentum(const btGpuXpbdTgsApi* api,void* world)
             nodes[a]={{1,0,0},3,{0,0,0},0};
             nodes[a+1]={{0,1,0},4,{0,0,0},0};
             nodes[a+2]={{0,0,1},5,{0,0,0},0};
-            tets.push_back({{0,a,a+1,a+2},{1,0,0,0,1,0,0,0,1},1.f/6,young,.4f,damping});
+            tets.push_back({{0,a,a+1,a+2},{1,0,0,0,1,0,0,0,1},1./6,young,.4,damping});
         }
         require(api->upload(world,int(nodes.size()),nodes.data(),int(tets.size()),tets.data())!=0,"partition momentum upload");
-        btGpuXpbdStep step={.001f,2,{0,0,0},0,0,20};
+        btGpuXpbdStep step={.001,2,{0,0,0},0,0,20};
         for(int i=0;i<10;++i) require(api->step(world,&step)!=0,"partition momentum step");
         require(api->download(world,int(nodes.size()),nodes.data())!=0,"partition momentum download");
         btGpuXpbdVec momentum={0,0,0};
@@ -42,77 +98,77 @@ void testPartitionMomentum(const btGpuXpbdTgsApi* api,void* world)
             momentum.y+=n.velocity.y/n.inverseMass;
             momentum.z+=n.velocity.z/n.inverseMass;
         }
-        require(distance(momentum,{.5f,0,0})<2.e-5f,"unequal partition copies conserve momentum");
+        require(distance(momentum,{.5,0,0})<2.e-5,"unequal partition copies conserve momentum");
     }
 }
 void testFriction(const btGpuXpbdTgsApi* api,void* world)
 {
-    auto run=[&](float mu,float speed,float height,float push,int velocityIterations,bool movingGround)
+    auto run=[&](double mu,double speed,double height,double push,int velocityIterations,bool movingGround)
     {
         btGpuXpbdNode nodes[]={{{0,height,0},1,{speed,0,0},0},
-            {{-20,0,-20},movingGround?1.f:0.f,{0,0,0},0},
-            {{0,0,20},movingGround?1.f:0.f,{0,0,0},0},
-            {{20,0,-20},movingGround?1.f:0.f,{0,0,0},0}};
+            {{-20,0,-20},movingGround?1.:0.,{0,0,0},0},
+            {{0,0,20},movingGround?1.:0.,{0,0,0},0},
+            {{20,0,-20},movingGround?1.:0.,{0,0,0},0}};
         btGpuXpbdSurfaceVertex maps[4];
         for(int i=0;i<4;++i)
             maps[i]=i&&!movingGround?btGpuXpbdSurfaceVertex{{-1,-1,-1,-1},{0,0,0,0},nodes[i].position,1}:
                 btGpuXpbdSurfaceVertex{{i,-1,-1,-1},{1,0,0,0},{0,0,0},i?1:0};
         btGpuXpbdSurfaceTriangle face={{1,2,3}};
         require(api->upload(world,4,nodes,0,nullptr)!=0,"friction nodes");
-        require(api->surface(world,4,maps,1,&face,.1f,0)!=0,"friction surface");
-        float coefficients[]={mu,1};
+        require(api->surface(world,4,maps,1,&face,.1,0)!=0,"friction surface");
+        double coefficients[]={mu,1};
         require(api->friction(world,2,coefficients)!=0,"friction coefficients");
         btGpuXpbdVec forces[]={{push,-10,0},{0,0,0},{0,0,0},{0,0,0}};
         require(api->forces(world,4,forces)!=0,"friction load");
-        btGpuXpbdStep step={.001f,1,{0,0,0},0,0,4,0,0,velocityIterations};
+        btGpuXpbdStep step={.001,1,{0,0,0},0,0,4,0,0,velocityIterations};
         for(int i=0;i<100;++i) require(api->step(world,&step)!=0,"friction step");
         require(api->download(world,4,nodes)!=0,"friction result");
         if(movingGround)
         {
             btGpuXpbdVec momentum={0,0,0};
             for(auto& n:nodes) { momentum.x+=n.velocity.x;momentum.y+=n.velocity.y;momentum.z+=n.velocity.z; }
-            require(distance(momentum,{speed,-1,0})<2.e-4f,"friction preserves two-body momentum");
+            require(distance(momentum,{speed,-1,0})<2.e-4,"friction preserves two-body momentum");
             require(nodes[1].velocity.x>0,"friction transfers tangent momentum to second body");
         }
         return nodes[0];
     };
     auto free=run(0,1,0,0,1,false);
     std::printf("friction free vx=%g x=%g\n",free.velocity.x,free.position.x);
-    require(std::fabs(free.velocity.x-1)<1.e-5f,"zero friction retains tangent velocity");
-    auto sliding=run(.5f,1,0,0,1,false);
+    require(std::fabs(free.velocity.x-1)<1.e-5,"zero friction retains tangent velocity");
+    auto sliding=run(.5,1,0,0,1,false);
     std::printf("friction sliding vx=%g x=%g\n",sliding.velocity.x,sliding.position.x);
-    require(std::fabs(sliding.velocity.x-.5f)<.025f,"sliding deceleration matches Coulomb friction");
-    auto manyPasses=run(.5f,1,0,0,4,false);
-    require(std::fabs(manyPasses.velocity.x-sliding.velocity.x)<.01f,"velocity iterations share one friction budget");
-    auto sticking=run(.5f,0,0,2,1,false);
-    require(std::fabs(sticking.velocity.x)<.002f&&std::fabs(sticking.position.x)<.0002f,"sub-limit lateral load sticks");
-    float noFriction[]={0,1};
+    require(std::fabs(sliding.velocity.x-.5)<.025,"sliding deceleration matches Coulomb friction");
+    auto manyPasses=run(.5,1,0,0,4,false);
+    require(std::fabs(manyPasses.velocity.x-sliding.velocity.x)<.01,"velocity iterations share one friction budget");
+    auto sticking=run(.5,0,0,2,1,false);
+    require(std::fabs(sticking.velocity.x)<.002&&std::fabs(sticking.position.x)<.0002,"sub-limit lateral load sticks");
+    double noFriction[]={0,1};
     require(api->friction(world,2,noFriction)!=0,"friction changes without mesh upload");
-    btGpuXpbdStep changedStep={.001f,1,{0,0,0},0,0,4,0,0,1};
+    btGpuXpbdStep changedStep={.001,1,{0,0,0},0,0,4,0,0,1};
     require(api->step(world,&changedStep)!=0,"step after friction change");
     btGpuXpbdNode changed[4];api->download(world,4,changed);
-    require(changed[0].velocity.x>.0015f,"disabling friction immediately releases sticking");
-    auto airborne=run(.5f,1,1,0,1,false);
-    require(std::fabs(airborne.velocity.x-1)<1.e-5f,"friction does not act across open gaps");
-    run(.5f,1,0,0,1,true);
-    float invalid[]={-1};
+    require(changed[0].velocity.x>.0015,"disabling friction immediately releases sticking");
+    auto airborne=run(.5,1,1,0,1,false);
+    require(std::fabs(airborne.velocity.x-1)<1.e-5,"friction does not act across open gaps");
+    run(.5,1,0,0,1,true);
+    double invalid[]={-1};
     require(!api->friction(world,1,invalid),"negative friction rejected");
-    invalid[0]=std::numeric_limits<float>::quiet_NaN();
+    invalid[0]=std::numeric_limits<double>::quiet_NaN();
     require(!api->friction(world,1,invalid),"nonfinite friction rejected");
 }
 void testBroadGroundContact(const btGpuXpbdTgsApi* api,void* world)
 {
-    btGpuXpbdNode nodes[]={{{-.05f,.02f,-.05f},1,{0,0,0},0},
-        {{0,.02f,.05f},1,{0,0,0},0},{{.05f,.02f,-.05f},1,{0,0,0},0}};
+    btGpuXpbdNode nodes[]={{{-.05,.02,-.05},1,{0,0,0},0},
+        {{0,.02,.05},1,{0,0,0},0},{{.05,.02,-.05},1,{0,0,0},0}};
     btGpuXpbdSurfaceVertex maps[7];
     for(int i=0;i<3;++i) maps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},0};
     const btGpuXpbdVec corners[]={{-5,0,-5},{-5,0,5},{5,0,5},{5,0,-5}};
     for(int i=0;i<4;++i) maps[i+3]={{-1,-1,-1,-1},{0,0,0,0},corners[i],1};
     btGpuXpbdSurfaceTriangle faces[]={{{0,1,2}},{{3,4,5}},{{3,5,6}}};
     require(api->upload(world,3,nodes,0,nullptr)!=0,"broad ground nodes");
-    require(api->surface(world,7,maps,3,faces,.1f,0)!=0,"broad ground surface");
-    btGpuXpbdStep step={.001f,16,{0,-9.81f,0},0,0,50,0,0,1};
-    float minimum=1;
+    require(api->surface(world,7,maps,3,faces,.1,0)!=0,"broad ground surface");
+    btGpuXpbdStep step={.001,16,{0,-9.81,0},0,0,50,0,0,1};
+    double minimum=1;
     for(int i=0;i<150;++i)
     {
         require(api->step(world,&step)!=0,"broad ground falling step");
@@ -120,24 +176,24 @@ void testBroadGroundContact(const btGpuXpbdTgsApi* api,void* world)
         for(auto& node:nodes) minimum=std::fmin(minimum,node.position.y);
     }
     std::printf("broad ground minimum=%g\n",minimum);
-    require(minimum>-.00001f,"every incident surface vertex remains above the large ground face");
-    for(auto& node:nodes) require(std::fabs(node.position.y)<.00001f,"all corners settle on the floor");
+    require(minimum>-.00001,"every incident surface vertex remains above the large ground face");
+    for(auto& node:nodes) require(std::fabs(node.position.y)<.00001,"all corners settle on the floor");
 }
 void testOutsideStaticFace(const btGpuXpbdTgsApi* api,void* world)
 {
-    btGpuXpbdNode nodes[]={{{-.02f,-.01f,.2f},1,{0,0,0},0},
-        {{-.03f,-.01f,.2f},1,{0,0,0},0},{{-.02f,-.01f,.3f},1,{0,0,0},0}};
+    btGpuXpbdNode nodes[]={{{-.02,-.01,.2},1,{0,0,0},0},
+        {{-.03,-.01,.2},1,{0,0,0},0},{{-.02,-.01,.3},1,{0,0,0},0}};
     btGpuXpbdSurfaceVertex maps[6];
     for(int i=0;i<3;++i) maps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},0};
     const btGpuXpbdVec corners[]={{0,0,0},{0,0,1},{1,0,0}};
     for(int i=0;i<3;++i) maps[i+3]={{-1,-1,-1,-1},{0,0,0,0},corners[i],1};
     btGpuXpbdSurfaceTriangle faces[]={{{0,1,2}},{{3,4,5}}};
     require(api->upload(world,3,nodes,0,nullptr)!=0,"outside face nodes");
-    require(api->surface(world,6,maps,2,faces,.1f,0)!=0,"outside face surface");
-    btGpuXpbdStep step={.001f,1,{0,0,0},0,0,4,0,0,1};
+    require(api->surface(world,6,maps,2,faces,.1,0)!=0,"outside face surface");
+    btGpuXpbdStep step={.001,1,{0,0,0},0,0,4,0,0,1};
     require(api->step(world,&step)!=0,"outside face step");
     api->download(world,3,nodes);
-    for(auto& node:nodes) require(distance(node.velocity,{0,0,0})<1.e-5f&&std::fabs(node.position.y+.01f)<1.e-6f,
+    for(auto& node:nodes) require(distance(node.velocity,{0,0,0})<1.e-5&&std::fabs(node.position.y+.01)<1.e-6,
         "a point beyond a static face's edge is not pushed by its extended plane");
 }
 void testMouseSprings(const btGpuXpbdTgsApi* api,void* world)
@@ -145,27 +201,27 @@ void testMouseSprings(const btGpuXpbdTgsApi* api,void* world)
     btGpuXpbdNode node={{0,0,0},1,{0,0,0},0};
     require(api->upload(world,1,&node,0,nullptr)!=0,"mouse spring node");
     btGpuXpbdSpring spring={0,{1,0,0},100,10,1000};
-    btGpuXpbdStep step={.1f,1,{0,0,0},0,0,1};
+    btGpuXpbdStep step={.1,1,{0,0,0},0,0,1};
     require(api->springs(world,1,&spring)!=0,"mouse spring upload");
     require(api->step(world,&step)!=0,"mouse spring step");
     api->download(world,1,&node);
-    require(std::fabs(node.velocity.x-10.f/3)<1.e-5f,"implicit spring matches analytic damped step");
-    require(std::fabs(node.position.x-1.f/3)<1.e-5f,"spring moves picked node");
+    require(std::fabs(node.velocity.x-10./3)<1.e-5,"implicit spring matches analytic damped step");
+    require(std::fabs(node.position.x-1./3)<1.e-5,"spring moves picked node");
     spring.target={-1,0,0};
     require(api->springs(world,1,&spring)!=0,"mouse target changes without graph rebuild");
     require(api->step(world,&step)!=0,"moved target step");
     api->download(world,1,&node);
     require(node.velocity.x<0,"picked node follows moved target");
     require(api->springs(world,0,nullptr)!=0,"mouse release");
-    float releaseVelocity=node.velocity.x;
+    double releaseVelocity=node.velocity.x;
     require(api->step(world,&step)!=0,"released node step");api->download(world,1,&node);
-    require(std::fabs(node.velocity.x-releaseVelocity)<1.e-6f,"release preserves velocity");
+    require(std::fabs(node.velocity.x-releaseVelocity)<1.e-6,"release preserves velocity");
     node={{0,0,0},1,{0,0,0},0};
     api->updateNodes(world,1,&node);
-    spring={0,{100,0,0},1.e12f,0,.5f};
+    spring={0,{100,0,0},1.e12,0,.5};
     require(api->springs(world,1,&spring)!=0,"force-limited spring");
     require(api->step(world,&step)!=0,"stiff capped spring remains finite");api->download(world,1,&node);
-    require(std::fabs(node.velocity.x-.05f)<1.e-6f,"elastic mouse force respects per-node cap");
+    require(std::fabs(node.velocity.x-.05)<1.e-6,"elastic mouse force respects per-node cap");
     node.inverseMass=0;api->updateNodes(world,1,&node);
     auto pinned=node.position;
     api->step(world,&step);api->download(world,1,&node);
@@ -181,7 +237,8 @@ int main()
     if(!backend.ready()) { std::fprintf(stderr,"%s\n",backend.error().c_str());return 1; }
     const auto* api=backend.api();void* world=backend.state();
 #else
-    const auto* api=btGetGpuXpbdTgsApi(5);void* world=api->create();
+    require(btGetGpuXpbdTgsApi(5)==nullptr,"reject previous float ABI");
+    const auto* api=btGetGpuXpbdTgsApi(BT_GPU_XPBD_ABI_VERSION);void* world=api->create();
 #endif
     if(!world) { std::fprintf(stderr,"%s\n",api->error(nullptr));return 1; }
     testOutsideStaticFace(api,world);
@@ -189,9 +246,11 @@ int main()
     testFriction(api,world);
     testMouseSprings(api,world);
     testPartitionMomentum(api,world);
-    btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1.f/6,10000,.4f,.01f};
+    btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1./6,10000,.4,.01};
+    testMaterialScale(api,world);
+    testDampedEquilibrium(api,world);
     std::vector<btGpuXpbdNode> rest={{{0,0,0},4,{0,0,0},0},{{1,0,0},4,{0,0,0},0},{{0,1,0},4,{0,0,0},0},{{0,0,1},4,{0,0,0},0}};
-    btGpuXpbdStep cfg={.001f,10,{0,0,0},0,0,1};
+    btGpuXpbdStep cfg={.001,10,{0,0,0},0,0,1};
     auto run=[&](std::vector<btGpuXpbdNode> input,int steps)
     {
         require(api->upload(world,4,input.data(),1,&tet)!=0,"upload");
@@ -199,161 +258,161 @@ int main()
         require(api->download(world,4,input.data())!=0,"download");return input;
     };
     auto state=run(rest,100);
-    for(int i=0;i<4;++i) require(distance(state[i].position,rest[i].position)<1.e-6f,"rest equilibrium");
-    btGpuXpbdVec samples[2]={{.2f,.3f,.1f},{1.2f,.1f,.1f}};
+    for(int i=0;i<4;++i) require(distance(state[i].position,rest[i].position)<1.e-6,"rest equilibrium");
+    btGpuXpbdVec samples[2]={{.2,.3,.1},{1.2,.1,.1}};
     btGpuXpbdSurfaceVertex embedded[2];
     require(api->embed(world,2,samples,0,4,7,embedded)!=0,"GPU embedding");
     for(int i=0;i<2;++i)
     {
-        btGpuXpbdVec p={0,0,0};float sum=0;
-        for(int j=0;j<4;++j) { auto v=rest[embedded[i].nodes[j]].position;float w=embedded[i].weights[j];sum+=w;p.x+=v.x*w;p.y+=v.y*w;p.z+=v.z*w; }
-        require(distance(p,samples[i])<1.e-6f&&std::fabs(sum-1)<1.e-6f,"embedding reproduces interior and exterior points");
+        btGpuXpbdVec p={0,0,0};double sum=0;
+        for(int j=0;j<4;++j) { auto v=rest[embedded[i].nodes[j]].position;double w=embedded[i].weights[j];sum+=w;p.x+=v.x*w;p.y+=v.y*w;p.z+=v.z*w; }
+        require(distance(p,samples[i])<1.e-6&&std::fabs(sum-1)<1.e-6,"embedding reproduces interior and exterior points");
     }
     auto translated=rest;for(auto& n:translated) n.velocity={1,2,-3};
     state=run(translated,100);
     for(int i=0;i<4;++i)
     {
-        auto p=rest[i].position;p.x+=.1f;p.y+=.2f;p.z-=.3f;
-        require(distance(state[i].position,p)<1.e-4f,"uniform translation");
-        require(distance(state[i].velocity,{1,2,-3})<1.e-3f,"uniform velocity");
+        auto p=rest[i].position;p.x+=.1;p.y+=.2;p.z-=.3;
+        require(distance(state[i].position,p)<1.e-4,"uniform translation");
+        require(distance(state[i].velocity,{1,2,-3})<1.e-3,"uniform velocity");
     }
-    auto rotated=rest;for(auto& n:rotated) { auto p=n.position;n.position={p.x*std::cos(.7f)-p.y*std::sin(.7f),p.x*std::sin(.7f)+p.y*std::cos(.7f),p.z}; }
+    auto rotated=rest;for(auto& n:rotated) { auto p=n.position;n.position={p.x*std::cos(.7)-p.y*std::sin(.7),p.x*std::sin(.7)+p.y*std::cos(.7),p.z}; }
     state=run(rotated,100);
-    for(int i=0;i<4;++i) require(distance(state[i].position,rotated[i].position)<1.e-4f,"rigid rotation equilibrium");
-    auto strained=rest;strained[1].position.x=1.2f;
+    for(int i=0;i<4;++i) require(distance(state[i].position,rotated[i].position)<1.e-4,"rigid rotation equilibrium");
+    auto strained=rest;strained[1].position.x=1.2;
     state=run(strained,100);
     btGpuXpbdVec momentum={0,0,0},com={0,0,0};
     for(auto& n:state) { momentum.x+=n.velocity.x/4;momentum.y+=n.velocity.y/4;momentum.z+=n.velocity.z/4;com.x+=n.position.x/4;com.y+=n.position.y/4;com.z+=n.position.z/4; }
-    require(distance(momentum,{0,0,0})<1.e-4f,"internal forces preserve linear momentum");
-    require(distance(com,{.3f,.25f,.25f})<1.e-4f,"internal forces preserve COM");
-    require(std::fabs(distance(state[0].position,state[1].position)-1)<.05f,"elastic recovery");
+    require(distance(momentum,{0,0,0})<1.e-4,"internal forces preserve linear momentum");
+    require(distance(com,{.3,.25,.25})<1.e-4,"internal forces preserve COM");
+    require(std::fabs(distance(state[0].position,state[1].position)-1)<.05,"elastic recovery");
     auto pinned=strained;pinned[0].inverseMass=0;state=run(pinned,100);
     require(distance(state[0].position,pinned[0].position)==0,"pinned node");
-    auto local=rest;local[1].position.x=1.25f;
-    auto savedCfg=cfg;cfg.dt=.0001f;cfg.substeps=1;
+    auto local=rest;local[1].position.x=1.25;
+    auto savedCfg=cfg;cfg.dt=.0001;cfg.substeps=1;
     auto nearOrigin=run(local,1);
     for(auto& n:local) { n.position.x+=4096;n.position.y+=4096;n.position.z+=4096; }
     auto farOrigin=run(local,1);
     for(int i=0;i<4;++i)
     {
-        float error=distance(nearOrigin[i].velocity,farOrigin[i].velocity);
-        if(error>1.e-5f) std::fprintf(stderr,"translation material velocity error node %d: %.9g\n",i,error);
-        require(error<1.e-5f,"material corrections independent of world translation");
+        double error=distance(nearOrigin[i].velocity,farOrigin[i].velocity);
+        if(error>1.e-5) std::fprintf(stderr,"translation material velocity error node %d: %.9g\n",i,error);
+        require(error<1.e-5,"material corrections independent of world translation");
     }
     cfg=savedCfg;
-    std::vector<btGpuXpbdNode> contactNodes={{{0,.01f,0},1,{0,-1,0},0},{{-2,0,-2},1,{0,0,0},0},{{0,0,2},1,{0,0,0},0},{{2,0,-2},1,{0,0,0},0}};
+    std::vector<btGpuXpbdNode> contactNodes={{{0,.01,0},1,{0,-1,0},0},{{-2,0,-2},1,{0,0,0},0},{{0,0,2},1,{0,0,0},0},{{2,0,-2},1,{0,0,0},0}};
     cfg.velocityIterations=1;
     std::vector<btGpuXpbdSurfaceVertex> maps(4);
     for(int i=0;i<4;++i) maps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},i==0?0:1};
     btGpuXpbdSurfaceTriangle face={{1,2,3}};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"contact nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"dynamic surface upload");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"dynamic surface upload");
     for(int k=0;k<100;++k) require(api->step(world,&cfg)!=0,"dynamic contact step");
     state=contactNodes;require(api->download(world,4,state.data())!=0,"contact download");
     momentum={0,0,0};for(auto& n:state) { momentum.x+=n.velocity.x;momentum.y+=n.velocity.y;momentum.z+=n.velocity.z; }
-    require(distance(momentum,{0,-1,0})<1.e-4f,"dynamic contact transfers equal and opposite momentum");
-    require(state[0].velocity.y>-.99f && state[1].velocity.y<0,"both bodies respond to contact");
+    require(distance(momentum,{0,-1,0})<1.e-4,"dynamic contact transfers equal and opposite momentum");
+    require(state[0].velocity.y>-.99 && state[1].velocity.y<0,"both bodies respond to contact");
     for(int i=1;i<4;++i) maps[i]={{-1,-1,-1,-1},{0,0,0,0},contactNodes[i].position,1};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"reset contact nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"static surface upload");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"static surface upload");
     for(int k=0;k<100;++k) require(api->step(world,&cfg)!=0,"static contact step");
     require(api->download(world,4,state.data())!=0,"static contact download");
-    require(state[0].position.y>=-.001f,"static triangle prevents penetration");
+    require(state[0].position.y>=-.001,"static triangle prevents penetration");
     btGpuXpbdVec surfacePositions[4];require(api->surfacePositions(world,4,surfacePositions)!=0,"GPU skin download");
-    require(distance(surfacePositions[0],state[0].position)<1.e-7f,"dynamic GPU skinning");
-    require(distance(surfacePositions[1],contactNodes[1].position)<1.e-7f,"static GPU skinning");
-    savedCfg=cfg;cfg.dt=.0001f;cfg.substeps=1;cfg.iterations=1;
-    contactNodes[0].position={0,.00015f,0};contactNodes[0].velocity={0,-1,0};
+    require(distance(surfacePositions[0],state[0].position)<1.e-7,"dynamic GPU skinning");
+    require(distance(surfacePositions[1],contactNodes[1].position)<1.e-7,"static GPU skinning");
+    savedCfg=cfg;cfg.dt=.0001;cfg.substeps=1;cfg.iterations=1;
+    contactNodes[0].position={0,.00015,0};contactNodes[0].velocity={0,-1,0};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"look-ahead contact nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"look-ahead contact surface");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"look-ahead contact surface");
     require(api->step(world,&cfg)!=0,"look-ahead contact step");api->download(world,4,state.data());
-    require(std::fabs(state[0].position.y-.00005f)<1.e-7f,"velocity contact projection preserves position");
-    require(std::fabs(state[0].velocity.y+.5f)<1.e-4f,"velocity pass limits predicted penetration across an open gap");
-    contactNodes[0].position={0,.0004f,0};
+    require(std::fabs(state[0].position.y-.00005)<1.e-7,"velocity contact projection preserves position");
+    require(std::fabs(state[0].velocity.y+.5)<1.e-4,"velocity pass limits predicted penetration across an open gap");
+    contactNodes[0].position={0,.0004,0};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"open gap nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"open gap surface");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"open gap surface");
     require(api->step(world,&cfg)!=0,"open gap step");api->download(world,4,state.data());
-    require(std::fabs(state[0].velocity.y+1)<1.e-5f,"velocity pass leaves a non-closing gap unchanged");
-    contactNodes[0].position={0,.00005f,0};contactNodes[0].velocity={0,1,0};
+    require(std::fabs(state[0].velocity.y+1)<1.e-5,"velocity pass leaves a non-closing gap unchanged");
+    contactNodes[0].position={0,.00005,0};contactNodes[0].velocity={0,1,0};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"separating nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"separating surface");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"separating surface");
     require(api->step(world,&cfg)!=0,"separating step");api->download(world,4,state.data());
-    require(std::fabs(state[0].velocity.y-1)<1.e-5f,"velocity pass does not attract separating bodies");
+    require(std::fabs(state[0].velocity.y-1)<1.e-5,"velocity pass does not attract separating bodies");
     cfg=savedCfg;
-    contactNodes[0].position={2.01f,-.001f,-2};contactNodes[0].velocity={0,0,0};
+    contactNodes[0].position={2.01,-.001,-2};contactNodes[0].velocity={0,0,0};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"edge contact nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"edge contact surface");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"edge contact surface");
     require(api->step(world,&cfg)!=0,"edge contact step");api->download(world,4,state.data());
-    require(std::fabs(state[0].velocity.x)<1.e-5f&&std::fabs(state[0].velocity.z)<1.e-5f,"frictionless face contact does not pull sideways behind an edge");
+    require(std::fabs(state[0].velocity.x)<1.e-5&&std::fabs(state[0].velocity.z)<1.e-5,"frictionless face contact does not pull sideways behind an edge");
     require(api->upload(world,4,rest.data(),0,nullptr)!=0,"drive nodes");
     btGpuXpbdTarget target={0,{1,2,3}};
     require(api->targets(world,1,&target)!=0,"drive target");
     cfg.iterations=3;
     require(api->step(world,&cfg)!=0,"drive step");
     require(api->download(world,4,state.data())!=0,"drive download");
-    require(distance(state[0].position,target.position)<1.e-6f&&state[0].inverseMass==0,"drive reaches target");
+    require(distance(state[0].position,target.position)<1.e-6&&state[0].inverseMass==0,"drive reaches target");
     target.position={2,3,4};require(api->targets(world,1,&target)!=0,"update target");
     require(api->step(world,&cfg)!=0,"replayed drive graph");api->download(world,4,state.data());
-    require(distance(state[0].position,target.position)<1.e-6f,"graph uses updated target buffer");
+    require(distance(state[0].position,target.position)<1.e-6,"graph uses updated target buffer");
     require(api->targets(world,0,nullptr)!=0,"release target");api->download(world,4,state.data());
     require(state[0].inverseMass==rest[0].inverseMass,"release restores mass");
-    std::vector<btGpuXpbdNode> crossed={{{-2,.00015f,-.1f},1,{0,-1,0},0},{{2,.00015f,-.1f},1,{0,-1,0},0},{{2,.00015f,.1f},1,{0,-1,0},0},
-        {{-.1f,0,-2},1,{0,0,0},0},{{0,0,2},1,{0,0,0},0},{{.1f,0,-2},1,{0,0,0},0}};
+    std::vector<btGpuXpbdNode> crossed={{{-2,.00015,-.1},1,{0,-1,0},0},{{2,.00015,-.1},1,{0,-1,0},0},{{2,.00015,.1},1,{0,-1,0},0},
+        {{-.1,0,-2},1,{0,0,0},0},{{0,0,2},1,{0,0,0},0},{{.1,0,-2},1,{0,0,0},0}};
     btGpuXpbdSurfaceTriangle crossingFaces[2]={{{0,1,2}},{{3,4,5}}};
     std::vector<btGpuXpbdSurfaceVertex> crossingMaps(6);
     for(int i=0;i<6;++i) crossingMaps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},i<3?0:1};
-    cfg={.0001f,1,{0,0,0},0,0,1,0,0,1};
+    cfg={.0001,1,{0,0,0},0,0,1,0,0,1};
     require(api->upload(world,6,crossed.data(),0,nullptr)!=0,"crossing edge nodes");
-    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01f,0)!=0,"crossing edge surfaces");
+    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0)!=0,"crossing edge surfaces");
     require(api->step(world,&cfg)!=0,"crossing edge step");
     auto crossedResult=crossed;api->download(world,6,crossedResult.data());
-    float sumVelocity=0,otherVelocity=0;
+    double sumVelocity=0,otherVelocity=0;
     for(int i=0;i<6;++i) { sumVelocity+=crossedResult[i].velocity.y;if(i>=3) otherVelocity+=crossedResult[i].velocity.y; }
-    require(otherVelocity<-.01f,"crossing edges transfer momentum without vertex-face proximity");
-    require(std::fabs(sumVelocity+3)<1.e-4f,"triangle contacts preserve equal and opposite momentum");
+    require(otherVelocity<-.01,"crossing edges transfer momentum without vertex-face proximity");
+    require(std::fabs(sumVelocity+3)<1.e-4,"triangle contacts preserve equal and opposite momentum");
     for(int i=3;i<6;++i) crossingMaps[i]={{-1,-1,-1,-1},{0,0,0,0},crossed[i].position,1};
     require(api->upload(world,6,crossed.data(),0,nullptr)!=0,"static crossing edge nodes");
-    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01f,0)!=0,"static crossing edge surfaces");
+    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0)!=0,"static crossing edge surfaces");
     require(api->step(world,&cfg)!=0,"static crossing edge step");api->download(world,6,crossedResult.data());
     sumVelocity=0;for(int i=0;i<3;++i) sumVelocity+=crossedResult[i].velocity.y;
-    require(sumVelocity>-2.99f,"static triangle catches crossing edges");
+    require(sumVelocity>-2.99,"static triangle catches crossing edges");
     auto crossingStep=crossed;
-    for(int i=0;i<3;++i) crossingStep[i].position.y=.00005f;
+    for(int i=0;i<3;++i) crossingStep[i].position.y=.00005;
     require(api->upload(world,6,crossingStep.data(),0,nullptr)!=0,"first increment crossing nodes");
-    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01f,0)!=0,"first increment crossing plane");
+    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0)!=0,"first increment crossing plane");
     require(api->step(world,&cfg)!=0,"first increment crossing step");api->download(world,6,crossedResult.data());
     sumVelocity=0;for(int i=0;i<3;++i) sumVelocity+=crossedResult[i].velocity.y;
-    require(sumVelocity>-2.99f,"contact prepared before integration survives crossing static face");
-    crossed[0].position.y=.0033f;crossed[1].position.y=crossed[2].position.y=-.003f;
+    require(sumVelocity>-2.99,"contact prepared before integration survives crossing static face");
+    crossed[0].position.y=.0033;crossed[1].position.y=crossed[2].position.y=-.003;
     require(api->upload(world,6,crossed.data(),0,nullptr)!=0,"backface triangle nodes");
-    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01f,0)!=0,"backface triangle surfaces");
+    require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0)!=0,"backface triangle surfaces");
     require(api->step(world,&cfg)!=0,"backface triangle step");api->download(world,6,crossedResult.data());
-    for(int i=0;i<3;++i) require(std::fabs(crossedResult[i].velocity.y+1)<1.e-5f,"static mesh culls triangle centroid behind face");
+    for(int i=0;i<3;++i) require(std::fabs(crossedResult[i].velocity.y+1)<1.e-5,"static mesh culls triangle centroid behind face");
     auto remapNodes=rest;for(auto& n:remapNodes) n.velocity={0,-1,0};
-    btGpuXpbdSurfaceVertex remapMaps[4]={{{0,1,2,3},{-.2f,1.2f,0,0},{0,.00015f,0},0},
+    btGpuXpbdSurfaceVertex remapMaps[4]={{{0,1,2,3},{-.2,1.2,0,0},{0,.00015,0},0},
         {{-1,-1,-1,-1},{0,0,0,0},{-4,0,-4},1},{{-1,-1,-1,-1},{0,0,0,0},{0,0,4},1},{{-1,-1,-1,-1},{0,0,0,0},{4,0,-4},1}};
     require(api->upload(world,4,remapNodes.data(),1,&tet)!=0,"contact remap tetrahedron");
-    require(api->surface(world,4,remapMaps,1,&face,.01f,0)!=0,"contact remap surface");
+    require(api->surface(world,4,remapMaps,1,&face,.01,0)!=0,"contact remap surface");
     require(api->step(world,&cfg)!=0,"contact remap step");api->download(world,4,remapNodes.data());
-    require(std::fabs(remapNodes[1].velocity.y+.5f)<1.e-3f,"outside contact maps to nearest tetrahedron point");
-    require(std::fabs(remapNodes[0].velocity.y+1)<1.e-3f,"contact remap does not extrapolate negative force weights");
+    require(std::fabs(remapNodes[1].velocity.y+.5)<1.e-3,"outside contact maps to nearest tetrahedron point");
+    require(std::fabs(remapNodes[0].velocity.y+1)<1.e-3,"contact remap does not extrapolate negative force weights");
     // The entire collision triangle lies outside the tet AABB. Cooking must
     // retain its embedding tet, rather than falling back to negative weights.
     btGpuXpbdSurfaceVertex outsideMaps[6]={remapMaps[0],remapMaps[0],remapMaps[0],remapMaps[1],remapMaps[2],remapMaps[3]};
-    outsideMaps[0].offset.z=-.001f;outsideMaps[1].offset.x=.001f;outsideMaps[2].offset.z=.001f;
+    outsideMaps[0].offset.z=-.001;outsideMaps[1].offset.x=.001;outsideMaps[2].offset.z=.001;
     remapNodes=rest;for(auto& n:remapNodes) n.velocity={0,-1,0};
     require(api->upload(world,4,remapNodes.data(),1,&tet)!=0,"outside triangle tet");
-    require(api->surface(world,6,outsideMaps,2,crossingFaces,.01f,0)!=0,"outside triangle candidates");
+    require(api->surface(world,6,outsideMaps,2,crossingFaces,.01,0)!=0,"outside triangle candidates");
     require(api->step(world,&cfg)!=0,"outside triangle contact step");api->download(world,4,remapNodes.data());
-    require(std::fabs(remapNodes[0].velocity.y+1)<1.e-3f,"outside triangle retains clamped embedding tet");
-    require(remapNodes[1].velocity.y>-.99f,"outside triangle transfers contact through cooked candidate");
+    require(std::fabs(remapNodes[0].velocity.y+1)<1.e-3,"outside triangle retains clamped embedding tet");
+    require(remapNodes[1].velocity.y>-.99,"outside triangle transfers contact through cooked candidate");
     // A nearby part of the same body must not steal an embedded surface's contact.
     auto ownershipNodes=rest;ownershipNodes.insert(ownershipNodes.end(),rest.begin(),rest.end());
     btGpuXpbdTet ownershipTets[2]={tet,tet};for(int& n:ownershipTets[1].nodes) n+=4;
     for(int i=0;i<4;++i)
     {
-        ownershipNodes[i].position.y+=.00005f;ownershipNodes[i].velocity={0,-1,0};
-        ownershipNodes[i+4].position.y-=.1f;
+        ownershipNodes[i].position.y+=.00005;ownershipNodes[i].velocity={0,-1,0};
+        ownershipNodes[i+4].position.y-=.1;
     }
     btGpuXpbdSurfaceVertex ownershipMaps[7]={};
     const int ownerIds[3]={0,1,3};
@@ -364,18 +423,18 @@ int main()
     }
     ownershipMaps[6]={{4,5,6,7},{1,0,0,0},{0,0,0},0};
     require(api->upload(world,8,ownershipNodes.data(),2,ownershipTets)!=0,"contact material ownership upload");
-    require(api->surface(world,7,ownershipMaps,2,crossingFaces,.01f,0)!=0,"contact material ownership surface");
+    require(api->surface(world,7,ownershipMaps,2,crossingFaces,.01,0)!=0,"contact material ownership surface");
     require(api->step(world,&cfg)!=0,"contact material ownership step");
     require(api->download(world,8,ownershipNodes.data())!=0,"contact material ownership download");
-    float ownerY=0;for(int i=0;i<4;++i) ownerY+=ownershipNodes[i].velocity.y;
-    require(ownerY>-3.99f,"contact acts on the embedded surface material");
-    for(int i=4;i<8;++i) require(distance(ownershipNodes[i].velocity,{0,0,0})<1.e-5f,"nearby material does not steal contact");
-    contactNodes[0].position={0,-.001f,0};contactNodes[0].velocity={0,0,0};cfg={.002f,1,{0,0,0},0,0,2,0,0,1};
+    double ownerY=0;for(int i=0;i<4;++i) ownerY+=ownershipNodes[i].velocity.y;
+    require(ownerY>-3.99,"contact acts on the embedded surface material");
+    for(int i=4;i<8;++i) require(distance(ownershipNodes[i].velocity,{0,0,0})<1.e-5,"nearby material does not steal contact");
+    contactNodes[0].position={0,-.001,0};contactNodes[0].velocity={0,0,0};cfg={.002,1,{0,0,0},0,0,2,0,0,1};
     require(api->upload(world,4,contactNodes.data(),0,nullptr)!=0,"penetration recovery nodes");
-    require(api->surface(world,4,maps.data(),1,&face,.1f,0)!=0,"penetration recovery plane");
+    require(api->surface(world,4,maps.data(),1,&face,.1,0)!=0,"penetration recovery plane");
     require(api->step(world,&cfg)!=0,"penetration recovery step");api->download(world,4,state.data());
-    require(std::fabs(state[0].velocity.y)<1.e-5f,"static contact releases excess accumulated impulse");
-    require(std::fabs(state[0].position.y)<1.e-6f,"penetration recovery does not launch a resting node");
+    require(std::fabs(state[0].velocity.y)<1.e-5,"static contact releases excess accumulated impulse");
+    require(std::fabs(state[0].position.y)<1.e-6,"penetration recovery does not launch a resting node");
     // Exercise the EPA/degenerate-simplex paths, not only separated GJK pairs.
     for(int mode=0;mode<3;++mode)
     {
@@ -385,14 +444,14 @@ int main()
             pair[i].velocity={0,0,0};pair[i].position.y=0;
             crossingMaps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},i<3?0:1};
         }
-        if(mode==1) { pair[0].position.y=-.01f;pair[1].position.y=pair[2].position.y=.01f; }
+        if(mode==1) { pair[0].position.y=-.01;pair[1].position.y=pair[2].position.y=.01; }
         if(mode==2) { pair[1].position=pair[0].position; } // collapsed face is ignored
-        cfg={.0001f,1,{0,0,0},0,0,2,0,0,1};
+        cfg={.0001,1,{0,0,0},0,0,2,0,0,1};
         require(api->upload(world,6,pair.data(),0,nullptr)!=0,"EPA test upload");
-        require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01f,0)!=0,"EPA test surfaces");
+        require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0)!=0,"EPA test surfaces");
         require(api->step(world,&cfg)!=0,"EPA and coplanar contact step");
         require(api->download(world,6,crossedResult.data())!=0,"EPA test download");
-        btGpuXpbdVec momentum={0,0,0};float speed=0;
+        btGpuXpbdVec momentum={0,0,0};double speed=0;
         for(const auto& node:crossedResult)
         {
             require(std::isfinite(node.position.x)&&std::isfinite(node.position.y)&&std::isfinite(node.position.z)&&
@@ -400,28 +459,28 @@ int main()
             momentum.x+=node.velocity.x;momentum.y+=node.velocity.y;momentum.z+=node.velocity.z;
             speed+=distance(node.velocity,{0,0,0});
         }
-        require(distance(momentum,{0,0,0})<1.e-3f,"EPA contacts preserve total momentum");
-        if(mode!=1) require(speed<1.e-3f,"coplanar or collapsed contact does not launch resting nodes");
+        require(distance(momentum,{0,0,0})<1.e-3,"EPA contacts preserve total momentum");
+        if(mode!=1) require(speed<1.e-3,"coplanar or collapsed contact does not launch resting nodes");
     }
-    std::vector<btGpuXpbdNode> tinySupport(2,{{0,.00015f,0},1,{0,-1,0},0});
-    btGpuXpbdSurfaceVertex tinyMaps[4]={{{0,1,-1,-1},{.0005f,.9995f,0,0},{0,0,0},0},remapMaps[1],remapMaps[2],remapMaps[3]};
-    cfg={.0001f,1,{0,0,0},0,0,1,0,0,1};
+    std::vector<btGpuXpbdNode> tinySupport(2,{{0,.00015,0},1,{0,-1,0},0});
+    btGpuXpbdSurfaceVertex tinyMaps[4]={{{0,1,-1,-1},{.0005,.9995,0,0},{0,0,0},0},remapMaps[1],remapMaps[2],remapMaps[3]};
+    cfg={.0001,1,{0,0,0},0,0,1,0,0,1};
     require(api->upload(world,2,tinySupport.data(),0,nullptr)!=0,"tiny support nodes");
-    require(api->surface(world,4,tinyMaps,1,&face,.01f,0)!=0,"tiny support surface");
+    require(api->surface(world,4,tinyMaps,1,&face,.01,0)!=0,"tiny support surface");
     require(api->step(world,&cfg)!=0,"tiny support contact step");api->download(world,2,tinySupport.data());
-    require(std::fabs(tinySupport[0].velocity.y+1)<1.e-6f,"tiny weight does not create a contact reference");
-    require(std::fabs(tinySupport[1].velocity.y-(-1.f+.5f/.9995f))<1.e-4f,"contact denominator uses counted support");
+    require(std::fabs(tinySupport[0].velocity.y+1)<1.e-6,"tiny weight does not create a contact reference");
+    require(std::fabs(tinySupport[1].velocity.y-(-1.+.5/.9995))<1.e-4,"contact denominator uses counted support");
     auto preciseNodes=rest;
-    for(auto& n:preciseNodes) { n.position.y+=1024.0001220703125f;n.velocity={0,-1,0}; }
+    for(auto& n:preciseNodes) { n.position.y+=1024.0001220703125;n.velocity={0,-1,0}; }
     btGpuXpbdSurfaceVertex preciseMaps[4]={{{0,1,2,3},{1,0,0,0},{0,0,0},0},remapMaps[1],remapMaps[2],remapMaps[3]};
     for(int i=1;i<4;++i) preciseMaps[i].offset.y=1024;
-    cfg={.0002f,1,{0,0,0},0,0,200,0,0,1};
+    cfg={.0002,1,{0,0,0},0,0,200,0,0,1};
     require(api->upload(world,4,preciseNodes.data(),1,&tet)!=0,"sub-ULP contact nodes");
-    require(api->surface(world,4,preciseMaps,1,&face,.01f,0)!=0,"sub-ULP contact plane");
+    require(api->surface(world,4,preciseMaps,1,&face,.01,0)!=0,"sub-ULP contact plane");
     require(api->step(world,&cfg)!=0,"sub-ULP accumulated contact step");api->download(world,4,preciseNodes.data());
-    require(preciseNodes[0].velocity.y>-.5f,"contact resolves motion smaller than world-position precision");
+    require(preciseNodes[0].velocity.y>-.5,"contact resolves motion smaller than world-position precision");
     auto volumes=rest;volumes.insert(volumes.end(),rest.begin(),rest.end());
-    for(int i=0;i<4;++i) { volumes[i].position.y+=.00015f;volumes[i].velocity={0,-1,0};volumes[i+4].position.y=-volumes[i+4].position.y; }
+    for(int i=0;i<4;++i) { volumes[i].position.y+=.00015;volumes[i].velocity={0,-1,0};volumes[i+4].position.y=-volumes[i+4].position.y; }
     btGpuXpbdTet volumeTets[2]={tet,tet};
     for(int& n:volumeTets[1].nodes) n+=4;volumeTets[1].inverseRest[4]=-1;
     btGpuXpbdSurfaceVertex volumeMaps[6];int volumeIds[6]={0,1,3,4,7,5};
@@ -430,14 +489,14 @@ int main()
         int body=i<3?0:1;volumeMaps[i]={{body*4,body*4+1,body*4+2,body*4+3},{0,0,0,0},{0,0,0},body};
         volumeMaps[i].weights[volumeIds[i]-body*4]=1;
     }
-    cfg={.0001f,1,{0,0,0},0,0,1,0,0,1};
+    cfg={.0001,1,{0,0,0},0,0,1,0,0,1};
     require(api->upload(world,8,volumes.data(),2,volumeTets)!=0,"volume vertex contact upload");
-    require(api->surface(world,6,volumeMaps,2,crossingFaces,.01f,0)!=0,"volume vertex contact surfaces");
+    require(api->surface(world,6,volumeMaps,2,crossingFaces,.01,0)!=0,"volume vertex contact surfaces");
     require(api->step(world,&cfg)!=0,"volume vertex contact step");api->download(world,8,volumes.data());
-    float totalY=0,lowerY=0;
+    double totalY=0,lowerY=0;
     for(int i=0;i<8;++i) { totalY+=volumes[i].velocity.y;if(i>=4) lowerY+=volumes[i].velocity.y; }
-    require(lowerY<-.01f,"signed deformable vertex contacts transfer momentum");
-    require(std::fabs(totalY+4)<1.e-3f,"signed deformable vertex contacts conserve momentum");
+    require(lowerY<-.01,"signed deformable vertex contacts transfer momentum");
+    require(std::fabs(totalY+4)<1.e-3,"signed deformable vertex contacts conserve momentum");
     // A collision surface outside its simulation tetrahedron has signed support.
     // Dropping its negative contributions would create net contact momentum.
     auto extrapolatedVolumes=rest;extrapolatedVolumes.insert(extrapolatedVolumes.end(),rest.begin(),rest.end());
@@ -445,47 +504,47 @@ int main()
     std::memcpy(extrapolatedMaps,volumeMaps,sizeof(volumeMaps));
     for(int i=0;i<4;++i)
     {
-        extrapolatedVolumes[i].position.y+=.04995f;
+        extrapolatedVolumes[i].position.y+=.04995;
         extrapolatedVolumes[i].velocity={0,-1,0};
         extrapolatedVolumes[i+4].position.y=-extrapolatedVolumes[i+4].position.y;
     }
-    for(int i=0;i<3;++i) { extrapolatedMaps[i].weights[0]+=.05f;extrapolatedMaps[i].weights[2]-=.05f; }
+    for(int i=0;i<3;++i) { extrapolatedMaps[i].weights[0]+=.05;extrapolatedMaps[i].weights[2]-=.05; }
     require(api->upload(world,8,extrapolatedVolumes.data(),2,volumeTets)!=0,"extrapolated volume contact upload");
-    require(api->surface(world,6,extrapolatedMaps,2,crossingFaces,.01f,0)!=0,"extrapolated volume contact surface");
+    require(api->surface(world,6,extrapolatedMaps,2,crossingFaces,.01,0)!=0,"extrapolated volume contact surface");
     require(api->step(world,&cfg)!=0,"extrapolated volume contact step");
     require(api->download(world,8,extrapolatedVolumes.data())!=0,"extrapolated volume contact download");
     totalY=0;lowerY=0;
     for(int i=0;i<8;++i) { totalY+=extrapolatedVolumes[i].velocity.y;if(i>=4) lowerY+=extrapolatedVolumes[i].velocity.y; }
-    require(lowerY<-.01f,"extrapolated volume contacts transfer momentum");
-    require(std::fabs(totalY+4)<1.e-3f,"extrapolated volume contacts conserve momentum");
+    require(lowerY<-.01,"extrapolated volume contacts transfer momentum");
+    require(std::fabs(totalY+4)<1.e-3,"extrapolated volume contacts conserve momentum");
     auto checkFilter=[&](const std::vector<btGpuXpbdNode>& input,int tetCount,const btGpuXpbdTet* tets,
         int vertexCount,const btGpuXpbdSurfaceVertex* vertices,int triangleCount,const btGpuXpbdSurfaceTriangle* triangles)
     {
         const int count=int(input.size());auto free=input,filtered=input;
-        cfg={.0001f,1,{0,0,0},0,0,1,0,0,1};
+        cfg={.0001,1,{0,0,0},0,0,1,0,0,1};
         require(api->upload(world,count,input.data(),tetCount,tets)!=0,"pair filter free mesh");
         require(api->step(world,&cfg)!=0,"pair filter free step");
         require(api->download(world,count,free.data())!=0,"pair filter free state");
         require(api->upload(world,count,input.data(),tetCount,tets)!=0,"pair filter mesh");
-        require(api->surface(world,vertexCount,vertices,triangleCount,triangles,.01f,0)!=0,"pair filter surface");
+        require(api->surface(world,vertexCount,vertices,triangleCount,triangles,.01,0)!=0,"pair filter surface");
         btGpuXpbdDisabledPair disabled[]={{1,0},{0,1},{4,3},{2,1}};
         require(api->disabledPairs(world,4,disabled)!=0,"pair filter normalizes unordered duplicates");
         require(api->step(world,&cfg)!=0,"pair filter disabled step");
         require(api->download(world,count,filtered.data())!=0,"pair filter disabled state");
         for(int i=0;i<count;++i)
-            require(distance(free[i].position,filtered[i].position)<1.e-7f && distance(free[i].velocity,filtered[i].velocity)<1.e-6f,
+            require(distance(free[i].position,filtered[i].position)<1.e-7 && distance(free[i].velocity,filtered[i].velocity)<1.e-6,
                 "disabled GPU contacts match free motion");
         btGpuXpbdDisabledPair invalid={-1,0};
         require(api->disabledPairs(world,1,&invalid)==0,"pair filter rejects negative IDs");
         require(api->disabledPairs(world,0,nullptr)!=0,"pair filter reenable");
         require(api->step(world,&cfg)!=0,"pair filter reenabled step");
         require(api->download(world,count,filtered.data())!=0,"pair filter reenabled state");
-        float change=0;for(int i=0;i<count;++i) change+=distance(free[i].velocity,filtered[i].velocity);
-        require(change>.01f,"reenabling pair invalidates graph and restores contacts");
+        double change=0;for(int i=0;i<count;++i) change+=distance(free[i].velocity,filtered[i].velocity);
+        require(change>.01,"reenabling pair invalidates graph and restores contacts");
     };
-    contactNodes[0].position={0,.00025f,0};contactNodes[0].velocity={0,-1,0};
+    contactNodes[0].position={0,.00025,0};contactNodes[0].velocity={0,-1,0};
     checkFilter(contactNodes,0,nullptr,4,maps.data(),1,&face);
-    crossed[0].position.y=crossed[1].position.y=crossed[2].position.y=.00025f;
+    crossed[0].position.y=crossed[1].position.y=crossed[2].position.y=.00025;
     for(int i=0;i<6;++i)
     {
         crossed[i].velocity=i<3?btGpuXpbdVec{0,-1,0}:btGpuXpbdVec{0,0,0};
@@ -495,37 +554,37 @@ int main()
     for(int i=3;i<6;++i) crossingMaps[i]={{-1,-1,-1,-1},{0,0,0,0},crossed[i].position,1};
     checkFilter(crossed,0,nullptr,6,crossingMaps.data(),2,crossingFaces);
     volumes=rest;volumes.insert(volumes.end(),rest.begin(),rest.end());
-    for(int i=0;i<4;++i) { volumes[i].position.y+=.00025f;volumes[i].velocity={0,-1,0};volumes[i+4].position.y=-volumes[i+4].position.y; }
+    for(int i=0;i<4;++i) { volumes[i].position.y+=.00025;volumes[i].velocity={0,-1,0};volumes[i+4].position.y=-volumes[i+4].position.y; }
     checkFilter(volumes,2,volumeTets,6,volumeMaps,2,crossingFaces);
     auto movingPlaneNodes=contactNodes;
-    movingPlaneNodes[0].position={0,.00015f,0};movingPlaneNodes[0].velocity={0,0,0};
+    movingPlaneNodes[0].position={0,.00015,0};movingPlaneNodes[0].velocity={0,0,0};
     btGpuXpbdSurfaceVertex movingPlaneMaps[4];btGpuXpbdTarget planeTargets[3];
     for(int i=0;i<4;++i)
     {
         movingPlaneMaps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},i==0?0:1};
-        if(i) { planeTargets[i-1]={i,movingPlaneNodes[i].position};planeTargets[i-1].position.y=.0002f; }
+        if(i) { planeTargets[i-1]={i,movingPlaneNodes[i].position};planeTargets[i-1].position.y=.0002; }
     }
-    cfg={.0002f,1,{0,0,0},0,0,2,0,0,1};
+    cfg={.0002,1,{0,0,0},0,0,2,0,0,1};
     require(api->upload(world,4,movingPlaneNodes.data(),0,nullptr)!=0,"kinematic contact nodes");
-    require(api->surface(world,4,movingPlaneMaps,1,&face,.01f,0)!=0,"kinematic contact surface");
+    require(api->surface(world,4,movingPlaneMaps,1,&face,.01,0)!=0,"kinematic contact surface");
     require(api->targets(world,3,planeTargets)!=0,"kinematic plane targets");
     require(api->step(world,&cfg)!=0,"kinematic plane contact step");
     require(api->download(world,4,movingPlaneNodes.data())!=0,"kinematic contact result");
-    require(movingPlaneNodes[0].position.y>.00019f,"contact separation includes kinematic displacement");
-    require(std::fabs(movingPlaneNodes[0].velocity.y-1.f)<1.e-4f,"kinematic plane transfers its normal velocity");
+    require(movingPlaneNodes[0].position.y>.00019,"contact separation includes kinematic displacement");
+    require(std::fabs(movingPlaneNodes[0].velocity.y-1.)<1.e-4,"kinematic plane transfers its normal velocity");
     require(api->updateNodes(world,4,movingPlaneNodes.data())==0,"state replacement rejects active targets");
-    auto edited=rest;for(auto& n:edited) n.position.y+=.001f;
+    auto edited=rest;for(auto& n:edited) n.position.y+=.001;
     btGpuXpbdSurfaceVertex editMaps[4]={{{0,1,2,3},{1,0,0,0},{0,0,0},0},remapMaps[1],remapMaps[2],remapMaps[3]};
-    cfg={.0001f,1,{0,0,0},0,0,1,0,0,1};
+    cfg={.0001,1,{0,0,0},0,0,1,0,0,1};
     require(api->upload(world,4,edited.data(),1,&tet)!=0,"state update mesh");
-    require(api->surface(world,4,editMaps,1,&face,.01f,0)!=0,"state update collision surface");
+    require(api->surface(world,4,editMaps,1,&face,.01,0)!=0,"state update collision surface");
     require(api->step(world,&cfg)!=0,"state update captures graph");
-    for(auto& n:edited) { n.position.y+=.1f;n.velocity={0,1,0};n.inverseMass=8; }
+    for(auto& n:edited) { n.position.y+=.1;n.velocity={0,1,0};n.inverseMass=8; }
     require(api->updateNodes(world,4,edited.data())!=0,"replace state without recooking");
     btGpuXpbdVec editedSurface[4];
     require(api->surfacePositions(world,4,editedSurface)!=0,"state update retains collision mapping");
-    require(distance(editedSurface[0],edited[0].position)<1.e-6f,"skinning uses replaced node state");
-    auto invalidState=edited;invalidState.back().position.x=std::numeric_limits<float>::quiet_NaN();
+    require(distance(editedSurface[0],edited[0].position)<1.e-6,"skinning uses replaced node state");
+    auto invalidState=edited;invalidState.back().position.x=std::numeric_limits<double>::quiet_NaN();
     require(api->updateNodes(world,4,invalidState.data())==0,"reject invalid edited state");
     state.resize(4);require(api->download(world,4,state.data())!=0,"download after invalid edit");
     require(std::memcmp(state.data(),edited.data(),4*sizeof(btGpuXpbdNode))==0,"invalid edit preserves prior GPU state");
@@ -534,22 +593,22 @@ int main()
     for(int i=0;i<4;++i)
     {
         auto expected=edited[i].position;expected.y+=cfg.dt;
-        require(distance(state[i].position,expected)<1.e-6f&&state[i].inverseMass==8,"edited graph uses updated positions velocities and masses");
+        require(distance(state[i].position,expected)<1.e-6&&state[i].inverseMass==8,"edited graph uses updated positions velocities and masses");
     }
-    edited=state;for(auto& n:edited) n.velocity={0,0,0};edited[1].position.x+=.1f;
-    require(api->updateNodes(world,4,edited.data())!=0,"deform edited state");cfg.dt=.001f;
+    edited=state;for(auto& n:edited) n.velocity={0,0,0};edited[1].position.x+=.1;
+    require(api->updateNodes(world,4,edited.data())!=0,"deform edited state");cfg.dt=.001;
     require(api->step(world,&cfg)!=0,"solve deformation after state edit");
     require(api->download(world,4,state.data())!=0,"read edited deformation");
-    require(state[1].position.x<edited[1].position.x-1.e-5f,"state replacement preserves original elastic rest shape");
+    require(state[1].position.x<edited[1].position.x-1.e-5,"state replacement preserves original elastic rest shape");
     btGpuXpbdTarget editTarget={0,state[0].position};
     require(api->targets(world,1,&editTarget)!=0&&api->targets(world,0,nullptr)!=0,"edited state target roundtrip");
     require(api->download(world,4,state.data())!=0&&state[0].inverseMass==8,"target release restores edited inverse mass");
-    auto accepted=rest;accepted[1].position.x=1.1f;
-    cfg={.001f,1,{0,0,0},0,0,2,0,0,0};
+    auto accepted=rest;accepted[1].position.x=1.1;
+    cfg={.001,1,{0,0,0},0,0,2,0,0,0};
     require(api->upload(world,4,accepted.data(),1,&tet)!=0,"rollback mesh");
     require(api->step(world,&cfg)!=0,"rollback accepted step");
     require(api->download(world,4,accepted.data())!=0,"rollback accepted state");
-    btGpuXpbdVec extreme[4]={{std::numeric_limits<float>::max(),0,0},{0,0,0},{0,0,0},{0,0,0}};
+    btGpuXpbdVec extreme[4]={{std::numeric_limits<double>::max(),0,0},{0,0,0},{0,0,0},{0,0,0}};
     require(api->forces(world,4,extreme)!=0,"finite overflow force accepted");
     require(api->step(world,&cfg)==0,"nonfinite computed state rejects step");
     state.resize(4);
@@ -564,7 +623,7 @@ int main()
     require(api->step(world,&cfg)!=0,"clean recovery step");
     require(api->download(world,4,state.data())!=0,"clean recovery state");
     for(int i=0;i<4;++i)
-        require(distance(state[i].position,retry[i].position)<1.e-6f && distance(state[i].velocity,retry[i].velocity)<1.e-4f,
+        require(distance(state[i].position,retry[i].position)<1.e-6 && distance(state[i].velocity,retry[i].velocity)<1.e-4,
             "retry matches uncorrupted simulation");
     require(api->upload(world,-1,nullptr,0,nullptr)==0,"reject invalid input");
 #ifndef XPBD_TEST_RUNTIME_LOADER

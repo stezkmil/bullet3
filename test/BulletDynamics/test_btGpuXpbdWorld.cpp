@@ -101,10 +101,11 @@ static void testWorld(btScalar metersPerUnit,bool mapped=false,bool disparateMas
     ground.setWorldTransform(btTransform(btQuaternion::getIdentity(),translation));
     world.addCollisionObject(&ground);
     body.setCheckCollideWith(true);
-    for(int pass=0;pass<3;++pass)
+    for(int pass=0;pass<5;++pass)
     {
-        const bool disabled=pass==1;
-        body.setIgnoreCollisionCheck(&ground,disabled);
+        const bool disabled=pass==1||pass==3;
+        ground.setCollisionFlags(btCollisionObject::CF_STATIC_OBJECT|(pass==3?btCollisionObject::CF_NO_CONTACT_RESPONSE:0));
+        body.setIgnoreCollisionCheck(&ground,pass==1);
         for(int i=0;i<4;++i)
         {
             body.m_nodes[i].m_x=positions[i];body.m_nodes[i].m_q=positions[i];

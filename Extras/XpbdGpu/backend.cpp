@@ -22,10 +22,8 @@ struct State
     CUgraph graph=nullptr;
     CUgraphExec graphExec=nullptr;
     btGpuXpbdStep graphConfig={};
-    CUfunction predict=nullptr,solve=nullptr,settle=nullptr;
-    CUfunction initializeCopies=nullptr,averageCopies=nullptr;
-    CUdeviceptr copies=0,copyActive=0,solverTets=0;
-    int copyLanes=0;
+    CUfunction predict=nullptr,solve=nullptr,settle=nullptr,damp=nullptr;
+    bool hasMaterialDamping=false;
     CUfunction skin=nullptr,refit=nullptr,discoverContacts=nullptr,countContacts=nullptr,solveContacts=nullptr,applyContacts=nullptr,embed=nullptr;
     CUfunction startDrive=nullptr,drive=nullptr,releaseDrive=nullptr;
     CUfunction applyContactVelocities=nullptr;
@@ -44,8 +42,8 @@ struct State
     int targetCount=0;
     CUdeviceptr springs=0;
     int springCount=0;
-    CUdeviceptr nodes=0,tets=0,rotations=0,forces=0,failure=0;
-    CUdeviceptr acceptedNodes=0,acceptedRotations=0;
+    CUdeviceptr nodes=0,tets=0,forces=0,failure=0;
+    CUdeviceptr acceptedNodes=0;
     CUdeviceptr disabledPairs=0;
     int disabledPairCount=0;
     CUdeviceptr friction=0;
@@ -56,7 +54,7 @@ struct State
     int contactCapacity=1048576;
     int count=0;
     int vertexCount=0,triangleCount=0,treeCount=0;
-    float margin=0,clearance=0;
+    double margin=0,clearance=0;
     std::vector<int> batches;
     std::string error;
     bool check(CUresult result)
@@ -68,13 +66,12 @@ struct State
     void clear()
     {
         clearSurface();
-        for(auto p:{nodes,tets,rotations,forces,failure,targets,driveStart,inverseMasses,copies,copyActive,solverTets,accumulated,acceptedNodes,acceptedRotations,springs}) if(p) cuMemFree(p);
+        for(auto p:{nodes,tets,forces,failure,targets,driveStart,inverseMasses,accumulated,acceptedNodes,springs}) if(p) cuMemFree(p);
         springs=0;springCount=0;
-        acceptedNodes=acceptedRotations=0;
+        acceptedNodes=0;
         accumulated=0;
-        copies=copyActive=solverTets=0;copyLanes=0;
         targets=driveStart=inverseMasses=0;targetCount=0;targetIds.clear();
-        nodes=tets=rotations=forces=failure=0;count=0;batches.clear();
+        nodes=tets=forces=failure=0;count=0;batches.clear();
         restNodes.clear();
     }
     void clearSurface()
@@ -133,8 +130,7 @@ void* create()
         if(current.valid && s->check(cuStreamCreate(&s->stream,CU_STREAM_DEFAULT)) && s->check(cuModuleLoadData(&s->module,ptx)) &&
            s->check(cuModuleGetFunction(&s->predict,s->module,"predict")) &&
            s->check(cuModuleGetFunction(&s->solve,s->module,"solveTets")) &&
-           s->check(cuModuleGetFunction(&s->initializeCopies,s->module,"initializeCopies")) &&
-           s->check(cuModuleGetFunction(&s->averageCopies,s->module,"averageCopies")) &&
+           s->check(cuModuleGetFunction(&s->damp,s->module,"dampTets")) &&
            s->check(cuModuleGetFunction(&s->settle,s->module,"settle")) &&
            s->check(cuModuleGetFunction(&s->skin,s->module,"skin")) &&
            s->check(cuModuleGetFunction(&s->refit,s->module,"refit")) &&
@@ -171,9 +167,9 @@ int upload(void* value,int count,const btGpuXpbdNode* nodes,int tetCount,const b
             if(t.nodes[j]<0||t.nodes[j]>=count) { s.error="Invalid tetrahedron index";return 0; }
             for(int k=0;k<j;++k) if(t.nodes[j]==t.nodes[k]) { s.error="Repeated tetrahedron node";return 0; }
         }
-        for(float v:t.inverseRest) if(!std::isfinite(v)) { s.error="Invalid rest matrix";return 0; }
+        for(double v:t.inverseRest) if(!std::isfinite(v)) { s.error="Invalid rest matrix";return 0; }
         if(!std::isfinite(t.volume)||t.volume<=0||!std::isfinite(t.young)||t.young<=0||
-           !std::isfinite(t.poisson)||t.poisson<0||t.poisson>=.5f||!std::isfinite(t.damping)||t.damping<0)
+           !std::isfinite(t.poisson)||t.poisson<0||t.poisson>=.5||!std::isfinite(t.damping)||t.damping<0)
         { s.error="Invalid tetrahedron material";return 0; }
         std::vector<bool> used(colors.size(),false);
         for(int node:t.nodes) for(int c:nodeColors[node]) used[c]=true;
@@ -182,34 +178,19 @@ int upload(void* value,int count,const btGpuXpbdNode* nodes,int tetCount,const b
         colors[c].push_back(i);for(int node:t.nodes) nodeColors[node].push_back(c);
     }
     s.clear();s.batches.push_back(0);
+    s.hasMaterialDamping=false;for(int i=0;i<tetCount;++i) s.hasMaterialDamping|=tets[i].damping>0;
     std::vector<btGpuXpbdTet> ordered;ordered.reserve(tetCount);
-    s.copyLanes=int((colors.size()+7)/8);
-    std::vector<int> active(size_t(count)*s.copyLanes,0);
-    std::vector<btGpuXpbdTet> work;
-    const int passes=8;
-    for(int pass=0;pass<passes;++pass)
+    for(const auto& color:colors)
     {
-        for(int color=pass;color<int(colors.size());color+=passes)
-        {
-            int lane=color/8;
-            for(int i:colors[color])
-            {
-                ordered.push_back(tets[i]);auto tet=tets[i];
-                for(int& node:tet.nodes) { active[lane*count+node]=1;node+=lane*count; }
-                work.push_back(tet);
-            }
-        }
+        for(int i:color) ordered.push_back(tets[i]);
         s.batches.push_back(int(ordered.size()));
     }
-    struct Quat { float x,y,z,w; };
-    std::vector<Quat> rotations(tetCount,{0,0,0,1});std::vector<btGpuXpbdVec> zero(count,{0,0,0});int failure=0;
-    std::vector<float> masses(count);for(int i=0;i<count;++i) masses[i]=nodes[i].inverseMass;
+    std::vector<btGpuXpbdVec> zero(count,{0,0,0});int failure=0;
+    std::vector<double> masses(count);for(int i=0;i<count;++i) masses[i]=nodes[i].inverseMass;
     if(!s.copy(s.nodes,nodes,count*sizeof(*nodes))||!s.copy(s.tets,ordered.data(),ordered.size()*sizeof(*tets))||
-       !s.copy(s.acceptedNodes,nodes,count*sizeof(*nodes))||!s.copy(s.acceptedRotations,rotations.data(),rotations.size()*sizeof(Quat))||
-       !s.copy(s.rotations,rotations.data(),rotations.size()*sizeof(Quat))||!s.copy(s.forces,zero.data(),zero.size()*sizeof(zero[0]))||!s.copy(s.accumulated,zero.data(),zero.size()*sizeof(zero[0]))||
-       !s.copy(s.failure,&failure,sizeof(failure))||!s.copy(s.inverseMasses,masses.data(),masses.size()*sizeof(float))||
-       !s.copy(s.solverTets,work.data(),work.size()*sizeof(*tets))||!s.copy(s.copyActive,active.data(),active.size()*sizeof(int))||
-       (s.copyLanes && !s.check(cuMemAlloc(&s.copies,size_t(count)*s.copyLanes*sizeof(*nodes))))) { s.clear();return 0; }
+       !s.copy(s.acceptedNodes,nodes,count*sizeof(*nodes))||
+       !s.copy(s.forces,zero.data(),zero.size()*sizeof(zero[0]))||!s.copy(s.accumulated,zero.data(),zero.size()*sizeof(zero[0]))||
+       !s.copy(s.failure,&failure,sizeof(failure))||!s.copy(s.inverseMasses,masses.data(),masses.size()*sizeof(double))) { s.clear();return 0; }
     s.restNodes.assign(nodes,nodes+count);s.count=count;return 1;
 }
 int forces(void* value,int count,const btGpuXpbdVec* values)
@@ -224,7 +205,7 @@ int updateNodes(void* value,int count,const btGpuXpbdNode* nodes)
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
     if(count!=s.count||count<=0||!nodes) { s.error="Node state count mismatch";return 0; }
     if(s.targetCount) { s.error="Release kinematic targets before replacing node state";return 0; }
-    std::vector<float> masses(count);
+    std::vector<double> masses(count);
     for(int i=0;i<count;++i)
     {
         const auto& n=nodes[i];
@@ -233,7 +214,7 @@ int updateNodes(void* value,int count,const btGpuXpbdNode* nodes)
         masses[i]=n.inverseMass;
     }
     return s.check(cuMemcpyHtoD(s.nodes,nodes,size_t(count)*sizeof(*nodes))) &&
-        s.check(cuMemcpyHtoD(s.inverseMasses,masses.data(),masses.size()*sizeof(float)));
+        s.check(cuMemcpyHtoD(s.inverseMasses,masses.data(),masses.size()*sizeof(double)));
 }
 bool updateSurface(State& s)
 {
@@ -263,14 +244,14 @@ int disabledPairs(void* value,int count,const btGpuXpbdDisabledPair* pairs)
     if(s.disabledPairs) cuMemFree(s.disabledPairs);
     s.disabledPairs=replacement;s.disabledPairCount=int(keys.size());return 1;
 }
-int friction(void* value,int count,const float* coefficients)
+int friction(void* value,int count,const double* coefficients)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
     if(count<0||(count&&!coefficients)) { s.error="Invalid friction table";return 0; }
     for(int i=0;i<count;++i) if(!std::isfinite(coefficients[i])||coefficients[i]<0)
         { s.error="Friction must be finite and nonnegative";return 0; }
     CUdeviceptr replacement=0;
-    if(!s.copy(replacement,coefficients,count*sizeof(float)))
+    if(!s.copy(replacement,coefficients,count*sizeof(double)))
     {
         if(replacement) cuMemFree(replacement);return 0;
     }
@@ -279,7 +260,7 @@ int friction(void* value,int count,const float* coefficients)
     s.friction=replacement;s.frictionCount=count;return 1;
 }
 int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,int triangleCount,
-    const btGpuXpbdSurfaceTriangle* triangles,float margin,float clearance)
+    const btGpuXpbdSurfaceTriangle* triangles,double margin,double clearance)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
     if(vertexCount<=0||triangleCount<=0||!vertices||!triangles||!std::isfinite(margin)||!std::isfinite(clearance)||margin<=0||clearance<0||clearance>margin)
@@ -289,7 +270,7 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
     std::vector<btGpuXpbdVec> points(vertexCount),centers(triangleCount);
     for(int i=0;i<vertexCount;++i)
     {
-        const auto& v=vertices[i];auto p=v.offset;float sum=0;bool dynamic=false;
+        const auto& v=vertices[i];auto p=v.offset;double sum=0;bool dynamic=false;
         if(!finite(p)||v.body<0) { s.error="Invalid surface vertex";return 0; }
         for(int j=0;j<4;++j)
         {
@@ -300,7 +281,7 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
                 p.x+=n.x*v.weights[j];p.y+=n.y*v.weights[j];p.z+=n.z*v.weights[j];
             }
         }
-        if(dynamic&&std::fabs(sum-1)>1.e-4f) { s.error="Surface weights must sum to one";return 0; }
+        if(dynamic&&std::fabs(sum-1)>1.e-4) { s.error="Surface weights must sum to one";return 0; }
         points[i]=p;
     }
     std::vector<int> incident(vertexCount,0);
@@ -326,8 +307,8 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
             tree[index].triangle=order[begin];tree[index].body=vertices[triangles[order[begin]].vertices[0]].body;
             leaves.push_back(index);return index;
         }
-        float lo[3]={INFINITY,INFINITY,INFINITY},hi[3]={-INFINITY,-INFINITY,-INFINITY};
-        for(int k=begin;k<end;++k) { auto p=centers[order[k]];float v[]={p.x,p.y,p.z};for(int j=0;j<3;++j) {lo[j]=std::min(lo[j],v[j]);hi[j]=std::max(hi[j],v[j]);} }
+        double lo[3]={INFINITY,INFINITY,INFINITY},hi[3]={-INFINITY,-INFINITY,-INFINITY};
+        for(int k=begin;k<end;++k) { auto p=centers[order[k]];double v[]={p.x,p.y,p.z};for(int j=0;j<3;++j) {lo[j]=std::min(lo[j],v[j]);hi[j]=std::max(hi[j],v[j]);} }
         int axis=0;for(int j=1;j<3;++j) if(hi[j]-lo[j]>hi[axis]-lo[axis]) axis=j;
         int mid=(begin+end)/2;
         std::nth_element(order.begin()+begin,order.begin()+mid,order.begin()+end,[&](int a,int b)
@@ -413,7 +394,7 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
        !s.copy(s.leaves,leaves.data(),leaves.size()*sizeof(int))||!s.copy(s.boxes,boxes.data(),boxes.size()*sizeof(Box))||
        !s.copy(s.ready,ready.data(),ready.size()*sizeof(int))||!s.copy(s.corrections,corrections.data(),corrections.size()*sizeof(corrections[0])))
     { s.clearSurface();return 0; }
-    if(!s.check(cuMemAlloc(&s.contactCache,s.contactCapacity*176))||!s.check(cuMemAlloc(&s.contactCount,sizeof(int)))||!s.check(cuMemAlloc(&s.references,s.count*sizeof(int))))
+    if(!s.check(cuMemAlloc(&s.contactCache,s.contactCapacity*312))||!s.check(cuMemAlloc(&s.contactCount,sizeof(int)))||!s.check(cuMemAlloc(&s.references,s.count*sizeof(int))))
     { s.clearSurface();return 0; }
     s.vertexCount=vertexCount;s.triangleCount=triangleCount;s.treeCount=int(tree.size());s.margin=margin;s.clearance=clearance;return 1;
 }
@@ -491,16 +472,16 @@ int springs(void* value,int count,const btGpuXpbdSpring* values)
 }
 bool enqueueStep(State& s,const btGpuXpbdStep* config)
 {
-    float externalDt=config->dt/config->substeps,dt=externalDt/config->iterations;auto gravity=config->gravity;
-    float speed=config->settlingSpeed,damping=config->settlingDamping;
+    double externalDt=config->dt/config->substeps,dt=externalDt/config->iterations;auto gravity=config->gravity;
+    double speed=config->settlingSpeed,damping=config->settlingDamping;
     int settlingBegin=config->settlingBegin,settlingEnd=config->settlingEnd?config->settlingEnd:s.count;
-    float fullDt=config->dt;
+    double fullDt=config->dt;
     void* startArgs[]={&s.nodes,&s.targets,&s.driveStart,&s.targetCount,&fullDt};
     if(!s.launch(s.startDrive,s.targetCount,startArgs)) return 0;
     for(int k=0;k<config->substeps*config->iterations;++k)
     {
-        float forceDt=k%config->iterations==0?externalDt:0;
-        if(k%config->iterations==0 && !s.check(cuMemsetD32Async(s.accumulated,0,s.count*3,s.stream))) return 0;
+        double forceDt=dt;
+        if(k%config->iterations==0 && !s.check(cuMemsetD32Async(s.accumulated,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))) return 0;
         // PhysX TGS prepares contacts before integrating the first increment.
         if(s.vertexCount&&k%config->iterations==0)
         {
@@ -519,25 +500,27 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
             void* prepArgs[]={&s.nodes,&s.tets,&s.tetBodies,&tetCount,&s.remapOffsets,&s.remapTets,&s.accumulated,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.friction,&s.frictionCount};
             if(!s.launch(s.prepareContacts,16384,prepArgs)) return 0;
         }
-        float fraction=float(k+1)/float(config->substeps*config->iterations);
-        float increment=1.f/float(config->substeps*config->iterations);
+        double fraction=double(k+1)/double(config->substeps*config->iterations);
+        double increment=1./double(config->substeps*config->iterations);
         void* driveArgs[]={&s.nodes,&s.targets,&s.driveStart,&s.accumulated,&s.targetCount,&fraction,&increment};
         if(!s.launch(s.drive,s.targetCount,driveArgs)) return 0;
+        if(s.hasMaterialDamping) for(size_t c=1;c<s.batches.size();++c)
+        {
+            int begin=s.batches[c-1],count=s.batches[c]-begin;
+            void* args[]={&s.nodes,&s.tets,&begin,&count,&dt};
+            if(!s.launch(s.damp,count,args)) return 0;
+        }
         void* predictArgs[]={&s.nodes,&s.forces,&s.accumulated,&s.count,&dt,&gravity,&forceDt,&s.springs,&s.springCount};
         if(!s.launch(s.predict,s.count,predictArgs)) return 0;
-        void* copyArgs[]={&s.nodes,&s.copies,&s.copyActive,&s.count,&s.copyLanes};
-        if(!s.launch(s.initializeCopies,s.count*s.copyLanes,copyArgs)) return 0;
         for(size_t c=1;c<s.batches.size();++c)
         {
-            int begin=s.batches[c-1],count=s.batches[c]-begin,first=k%config->iterations==0;
-            void* args[]={&s.copies,&s.solverTets,&s.rotations,&begin,&count,&dt,&first};
+            int begin=s.batches[c-1],count=s.batches[c]-begin;
+            void* args[]={&s.nodes,&s.tets,&s.accumulated,&begin,&count,&dt};
             if(!s.launch(s.solve,count,args)) return 0;
         }
-        void* averageArgs[]={&s.nodes,&s.copies,&s.copyActive,&s.accumulated,&s.count,&s.copyLanes,&dt};
-        if(!s.launch(s.averageCopies,s.count,averageArgs)) return 0;
         if(s.vertexCount)
         {
-            if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*3,s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
+            if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
             int velocityOnly=0;
             void* countArgs[]={&s.nodes,&s.accumulated,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.references,&s.clearance,&velocityOnly,&dt};
             if(!s.launch(s.countContacts,16384,countArgs)) return 0;
@@ -550,7 +533,7 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
         {
             for(int v=0;v<config->velocityIterations && s.vertexCount;++v)
             {
-                if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*3,s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
+                if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
                 int velocityOnly=1;
                 void* countArgs[]={&s.nodes,&s.accumulated,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.references,&s.clearance,&velocityOnly,&dt};
                 void* solveArgs[]={&s.nodes,&s.accumulated,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.references,&s.corrections,&s.clearance,&velocityOnly,&dt};
@@ -563,6 +546,13 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
     }
     return true;
 }
+bool sameStep(const btGpuXpbdStep& a,const btGpuXpbdStep& b)
+{
+    // ABI 7 has alignment padding; comparing its bytes can spuriously rebuild the CUDA graph.
+    return a.dt==b.dt&&a.substeps==b.substeps&&a.gravity.x==b.gravity.x&&a.gravity.y==b.gravity.y&&a.gravity.z==b.gravity.z&&
+        a.settlingSpeed==b.settlingSpeed&&a.settlingDamping==b.settlingDamping&&a.iterations==b.iterations&&
+        a.settlingBegin==b.settlingBegin&&a.settlingEnd==b.settlingEnd&&a.velocityIterations==b.velocityIterations;
+}
 int step(void* value,const btGpuXpbdStep* config)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
@@ -571,7 +561,7 @@ int step(void* value,const btGpuXpbdStep* config)
        !std::isfinite(config->settlingDamping)||config->settlingDamping<0||config->settlingBegin<0||config->settlingEnd<0||config->settlingEnd>s.count) { s.error="Invalid step configuration";return 0; }
     int failure=0;
     if(!s.check(cuMemcpyHtoD(s.failure,&failure,sizeof(failure)))) return 0;
-    if(!s.graphExec || std::memcmp(config,&s.graphConfig,sizeof(*config))!=0)
+    if(!s.graphExec || !sameStep(*config,s.graphConfig))
     {
         s.clearGraph();
         if(!s.check(cuStreamBeginCapture(s.stream,CU_STREAM_CAPTURE_MODE_THREAD_LOCAL))) return 0;
@@ -581,17 +571,14 @@ int step(void* value,const btGpuXpbdStep* config)
         if(!s.check(cuGraphInstantiateWithFlags(&s.graphExec,s.graph,0))) { s.clearGraph();return 0; }
         s.graphConfig=*config;
     }
-    // Keep the transaction on device, including the warm-start rotations.
+    // Preserve the last accepted state on numerical or contact-capacity rejection.
     const size_t nodeBytes=size_t(s.count)*sizeof(btGpuXpbdNode);
-    const size_t rotationBytes=size_t(s.batches.back())*sizeof(float)*4;
-    if(!s.check(cuMemcpyDtoDAsync(s.acceptedNodes,s.nodes,nodeBytes,s.stream)) ||
-       (rotationBytes && !s.check(cuMemcpyDtoDAsync(s.acceptedRotations,s.rotations,rotationBytes,s.stream)))) return 0;
+    if(!s.check(cuMemcpyDtoDAsync(s.acceptedNodes,s.nodes,nodeBytes,s.stream))) return 0;
     if(!s.check(cuGraphLaunch(s.graphExec,s.stream)) || !s.check(cuStreamSynchronize(s.stream))) return 0;
     if(!s.check(cuMemcpyDtoH(&failure,s.failure,sizeof(failure)))) return 0;
     if(failure)
     {
         if(!s.check(cuMemcpyDtoDAsync(s.nodes,s.acceptedNodes,nodeBytes,s.stream)) ||
-           (rotationBytes && !s.check(cuMemcpyDtoDAsync(s.rotations,s.acceptedRotations,rotationBytes,s.stream))) ||
            !s.check(cuStreamSynchronize(s.stream))) return 0;
         s.error=failure==4?"Contact capacity exceeded":(failure==2?"Collision traversal stack overflow":"Nonfinite GPU state");
         return 0;
@@ -609,5 +596,5 @@ const btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surf
 }
 extern "C" __declspec(dllexport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int version)
 {
-    return version>=1&&version<=5?&api:nullptr;
+    return version==BT_GPU_XPBD_ABI_VERSION?&api:nullptr;
 }

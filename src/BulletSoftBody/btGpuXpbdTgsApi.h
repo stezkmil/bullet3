@@ -1,27 +1,29 @@
 #ifndef BT_GPU_XPBD_TGS_API_H
 #define BT_GPU_XPBD_TGS_API_H
 
+// ABI 7 uses double precision; it is incompatible with earlier scalar layouts.
 // POD boundary independent of Bullet's float/double scalar configuration.
-struct btGpuXpbdVec { float x, y, z; };
+constexpr int BT_GPU_XPBD_ABI_VERSION = 7;
+struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
     btGpuXpbdVec position;
-    float inverseMass;
+    double inverseMass;
     btGpuXpbdVec velocity;
-    float damping;
+    double damping;
 };
 struct btGpuXpbdTet
 {
     int nodes[4];
-    float inverseRest[9]; // column major
-    float volume, young, poisson, damping;
+    double inverseRest[9]; // column major
+    double volume, young, poisson, damping;
 };
 struct btGpuXpbdStep
 {
-    float dt;
+    double dt;
     int substeps;
     btGpuXpbdVec gravity;
-    float settlingSpeed, settlingDamping;
+    double settlingSpeed, settlingDamping;
     int iterations;
     int settlingBegin,settlingEnd; // end=0 selects all nodes.
     int velocityIterations;
@@ -29,7 +31,7 @@ struct btGpuXpbdStep
 struct btGpuXpbdSurfaceVertex
 {
     int nodes[4]; // -1 denotes an unused support; all -1 denotes a static vertex.
-    float weights[4];
+    double weights[4];
     btGpuXpbdVec offset;
     int body;
 };
@@ -40,7 +42,7 @@ struct btGpuXpbdSpring
 {
     int node;
     btGpuXpbdVec target;
-    float stiffness,damping,maxForce;
+    double stiffness,damping,maxForce;
 };
 struct btGpuXpbdTgsApi
 {
@@ -53,7 +55,7 @@ struct btGpuXpbdTgsApi
     int (*step)(void*, const btGpuXpbdStep*);
     int (*download)(void*, int, btGpuXpbdNode*);
     const char* (*error)(void*);
-    int (*surface)(void*, int, const btGpuXpbdSurfaceVertex*, int, const btGpuXpbdSurfaceTriangle*, float, float);
+    int (*surface)(void*, int, const btGpuXpbdSurfaceVertex*, int, const btGpuXpbdSurfaceTriangle*, double, double);
     int (*surfacePositions)(void*, int, btGpuXpbdVec*);
     int (*embed)(void*, int, const btGpuXpbdVec*, int, int, int, btGpuXpbdSurfaceVertex*);
     int (*targets)(void*, int, const btGpuXpbdTarget*);
@@ -65,11 +67,11 @@ struct btGpuXpbdTgsApi
     int (*updateNodes)(void*, int, const btGpuXpbdNode*);
     // ABI 4: friction indexed by surface body ID; missing entries are frictionless.
     // Surface/mesh uploads clear the table. Pair coefficients use Bullet's product rule.
-    int (*friction)(void*, int, const float*);
+    int (*friction)(void*, int, const double*);
     // ABI 5: compliant mouse attachments; count=0 releases all springs.
     // Target positions use the same coordinates as nodes; stiffness/damping are kg/s^2 and kg/s.
     int (*springs)(void*, int, const btGpuXpbdSpring*);
 };
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);
-static_assert(sizeof(btGpuXpbdNode)==32 && sizeof(btGpuXpbdTet)==68 && sizeof(btGpuXpbdStep)==44, "GPU XPBD ABI mismatch");
+static_assert(sizeof(btGpuXpbdNode)==64 && sizeof(btGpuXpbdTet)==120 && sizeof(btGpuXpbdStep)==72, "GPU XPBD ABI mismatch");
 #endif

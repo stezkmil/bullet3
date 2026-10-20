@@ -23,7 +23,7 @@ namespace
 {
 btGpuXpbdVec gpuVector(const btVector3& p, btScalar scale)
 {
-    return {float(p.x()*scale),float(p.y()*scale),float(p.z()*scale)};
+    return {double(p.x()*scale),double(p.y()*scale),double(p.z()*scale)};
 }
 btVector3 bulletVector(btGpuXpbdVec p, btScalar scale)
 {
@@ -126,7 +126,7 @@ struct btDeformableGpuXpbdTgsWorld
                             for(int j=0;j<4;++j)
                             {
                                 vertex.nodes[j]=offset+int(tetra.m_n[j]-&soft->m_nodes[0]);
-                                vertex.weights[j]=float(entry.baryCoordInTetra[j]);
+                                vertex.weights[j]=double(entry.baryCoordInTetra[j]);
                                 weightSum+=btScalar(vertex.weights[j]);
                             }
                             vertex.offset=gpuVector(transform.getOrigin()+origin*(weightSum-1),scale);
@@ -330,7 +330,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     for(int b=0;b<m_softBodies.size();++b)
     {
         auto* body=m_softBodies[b];if(body->isStaticObject()) continue;
-        // Subtract in host precision before converting positions to GPU floats.
+        // Keep solver coordinates local by subtracting the origin in host precision.
         if(!cache.hasOrigin&&body->m_nodes.size())
         {
             cache.origin=body->m_nodes[0].m_x;cache.hasOrigin=true;
@@ -378,7 +378,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
                     int n=0;while(n<body->m_nodes.size()&&spring.node!=&body->m_nodes[n]) ++n;
                     if(n==body->m_nodes.size()) continue;
                     springs.push_back({offset+n,gpuVector(spring.target-cache.origin,units),
-                        float(spring.stiffness),float(spring.damping),float(spring.maxForce*units)});
+                        double(spring.stiffness),double(spring.damping),double(spring.maxForce*units)});
                 }
             }
             else if(force->getForceType()!=BT_GRAVITY_FORCE) { fail("Unsupported GPU XPBD force type");return; }
@@ -393,7 +393,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         for(int n=0;n<body->m_nodes.size();++n)
         {
             const auto& node=body->m_nodes[n];const btScalar inv=node.m_frozen>0?0:btMin(node.m_im,maxInverseMass);
-            nodes.push_back({gpuVector(node.m_x-cache.origin,units),float(inv),gpuVector(inv>0?node.m_v:btVector3(0,0,0),units),float(material->m_damping_alpha)});
+            nodes.push_back({gpuVector(node.m_x-cache.origin,units),double(inv),gpuVector(inv>0?node.m_v:btVector3(0,0,0),units),double(material->m_damping_alpha)});
             const auto gravity=inv>0?getGravity()*(body->m_gravityFactor/inv):btVector3(0,0,0);
             forces.push_back(gpuVector(external[n]+node.m_f+gravity,units));
         }
@@ -402,10 +402,10 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         {
             const auto& source=body->m_tetras[i];btGpuXpbdTet tet{};
             for(int j=0;j<4;++j) tet.nodes[j]=offset+int(source.m_n[j]-&body->m_nodes[0]);
-            for(int c=0;c<3;++c) for(int r=0;r<3;++r) tet.inverseRest[3*c+r]=float(source.m_Dm_inverse[r][c]/units);
-            tet.volume=float(source.m_element_measure*units*units*units);
-            tet.young=float(mu*(3*lambda+2*mu)/((lambda+mu)*units));tet.poisson=float(lambda/(2*(lambda+mu)));
-            tet.damping=float(material->m_damping_beta);tets.push_back(tet);appendKey(key,tet);
+            for(int c=0;c<3;++c) for(int r=0;r<3;++r) tet.inverseRest[3*c+r]=double(source.m_Dm_inverse[r][c]/units);
+            tet.volume=double(source.m_element_measure*units*units*units);
+            tet.young=double(mu*(3*lambda+2*mu)/((lambda+mu)*units));tet.poisson=double(lambda/(2*(lambda+mu)));
+            tet.damping=double(material->m_damping_beta);tets.push_back(tet);appendKey(key,tet);
         }
     }
     if(nodes.empty()) { fail("GPU XPBD requires at least one dynamic tetrahedral body");return; }
@@ -418,20 +418,20 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         targets.push_back({offsets[found-bodies.begin()]+target.node,gpuVector(target.position-cache.origin,units)});
     }
     std::sort(targets.begin(),targets.end(),[](const auto& a,const auto& b){return a.node<b.node;});
-    std::vector<float> inverseMasses;inverseMasses.reserve(nodes.size());
+    std::vector<double> inverseMasses;inverseMasses.reserve(nodes.size());
     for(const auto& node:nodes) inverseMasses.push_back(node.inverseMass);
-    std::vector<float> friction;
+    std::vector<double> friction;
     for(int i=0;i<m_collisionObjects.size();++i)
     {
         const auto* object=m_collisionObjects[i];appendKey(key,object);appendTransform(key,object->getWorldTransform());
         const btScalar coefficient=object->getFriction();
         if(!std::isfinite(double(coefficient))||coefficient<0) { fail("GPU XPBD friction must be finite and nonnegative");return; }
-        friction.push_back(float(coefficient));appendKey(key,friction.back());
+        friction.push_back(double(coefficient));appendKey(key,friction.back());
         shapeKey(key,object->getCollisionShape());
         if(!object->isStaticObject()&&std::find(bodies.begin(),bodies.end(),object)==bodies.end())
             { fail("GPU XPBD moving rigid obstacles are not implemented");return; }
     }
-    const float margin=float(m_contactDiscoveryPadding>=0?btMax(btScalar(.0001),m_contactDiscoveryPadding*units):btScalar(.1));
+    const double margin=double(m_contactDiscoveryPadding>=0?btMax(btScalar(.0001),m_contactDiscoveryPadding*units):btScalar(.1));
     appendKey(key,margin);
     if(cache.key!=key)
     {
@@ -500,7 +500,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     {
         auto* first=m_collisionObjects[a];auto* second=m_collisionObjects[b];
         const auto* pa=first->getBroadphaseHandle();const auto* pb=second->getBroadphaseHandle();
-        if(!pa||!pb||!(pa->m_collisionFilterGroup&pb->m_collisionFilterMask)||!(pb->m_collisionFilterGroup&pa->m_collisionFilterMask)||
+        if(!first->hasContactResponse()||!second->hasContactResponse()||!pa||!pb||!(pa->m_collisionFilterGroup&pb->m_collisionFilterMask)||!(pb->m_collisionFilterGroup&pa->m_collisionFilterMask)||
            !first->checkCollideWith(second)||!second->checkCollideWith(first)) disabled.push_back({a,b});
     }
     if(disabled.size()!=cache.disabled.size()||(!disabled.empty()&&std::memcmp(disabled.data(),cache.disabled.data(),disabled.size()*sizeof(disabled[0]))!=0))
@@ -508,14 +508,14 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         if(!cache.checked(api->disabledPairs(state,int(disabled.size()),disabled.data()))) { fail(cache.error);return; }
         cache.disabled=disabled;
     }
-    btGpuXpbdStep config={float(timeStep),m_gpuXpbdTgsSubsteps,{0,0,0},0,0,m_gpuXpbdTgsIterations,0,0,1};
+    btGpuXpbdStep config={double(timeStep),m_gpuXpbdTgsSubsteps,{0,0,0},0,0,m_gpuXpbdTgsIterations,0,0,1};
     if(m_gpuXpbdTgsSettlingBody)
     {
         auto found=std::find(bodies.begin(),bodies.end(),m_gpuXpbdTgsSettlingBody);
         if(found==bodies.end()) { fail("GPU XPBD settling body is no longer available");return; }
         config.settlingBegin=offsets[found-bodies.begin()];
         config.settlingEnd=config.settlingBegin+m_gpuXpbdTgsSettlingBody->m_nodes.size();
-        config.settlingSpeed=float(m_gpuXpbdTgsSettlingSpeed*units);config.settlingDamping=float(m_gpuXpbdTgsSettlingDamping);
+        config.settlingSpeed=double(m_gpuXpbdTgsSettlingSpeed*units);config.settlingDamping=double(m_gpuXpbdTgsSettlingDamping);
     }
     if(!cache.checked(api->targets(state,int(targets.size()),targets.data()))) { fail(cache.error);return; }
     cache.hasTargets=!targets.empty();
@@ -537,6 +537,9 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
             auto& node=body->m_nodes[n];const auto& result=nodes[offsets[b]+n];
             node.m_x=bulletVector(result.position,units)+cache.origin;node.m_q=node.m_x;
             node.m_v=bulletVector(result.velocity,units);node.m_vn=node.m_v;node.m_splitv.setZero();node.m_f.setZero();
+            auto& accepted=cache.accepted[offsets[b]+n];
+            accepted.position=gpuVector(node.m_x-cache.origin,units);
+            accepted.velocity=gpuVector(accepted.inverseMass>0?node.m_v:btVector3(0,0,0),units);
         }
         // Only the host display and broadphase mirror need refreshing here.
         body->updateNormals();body->updateBounds();updateSingleAabb(body);
