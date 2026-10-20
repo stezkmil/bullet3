@@ -58,11 +58,23 @@ __device__ void constrain(const Node* p,M tensor,M rest,float C,float compliance
     float dl=(-C-damping*rate)/denominator;
     for(int j=0;j<4;++j) correction[j]=correction[j]+grad[j]*(dl*p[j].w);
 }
-extern "C" __global__ void predict(Node* nodes,const V* force,V* accumulated,int count,float dt,V gravity,float forceDt)
+struct Spring { int node;V target;float stiffness,damping,maxForce; };
+extern "C" __global__ void predict(Node* nodes,const V* force,V* accumulated,int count,float dt,V gravity,float forceDt,
+    const Spring* springs,int springCount)
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;
     Node p=nodes[i];if(p.w==0) return;
     p.v=(p.v+force[i]*(p.w*forceDt)+gravity*dt)*fmaxf(0.f,1-p.damping*dt);
+    for(int j=0;j<springCount;++j) if(springs[j].node==i)
+    {
+        Spring s=springs[j];
+        // Compliant attachment: backward-Euler spring and isotropic damping, capped elastic force.
+        float a=1.f+dt*p.w*s.damping;
+        V elastic=((s.target-p.p)*a-p.v*dt)*(s.stiffness/(a+dt*dt*p.w*s.stiffness));
+        float length=sqrtf(dot(elastic,elastic));
+        if(length>s.maxForce) elastic=elastic*(s.maxForce/length);
+        p.v=(p.v+elastic*(dt*p.w))*(1.f/a);
+    }
     V dx=p.v*dt;p.p=p.p+dx;accumulated[i]=accumulated[i]+dx;nodes[i]=p;
 }
 __device__ void solveTet(Node* nodes,const Tet* tets,Q* rotations,int i,float dt,int first)
@@ -182,8 +194,8 @@ __device__ V closestWeights(V p,V a,V b,V c)
     float inv=1.f/(va+vb+vc);return {1-(vb+vc)*inv,vb*inv,vc*inv};
 }
 __device__ void add(V* p,V v) { atomicAdd(&p->x,v.x);atomicAdd(&p->y,v.y);atomicAdd(&p->z,v.z); }
-struct Contact { int vertex,triangle;V bary,normal;int triangleA;V baryA;Map simA,simB;float bias;int prepared;float impulse;int state; };
-static_assert(sizeof(Contact)==160,"Contact allocation size");
+struct Contact { int vertex,triangle;V bary,normal;int triangleA;V baryA;Map simA,simB;float bias;int prepared;float impulse;int state;V tangentImpulse;float friction; };
+static_assert(sizeof(Contact)==176,"Contact allocation size");
 __device__ V mappedPosition(const Node* nodes,Map m)
 {
     V p=m.offset;for(int j=0;j<4;++j) if(m.nodes[j]>=0) p=p+nodes[m.nodes[j]].p*m.weights[j];return p;
@@ -276,7 +288,9 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
         for(int k=0;k<3;++k) for(int j=0;j<4;++j) if(maps[t.v[k]].nodes[j]>=0 && nodes[maps[t.v[k]].nodes[j]].w>0) dynamic=true;
         if(!dynamic) continue;
         // Behind a one-sided face, edge distance must not introduce a tangential attraction.
-        if(d2>1.e-16f && signedDistance>0) normal=delta*(1.f/signedDistance);
+        // Interior witnesses use the face normal; rounded barycentrics otherwise create false friction.
+        if(d2>1.e-16f && signedDistance>0 && fminf(bary.x,fminf(bary.y,bary.z))<=1.e-6f)
+            normal=delta*(1.f/signedDistance);
         int slot=atomicAdd(contactCount,1);
         if(slot>=capacity) { atomicExch(failure,4);continue; }
         cache[slot]={vertex,node.triangle,bary,normal,-1,{1,0,0}};
@@ -517,7 +531,8 @@ __device__ bool remapContactPoint(V point,int body,const Node* nodes,const Tet* 
     return found;
 }
 extern "C" __global__ void prepareContacts(const Node* nodes,const Tet* tets,const int* tetBodies,int tetCount,
-    const int* offsets,const int* candidates,const V* accumulated,const Map* maps,const Tri* tris,Contact* cache,const int* contactCount,int capacity)
+    const int* offsets,const int* candidates,const V* accumulated,const Map* maps,const Tri* tris,Contact* cache,const int* contactCount,int capacity,
+    const float* friction,int frictionCount)
 {
     int count=min(*contactCount,capacity);
     for(int i=blockIdx.x*blockDim.x+threadIdx.x;i<count;i+=blockDim.x*gridDim.x)
@@ -549,6 +564,9 @@ extern "C" __global__ void prepareContacts(const Node* nodes,const Tet* tets,con
         // Keep the force on the collision triangle's material when nearby elements fold over it.
         c.prepared=a&&b?(materialSupport?2:1):0;
         c.impulse=0;c.state=(!dynamicA||!dynamicB)?1:0;
+        c.tangentImpulse={0,0,0};
+        c.friction=bodyA>=0&&bodyA<frictionCount&&bodyB>=0&&bodyB<frictionCount?
+            fminf(10.f,friction[bodyA]*friction[bodyB]):0.f;
         c.bias=dot(pa-pb,c.normal)-dot((materialSupport?sourceTriangleDelta(c,accumulated,maps,tris):mappedDelta(accumulated,c.simA))-
             mappedDelta(accumulated,c.simB),c.normal);
         cache[i]=c;
@@ -567,7 +585,7 @@ extern "C" __global__ void countContacts(const Node* nodes,const V* accumulated,
             V velocity={0,0,0};for(int j=0;j<used;++j) velocity=velocity+nodes[ids[j]].v*weights[j];
             C=fmaxf(0.f,C)/dt+dot(velocity,c.normal);
         }
-        if(C>=0&&!(c.state&2)) continue;
+        if(C>=0&&!(c.state&2)&&c.impulse<=0) continue;
         if(c.state&1) cache[i].state|=2;
         // PhysX bumpDbRefCountTet ignores barycentric contributions <= 1e-3.
         for(int j=0;j<used;++j) if(fabsf(weights[j])>1.e-3f && nodes[ids[j]].w>0) atomicAdd(references+ids[j],1);
@@ -587,16 +605,30 @@ extern "C" __global__ void solveContacts(const Node* nodes,const V* accumulated,
             // Match PhysX: remove only velocity that closes the remaining gap within dt.
             C=fmaxf(0.f,C)/dt+dot(velocity,c.normal);
         }
-        if(C>=0&&!(c.state&2)) continue;
+        if(C>=0&&!(c.state&2)&&c.impulse<=0) continue;
         for(int j=0;j<used;++j) denominator+=weights[j]*weights[j]*nodes[ids[j]].w*references[ids[j]];
         if(denominator<1.e-15f) continue;
         float velocityError=velocityOnly?C:C/dt;
         float impulse=fmaxf(-velocityError/denominator,-c.impulse);
         cache[i].impulse=c.impulse+impulse;
-        float dl=velocityOnly?impulse:impulse*dt;
+        V deltaImpulse=c.normal*impulse;
+        if(c.friction>0)
+        {
+            // PhysX TGS: oppose contact drift, with one Coulomb budget across all iterations.
+            V relative={0,0,0};
+            for(int j=0;j<used;++j)
+                relative=relative+(velocityOnly?nodes[ids[j]].v:accumulated[ids[j]]*(1.f/dt))*weights[j];
+            V tangent=relative-c.normal*dot(relative,c.normal);
+            V target=c.tangentImpulse-tangent*(1.f/denominator);
+            float limit=c.friction*cache[i].impulse,length=sqrtf(dot(target,target));
+            if(length>limit) target=target*(limit/length);
+            deltaImpulse=deltaImpulse+target-c.tangentImpulse;
+            cache[i].tangentImpulse=target;
+        }
+        V correction=deltaImpulse*(velocityOnly?1.f:dt);
         // Refcount-inflated scatter divided by max(refcount,1) at application:
         // positive counts cancel, but an unreferenced node receives no impulse.
-        for(int j=0;j<used;++j) if(references[ids[j]]>0) add(corrections+ids[j],c.normal*(dl*weights[j]*nodes[ids[j]].w));
+        for(int j=0;j<used;++j) if(references[ids[j]]>0) add(corrections+ids[j],correction*(weights[j]*nodes[ids[j]].w));
     }
 }
 extern "C" __global__ void applyContactVelocities(Node* nodes,const V* corrections,int count)

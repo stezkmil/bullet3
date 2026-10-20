@@ -15,6 +15,94 @@ int failures=0;
 void require(bool value,const char* label) { if(!value) { std::fprintf(stderr,"FAIL: %s\n",label);++failures; } }
 float distance(btGpuXpbdVec a,btGpuXpbdVec b)
 { return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z)); }
+void testFriction(const btGpuXpbdTgsApi* api,void* world)
+{
+    auto run=[&](float mu,float speed,float height,float push,int velocityIterations,bool movingGround)
+    {
+        btGpuXpbdNode nodes[]={{{0,height,0},1,{speed,0,0},0},
+            {{-20,0,-20},movingGround?1.f:0.f,{0,0,0},0},
+            {{0,0,20},movingGround?1.f:0.f,{0,0,0},0},
+            {{20,0,-20},movingGround?1.f:0.f,{0,0,0},0}};
+        btGpuXpbdSurfaceVertex maps[4];
+        for(int i=0;i<4;++i)
+            maps[i]=i&&!movingGround?btGpuXpbdSurfaceVertex{{-1,-1,-1,-1},{0,0,0,0},nodes[i].position,1}:
+                btGpuXpbdSurfaceVertex{{i,-1,-1,-1},{1,0,0,0},{0,0,0},i?1:0};
+        btGpuXpbdSurfaceTriangle face={{1,2,3}};
+        require(api->upload(world,4,nodes,0,nullptr)!=0,"friction nodes");
+        require(api->surface(world,4,maps,1,&face,.1f,0)!=0,"friction surface");
+        float coefficients[]={mu,1};
+        require(api->friction(world,2,coefficients)!=0,"friction coefficients");
+        btGpuXpbdVec forces[]={{push,-10,0},{0,0,0},{0,0,0},{0,0,0}};
+        require(api->forces(world,4,forces)!=0,"friction load");
+        btGpuXpbdStep step={.001f,1,{0,0,0},0,0,4,0,0,velocityIterations};
+        for(int i=0;i<100;++i) require(api->step(world,&step)!=0,"friction step");
+        require(api->download(world,4,nodes)!=0,"friction result");
+        if(movingGround)
+        {
+            btGpuXpbdVec momentum={0,0,0};
+            for(auto& n:nodes) { momentum.x+=n.velocity.x;momentum.y+=n.velocity.y;momentum.z+=n.velocity.z; }
+            require(distance(momentum,{speed,-1,0})<2.e-4f,"friction preserves two-body momentum");
+            require(nodes[1].velocity.x>0,"friction transfers tangent momentum to second body");
+        }
+        return nodes[0];
+    };
+    auto free=run(0,1,0,0,1,false);
+    std::printf("friction free vx=%g x=%g\n",free.velocity.x,free.position.x);
+    require(std::fabs(free.velocity.x-1)<1.e-5f,"zero friction retains tangent velocity");
+    auto sliding=run(.5f,1,0,0,1,false);
+    std::printf("friction sliding vx=%g x=%g\n",sliding.velocity.x,sliding.position.x);
+    require(std::fabs(sliding.velocity.x-.5f)<.025f,"sliding deceleration matches Coulomb friction");
+    auto manyPasses=run(.5f,1,0,0,4,false);
+    require(std::fabs(manyPasses.velocity.x-sliding.velocity.x)<.01f,"velocity iterations share one friction budget");
+    auto sticking=run(.5f,0,0,2,1,false);
+    require(std::fabs(sticking.velocity.x)<.002f&&std::fabs(sticking.position.x)<.0002f,"sub-limit lateral load sticks");
+    float noFriction[]={0,1};
+    require(api->friction(world,2,noFriction)!=0,"friction changes without mesh upload");
+    btGpuXpbdStep changedStep={.001f,1,{0,0,0},0,0,4,0,0,1};
+    require(api->step(world,&changedStep)!=0,"step after friction change");
+    btGpuXpbdNode changed[4];api->download(world,4,changed);
+    require(changed[0].velocity.x>.0015f,"disabling friction immediately releases sticking");
+    auto airborne=run(.5f,1,1,0,1,false);
+    require(std::fabs(airborne.velocity.x-1)<1.e-5f,"friction does not act across open gaps");
+    run(.5f,1,0,0,1,true);
+    float invalid[]={-1};
+    require(!api->friction(world,1,invalid),"negative friction rejected");
+    invalid[0]=std::numeric_limits<float>::quiet_NaN();
+    require(!api->friction(world,1,invalid),"nonfinite friction rejected");
+}
+void testMouseSprings(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode node={{0,0,0},1,{0,0,0},0};
+    require(api->upload(world,1,&node,0,nullptr)!=0,"mouse spring node");
+    btGpuXpbdSpring spring={0,{1,0,0},100,10,1000};
+    btGpuXpbdStep step={.1f,1,{0,0,0},0,0,1};
+    require(api->springs(world,1,&spring)!=0,"mouse spring upload");
+    require(api->step(world,&step)!=0,"mouse spring step");
+    api->download(world,1,&node);
+    require(std::fabs(node.velocity.x-10.f/3)<1.e-5f,"implicit spring matches analytic damped step");
+    require(std::fabs(node.position.x-1.f/3)<1.e-5f,"spring moves picked node");
+    spring.target={-1,0,0};
+    require(api->springs(world,1,&spring)!=0,"mouse target changes without graph rebuild");
+    require(api->step(world,&step)!=0,"moved target step");
+    api->download(world,1,&node);
+    require(node.velocity.x<0,"picked node follows moved target");
+    require(api->springs(world,0,nullptr)!=0,"mouse release");
+    float releaseVelocity=node.velocity.x;
+    require(api->step(world,&step)!=0,"released node step");api->download(world,1,&node);
+    require(std::fabs(node.velocity.x-releaseVelocity)<1.e-6f,"release preserves velocity");
+    node={{0,0,0},1,{0,0,0},0};
+    api->updateNodes(world,1,&node);
+    spring={0,{100,0,0},1.e12f,0,.5f};
+    require(api->springs(world,1,&spring)!=0,"force-limited spring");
+    require(api->step(world,&step)!=0,"stiff capped spring remains finite");api->download(world,1,&node);
+    require(std::fabs(node.velocity.x-.05f)<1.e-6f,"elastic mouse force respects per-node cap");
+    node.inverseMass=0;api->updateNodes(world,1,&node);
+    auto pinned=node.position;
+    api->step(world,&step);api->download(world,1,&node);
+    require(distance(node.position,pinned)==0,"mouse spring does not move a fixed node");
+    spring.node=1;require(!api->springs(world,1,&spring),"invalid picked node rejected");
+    spring.node=0;spring.damping=-1;require(!api->springs(world,1,&spring),"invalid picking damping rejected");
+}
 }
 int main()
 {
@@ -23,9 +111,11 @@ int main()
     if(!backend.ready()) { std::fprintf(stderr,"%s\n",backend.error().c_str());return 1; }
     const auto* api=backend.api();void* world=backend.state();
 #else
-    const auto* api=btGetGpuXpbdTgsApi(3);void* world=api->create();
+    const auto* api=btGetGpuXpbdTgsApi(5);void* world=api->create();
 #endif
     if(!world) { std::fprintf(stderr,"%s\n",api->error(nullptr));return 1; }
+    testFriction(api,world);
+    testMouseSprings(api,world);
     btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1.f/6,10000,.4f,.01f};
     std::vector<btGpuXpbdNode> rest={{{0,0,0},4,{0,0,0},0},{{1,0,0},4,{0,0,0},0},{{0,1,0},4,{0,0,0},0},{{0,0,1},4,{0,0,0},0}};
     btGpuXpbdStep cfg={.001f,10,{0,0,0},0,0,1};

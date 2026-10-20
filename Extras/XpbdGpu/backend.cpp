@@ -1,6 +1,5 @@
 #include "btGpuXpbdTgsApi.h"
 #include "xpbd_ptx.h"
-#include "xpbd_fast_ptx.h"
 #include <cuda.h>
 #include <algorithm>
 #include <cmath>
@@ -27,8 +26,6 @@ struct State
     CUfunction initializeCopies=nullptr,averageCopies=nullptr;
     CUdeviceptr copies=0,copyActive=0,solverTets=0;
     int copyLanes=0;
-    bool individualBatches=std::getenv("BT_XPBD_INDIVIDUAL_BATCHES")!=nullptr;
-    bool disableContacts=std::getenv("BT_XPBD_NO_CONTACTS")!=nullptr;
     CUfunction skin=nullptr,refit=nullptr,discoverContacts=nullptr,countContacts=nullptr,solveContacts=nullptr,applyContacts=nullptr,embed=nullptr;
     CUfunction startDrive=nullptr,drive=nullptr,releaseDrive=nullptr;
     CUfunction applyContactVelocities=nullptr;
@@ -45,10 +42,14 @@ struct State
     CUdeviceptr targets=0,driveStart=0,inverseMasses=0;
     std::vector<int> targetIds;
     int targetCount=0;
+    CUdeviceptr springs=0;
+    int springCount=0;
     CUdeviceptr nodes=0,tets=0,rotations=0,forces=0,failure=0;
     CUdeviceptr acceptedNodes=0,acceptedRotations=0;
     CUdeviceptr disabledPairs=0;
     int disabledPairCount=0;
+    CUdeviceptr friction=0;
+    int frictionCount=0;
     CUdeviceptr accumulated=0;
     CUdeviceptr maps=0,positions=0,triangles=0,tree=0,leaves=0,boxes=0,ready=0,corrections=0;
     CUdeviceptr contactCache=0,contactCount=0,references=0;
@@ -67,7 +68,8 @@ struct State
     void clear()
     {
         clearSurface();
-        for(auto p:{nodes,tets,rotations,forces,failure,targets,driveStart,inverseMasses,copies,copyActive,solverTets,accumulated,acceptedNodes,acceptedRotations}) if(p) cuMemFree(p);
+        for(auto p:{nodes,tets,rotations,forces,failure,targets,driveStart,inverseMasses,copies,copyActive,solverTets,accumulated,acceptedNodes,acceptedRotations,springs}) if(p) cuMemFree(p);
+        springs=0;springCount=0;
         acceptedNodes=acceptedRotations=0;
         accumulated=0;
         copies=copyActive=solverTets=0;copyLanes=0;
@@ -78,6 +80,7 @@ struct State
     void clearSurface()
     {
         clearGraph();
+        if(friction) cuMemFree(friction);friction=0;frictionCount=0;
         if(disabledPairs) cuMemFree(disabledPairs);disabledPairs=0;disabledPairCount=0;
         if(incident) cuMemFree(incident);incident=0;
         if(tetBodies) cuMemFree(tetBodies);tetBodies=0;
@@ -126,7 +129,7 @@ void* create()
     if(s->check(cuInit(0)) && s->check(cuDevicePrimaryCtxRetain(&s->context,0)))
     {
         Current current(*s);
-        const char* ptx=std::getenv("BT_XPBD_FAST_MATH")?xpbdFastPtx:xpbdPtx;
+        const char* ptx=xpbdPtx;
         if(current.valid && s->check(cuStreamCreate(&s->stream,CU_STREAM_DEFAULT)) && s->check(cuModuleLoadData(&s->module,ptx)) &&
            s->check(cuModuleGetFunction(&s->predict,s->module,"predict")) &&
            s->check(cuModuleGetFunction(&s->solve,s->module,"solveTets")) &&
@@ -180,15 +183,15 @@ int upload(void* value,int count,const btGpuXpbdNode* nodes,int tetCount,const b
     }
     s.clear();s.batches.push_back(0);
     std::vector<btGpuXpbdTet> ordered;ordered.reserve(tetCount);
-    s.copyLanes=s.individualBatches?1:int((colors.size()+7)/8);
+    s.copyLanes=int((colors.size()+7)/8);
     std::vector<int> active(size_t(count)*s.copyLanes,0);
     std::vector<btGpuXpbdTet> work;
-    const int passes=s.individualBatches?int(colors.size()):8;
+    const int passes=8;
     for(int pass=0;pass<passes;++pass)
     {
         for(int color=pass;color<int(colors.size());color+=passes)
         {
-            int lane=s.individualBatches?0:color/8;
+            int lane=color/8;
             for(int i:colors[color])
             {
                 ordered.push_back(tets[i]);auto tet=tets[i];
@@ -259,6 +262,21 @@ int disabledPairs(void* value,int count,const btGpuXpbdDisabledPair* pairs)
     s.clearGraph();
     if(s.disabledPairs) cuMemFree(s.disabledPairs);
     s.disabledPairs=replacement;s.disabledPairCount=int(keys.size());return 1;
+}
+int friction(void* value,int count,const float* coefficients)
+{
+    auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    if(count<0||(count&&!coefficients)) { s.error="Invalid friction table";return 0; }
+    for(int i=0;i<count;++i) if(!std::isfinite(coefficients[i])||coefficients[i]<0)
+        { s.error="Friction must be finite and nonnegative";return 0; }
+    CUdeviceptr replacement=0;
+    if(!s.copy(replacement,coefficients,count*sizeof(float)))
+    {
+        if(replacement) cuMemFree(replacement);return 0;
+    }
+    s.clearGraph();
+    if(s.friction) cuMemFree(s.friction);
+    s.friction=replacement;s.frictionCount=count;return 1;
 }
 int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,int triangleCount,
     const btGpuXpbdSurfaceTriangle* triangles,float margin,float clearance)
@@ -389,7 +407,7 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
        !s.copy(s.leaves,leaves.data(),leaves.size()*sizeof(int))||!s.copy(s.boxes,boxes.data(),boxes.size()*sizeof(Box))||
        !s.copy(s.ready,ready.data(),ready.size()*sizeof(int))||!s.copy(s.corrections,corrections.data(),corrections.size()*sizeof(corrections[0])))
     { s.clearSurface();return 0; }
-    if(!s.check(cuMemAlloc(&s.contactCache,s.contactCapacity*160))||!s.check(cuMemAlloc(&s.contactCount,sizeof(int)))||!s.check(cuMemAlloc(&s.references,s.count*sizeof(int))))
+    if(!s.check(cuMemAlloc(&s.contactCache,s.contactCapacity*176))||!s.check(cuMemAlloc(&s.contactCount,sizeof(int)))||!s.check(cuMemAlloc(&s.references,s.count*sizeof(int))))
     { s.clearSurface();return 0; }
     s.vertexCount=vertexCount;s.triangleCount=triangleCount;s.treeCount=int(tree.size());s.margin=margin;s.clearance=clearance;return 1;
 }
@@ -442,6 +460,29 @@ int targets(void* value,int count,const btGpuXpbdTarget* values)
     }
     return !count||s.check(cuMemcpyHtoD(s.targets,values,count*sizeof(*values)));
 }
+int springs(void* value,int count,const btGpuXpbdSpring* values)
+{
+    auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    if(count<0||(count&&!values)) { s.error="Invalid mouse spring array";return 0; }
+    for(int i=0;i<count;++i)
+    {
+        const auto& v=values[i];
+        if(v.node<0||v.node>=s.count||!finite(v.target)||!std::isfinite(v.stiffness)||v.stiffness<0||
+           !std::isfinite(v.damping)||v.damping<0||!std::isfinite(v.maxForce)||v.maxForce<0)
+            { s.error="Invalid mouse spring";return 0; }
+    }
+    if(count!=s.springCount)
+    {
+        CUdeviceptr replacement=0;
+        if(!s.copy(replacement,values,count*sizeof(*values)))
+        {
+            if(replacement) cuMemFree(replacement);return 0;
+        }
+        s.clearGraph();if(s.springs) cuMemFree(s.springs);
+        s.springs=replacement;s.springCount=count;return 1;
+    }
+    return !count||s.check(cuMemcpyHtoD(s.springs,values,count*sizeof(*values)));
+}
 bool enqueueStep(State& s,const btGpuXpbdStep* config)
 {
     float externalDt=config->dt/config->substeps,dt=externalDt/config->iterations;auto gravity=config->gravity;
@@ -455,7 +496,7 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
         float forceDt=k%config->iterations==0?externalDt:0;
         if(k%config->iterations==0 && !s.check(cuMemsetD32Async(s.accumulated,0,s.count*3,s.stream))) return 0;
         // PhysX TGS prepares contacts before integrating the first increment.
-        if(s.vertexCount&&!s.disableContacts&&k%config->iterations==0)
+        if(s.vertexCount&&k%config->iterations==0)
         {
             if(!updateSurface(s)||!s.check(cuMemsetD32Async(s.ready,0,s.treeCount,s.stream))||!s.check(cuMemsetD32Async(s.contactCount,0,1,s.stream))) return 0;
             void* refitArgs[]={&s.positions,&s.triangles,&s.tree,&s.leaves,&s.boxes,&s.ready,&s.triangleCount};
@@ -469,14 +510,14 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
             void* refineArgs[]={&s.nodes,&s.maps,&s.positions,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.margin,&s.failure};
             if(!s.check(cuLaunchKernel(s.refineTriangleContacts,1024,1,1,32,4,1,0,s.stream,refineArgs,nullptr))) return 0;
             int tetCount=s.batches.back();
-            void* prepArgs[]={&s.nodes,&s.tets,&s.tetBodies,&tetCount,&s.remapOffsets,&s.remapTets,&s.accumulated,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity};
+            void* prepArgs[]={&s.nodes,&s.tets,&s.tetBodies,&tetCount,&s.remapOffsets,&s.remapTets,&s.accumulated,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.friction,&s.frictionCount};
             if(!s.launch(s.prepareContacts,16384,prepArgs)) return 0;
         }
         float fraction=float(k+1)/float(config->substeps*config->iterations);
         float increment=1.f/float(config->substeps*config->iterations);
         void* driveArgs[]={&s.nodes,&s.targets,&s.driveStart,&s.accumulated,&s.targetCount,&fraction,&increment};
         if(!s.launch(s.drive,s.targetCount,driveArgs)) return 0;
-        void* predictArgs[]={&s.nodes,&s.forces,&s.accumulated,&s.count,&dt,&gravity,&forceDt};
+        void* predictArgs[]={&s.nodes,&s.forces,&s.accumulated,&s.count,&dt,&gravity,&forceDt,&s.springs,&s.springCount};
         if(!s.launch(s.predict,s.count,predictArgs)) return 0;
         void* copyArgs[]={&s.nodes,&s.copies,&s.count,&s.copyLanes};
         if(!s.launch(s.initializeCopies,s.count*s.copyLanes,copyArgs)) return 0;
@@ -488,7 +529,7 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
         }
         void* averageArgs[]={&s.nodes,&s.copies,&s.copyActive,&s.accumulated,&s.count,&s.copyLanes,&dt};
         if(!s.launch(s.averageCopies,s.count,averageArgs)) return 0;
-        if(s.vertexCount&&!s.disableContacts)
+        if(s.vertexCount)
         {
             if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*3,s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
             int velocityOnly=0;
@@ -501,7 +542,7 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
         }
         if((k+1)%config->iterations==0)
         {
-            for(int v=0;v<config->velocityIterations && s.vertexCount&&!s.disableContacts;++v)
+            for(int v=0;v<config->velocityIterations && s.vertexCount;++v)
             {
                 if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*3,s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
                 int velocityOnly=1;
@@ -558,9 +599,9 @@ int download(void* value,int count,btGpuXpbdNode* nodes)
     return s.check(cuMemcpyDtoH(nodes,s.nodes,count*sizeof(*nodes)));
 }
 const char* error(void* value) { return value?static_cast<State*>(value)->error.c_str():creationError.c_str(); }
-const btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes};
+const btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs};
 }
 extern "C" __declspec(dllexport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int version)
 {
-    return version>=1&&version<=3?&api:nullptr;
+    return version>=1&&version<=5?&api:nullptr;
 }

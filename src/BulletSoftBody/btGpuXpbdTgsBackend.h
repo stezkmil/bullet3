@@ -54,9 +54,9 @@ public:
             return false;
         }
         auto get = reinterpret_cast<btGpuXpbdTgsGetApi>(GetProcAddress(m_library, "btGetGpuXpbdTgsApi"));
-        m_api = get ? get(3) : nullptr;
+        m_api = get ? get(5) : nullptr;
         if (!m_api || !m_api->create || !m_api->destroy || !m_api->upload || !m_api->forces || !m_api->step ||
-            !m_api->download || !m_api->error || !m_api->surface || !m_api->surfacePositions || !m_api->embed || !m_api->targets || !m_api->disabledPairs || !m_api->updateNodes)
+            !m_api->download || !m_api->error || !m_api->surface || !m_api->surfacePositions || !m_api->embed || !m_api->targets || !m_api->disabledPairs || !m_api->updateNodes || !m_api->friction || !m_api->springs)
         {
             m_api = nullptr;
             m_error = "Incompatible GPU XPBD TGS backend";

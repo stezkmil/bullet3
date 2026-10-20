@@ -32,13 +32,11 @@ else()
     set(xpbd_ptx_dependency XpbdCompilePtx)
 endif()
 set(ptx_header "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/xpbd_ptx.h")
-set(fast_ptx_header "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/xpbd_fast_ptx.h")
-add_custom_command(OUTPUT "${ptx_header}" "${fast_ptx_header}"
+add_custom_command(OUTPUT "${ptx_header}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
     COMMAND "${xpbd_ptx_command}" "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu" "${ptx_header}"
-    COMMAND "${xpbd_ptx_command}" "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu" "${fast_ptx_header}" --fast-math
     DEPENDS ${xpbd_ptx_dependency} kernels.cu physx_gjk.cuh VERBATIM)
-add_library(BulletGpuXpbdTgs SHARED backend.cpp "${ptx_header}" "${fast_ptx_header}")
+add_library(BulletGpuXpbdTgs SHARED backend.cpp "${ptx_header}")
 target_include_directories(BulletGpuXpbdTgs PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>" "../../src/BulletSoftBody")
 target_link_libraries(BulletGpuXpbdTgs PRIVATE CUDA::cuda_driver)
 target_compile_features(BulletGpuXpbdTgs PRIVATE cxx_std_17)

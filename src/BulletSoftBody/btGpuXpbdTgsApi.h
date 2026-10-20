@@ -36,6 +36,12 @@ struct btGpuXpbdSurfaceVertex
 struct btGpuXpbdSurfaceTriangle { int vertices[3]; };
 struct btGpuXpbdTarget { int node;btGpuXpbdVec position; };
 struct btGpuXpbdDisabledPair { int bodyA, bodyB; };
+struct btGpuXpbdSpring
+{
+    int node;
+    btGpuXpbdVec target;
+    float stiffness,damping,maxForce;
+};
 struct btGpuXpbdTgsApi
 {
     void* (*create)();
@@ -57,6 +63,12 @@ struct btGpuXpbdTgsApi
     // ABI 3: replace node state without changing rest geometry, topology or filters.
     // Release kinematic targets before replacing their node state.
     int (*updateNodes)(void*, int, const btGpuXpbdNode*);
+    // ABI 4: friction indexed by surface body ID; missing entries are frictionless.
+    // Surface/mesh uploads clear the table. Pair coefficients use Bullet's product rule.
+    int (*friction)(void*, int, const float*);
+    // ABI 5: compliant mouse attachments; count=0 releases all springs.
+    // Target positions use the same coordinates as nodes; stiffness/damping are kg/s^2 and kg/s.
+    int (*springs)(void*, int, const btGpuXpbdSpring*);
 };
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);
 static_assert(sizeof(btGpuXpbdNode)==32 && sizeof(btGpuXpbdTet)==68 && sizeof(btGpuXpbdStep)==44, "GPU XPBD ABI mismatch");
