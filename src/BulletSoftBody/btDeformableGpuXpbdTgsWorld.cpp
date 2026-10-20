@@ -15,6 +15,9 @@
 #include <cstring>
 #include <map>
 #include <queue>
+#include <cfloat>
+#include "BulletCollision/BroadphaseCollision/btDbvt.h"
+#include "BulletCollision/NarrowPhaseCollision/btVoronoiSimplexSolver.h"
 
 namespace
 {
@@ -170,6 +173,60 @@ struct btDeformableGpuXpbdTgsWorld
         return true;
     }
 
+    void boundarySamples(btSoftBody* soft,int offset,int body,const std::vector<btGpuXpbdNode>& rest,int firstTriangle)
+    {
+        if(firstTriangle>=int(triangles.size())) return;
+        std::map<std::array<int,3>,int> faces;
+        for(int t=0;t<soft->m_tetras.size();++t) for(int opposite=0;opposite<4;++opposite)
+        {
+            std::array<int,3> ids;int k=0;
+            for(int j=0;j<4;++j) if(j!=opposite) ids[k++]=offset+int(soft->m_tetras[t].m_n[j]-&soft->m_nodes[0]);
+            std::sort(ids.begin(),ids.end());++faces[ids];
+        }
+        std::vector<bool> boundaryNodes(soft->m_nodes.size(),false),represented(soft->m_nodes.size(),false);
+        for(const auto& face:faces) if(face.second==1) for(int n:face.first) boundaryNodes[n-offset]=true;
+        btVector3 low=bulletVector(rest[offset].position,1),high=low;
+        for(int n=0;n<soft->m_nodes.size();++n) { auto p=bulletVector(rest[offset+n].position,1);low.setMin(p);high.setMax(p); }
+        const btScalar tolerance=32*FLT_EPSILON*(high-low).length();
+        std::vector<std::array<btVector3,3>> geometry(triangles.size()-firstTriangle);
+        btDbvt tree;
+        for(int i=firstTriangle;i<int(triangles.size());++i)
+        {
+            auto& points=geometry[i-firstTriangle];
+            for(int c=0;c<3;++c)
+            {
+                const auto& v=vertices[triangles[i].vertices[c]];points[c]=bulletVector(v.offset,1);
+                for(int j=0;j<4;++j) if(v.nodes[j]>=0) points[c]+=bulletVector(rest[v.nodes[j]].position,1)*v.weights[j];
+                for(int j=0;j<4;++j) if(v.nodes[j]>=offset&&v.nodes[j]<offset+soft->m_nodes.size()&&
+                    (points[c]-bulletVector(rest[v.nodes[j]].position,1)).length2()<=tolerance*tolerance&&v.weights[j]>1-8*FLT_EPSILON)
+                    represented[v.nodes[j]-offset]=true;
+            }
+            btVector3 a=points[0],b=a;for(int j=1;j<3;++j) { a.setMin(points[j]);b.setMax(points[j]); }
+            tree.insert(btDbvtVolume::FromMM(a,b),&points);
+        }
+        struct Query:btDbvt::ICollide
+        {
+            btVector3 point;btScalar tolerance2;bool found=false;btVoronoiSimplexSolver solver;
+            Query(const btVector3& p,btScalar t):point(p),tolerance2(t*t){}
+            void Process(const btDbvtNode* node)
+            {
+                if(found) return;
+                const auto& t=*static_cast<const std::array<btVector3,3>*>(node->data);
+                if((t[1]-t[0]).cross(t[2]-t[0]).length2()==0) return;
+                btSubSimplexClosestResult result;
+                solver.closestPtPointTriangle(point,t[0],t[1],t[2],result);
+                found=(point-result.m_closestPointOnSimplex).length2()<=tolerance2;
+            }
+        };
+        const btVector3 padding(tolerance,tolerance,tolerance);
+        for(int n=0;n<soft->m_nodes.size();++n) if(boundaryNodes[n]&&!represented[n])
+        {
+            auto p=bulletVector(rest[offset+n].position,1);Query query(p,tolerance);
+            tree.collideTV(tree.m_root,btDbvtVolume::FromMM(p-padding,p+padding),query);
+            // Sample only coincident material nodes; the collision mesh still defines the shape.
+            if(query.found) vertices.push_back({{offset+n,-1,-1,-1},{1,0,0,0},{0,0,0},body});
+        }
+    }
     void boundary(btSoftBody* soft,int offset,int body)
     {
         const int first=int(vertices.size());
@@ -416,7 +473,9 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
             {
                 if(shape->getShapeType()!=GIMPACT_SHAPE_PROXYTYPE||static_cast<btGImpactShapeInterface*>(shape)->getGImpactShapeType()!=CONST_GIMPACT_TRIMESH_SHAPE)
                     { fail("GPU XPBD mapped collision surface requires a GImpact triangle mesh");return; }
+                const int firstTriangle=int(cache.triangles.size());
                 if(!cache.mesh(static_cast<btGImpactMeshShape*>(shape),body,offsets[b],body->getWorldTransform(),units,owners[b])) { fail(cache.error);return; }
+                cache.boundarySamples(body,offsets[b],owners[b],rest,firstTriangle);
             }
             else cache.boundary(body,offsets[b],owners[b]);
         }

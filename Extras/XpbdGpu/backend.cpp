@@ -338,6 +338,12 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
     build(0,triangleCount,-1);
     int tetCount=s.batches.back();std::vector<btGpuXpbdTet> tets(tetCount);
     if(tetCount&&!s.check(cuMemcpyDtoH(tets.data(),s.tets,tets.size()*sizeof(tets[0])))) return 0;
+    std::vector<bool> volumeNode(s.count,false);
+    for(const auto& tet:tets) for(int n:tet.nodes) volumeNode[n]=true;
+    for(int i=0;i<vertexCount;++i) if(!incident[i]&&vertices[i].nodes[0]>=0&&
+        vertices[i].nodes[1]<0&&vertices[i].nodes[2]<0&&vertices[i].nodes[3]<0&&vertices[i].weights[0]==1&&
+        vertices[i].offset.x==0&&vertices[i].offset.y==0&&vertices[i].offset.z==0&&volumeNode[vertices[i].nodes[0]])
+        incident[i]=2; // Material samples use the same face-only contact rule as mesh vertices.
     std::vector<int> parent(s.count),componentBody(s.count,-1),tetBodies(tetCount,-1);std::iota(parent.begin(),parent.end(),0);
     auto root=[&](int n) { while(parent[n]!=n) { parent[n]=parent[parent[n]];n=parent[n]; }return n; };
     for(const auto& t:tets) for(int j=1;j<4;++j) parent[root(t.nodes[j])]=root(t.nodes[0]);
@@ -519,7 +525,7 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
         if(!s.launch(s.drive,s.targetCount,driveArgs)) return 0;
         void* predictArgs[]={&s.nodes,&s.forces,&s.accumulated,&s.count,&dt,&gravity,&forceDt,&s.springs,&s.springCount};
         if(!s.launch(s.predict,s.count,predictArgs)) return 0;
-        void* copyArgs[]={&s.nodes,&s.copies,&s.count,&s.copyLanes};
+        void* copyArgs[]={&s.nodes,&s.copies,&s.copyActive,&s.count,&s.copyLanes};
         if(!s.launch(s.initializeCopies,s.count*s.copyLanes,copyArgs)) return 0;
         for(size_t c=1;c<s.batches.size();++c)
         {

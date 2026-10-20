@@ -105,9 +105,12 @@ extern "C" __global__ void solveTets(Node* nodes,const Tet* tets,Q* rotations,in
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i<count) solveTet(nodes,tets,rotations,begin+i,dt,first);
 }
-extern "C" __global__ void initializeCopies(const Node* nodes,Node* copies,int count,int lanes)
+extern "C" __global__ void initializeCopies(const Node* nodes,Node* copies,const int* active,int count,int lanes)
 {
-    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i<count*lanes) copies[i]=nodes[i%count];
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count*lanes) return;
+    int node=i%count,used=0;for(int lane=0;lane<lanes;++lane) used+=active[lane*count+node];
+    // Split physical mass between active copies so their averaged impulses conserve momentum.
+    Node copy=nodes[node];copy.w*=used;copies[i]=copy;
 }
 extern "C" __global__ void averageCopies(Node* nodes,const Node* copies,const int* active,V* accumulated,int count,int lanes,float dt)
 {
@@ -264,8 +267,10 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
     const Bvh* tree,const Box* boxes,Contact* cache,int* contactCount,int capacity,int count,float margin,int* failure,const int* incident,
     const unsigned long long* disabledPairs,int disabledPairCount)
 {
-    int vertex=blockIdx.x*blockDim.x+threadIdx.x;if(vertex>=count||incident[vertex]) return;
+    int vertex=blockIdx.x*blockDim.x+threadIdx.x;if(vertex>=count) return;
     Map point=maps[vertex];V p=positions[vertex];
+    bool movingPoint=false;for(int j=0;j<4;++j) movingPoint|=point.nodes[j]>=0;
+    if(incident[vertex]&&!movingPoint) return;
     // Static vertices are queried too: narrow pegs must also collide against dynamic faces.
     int stack[64],top=0;stack[top++]=0;
     while(top)
@@ -278,9 +283,28 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
             if(top>61) { atomicExch(failure,2);return; }
             stack[top++]=node.left;stack[top++]=node.right;continue;
         }
-        Tri t=tris[node.triangle];V a=positions[t.v[0]],b=positions[t.v[1]],c=positions[t.v[2]];
+        Tri t=tris[node.triangle];
+        // Triangle witnesses alone do not constrain every corner of a broad contact patch.
+        if(incident[vertex])
+        {
+            bool moving=false;for(int k=0;k<3;++k) for(int j=0;j<4;++j) moving|=maps[t.v[k]].nodes[j]>=0;
+            if(moving) continue;
+        }
+        V a=positions[t.v[0]],b=positions[t.v[1]],c=positions[t.v[2]];
         V normal=cross(b-a,c-a);float length2=dot(normal,normal);if(length2<1.e-20f) continue;
-        normal=normal*rsqrtf(length2);V bary=closestWeights(p,a,b,c);
+        normal=normal*rsqrtf(length2);
+        if(incident[vertex])
+        {
+            // Supplemental face contacts must not extend the face past a hole's rim.
+            // Edge contacts are already handled by the triangle-pair narrowphase.
+            V u=b-a,v=c-a,q=p-a;float uu=dot(u,u),uv=dot(u,v),vv=dot(v,v);
+            float denominator=uu*vv-uv*uv;
+            if(denominator<=0) continue;
+            float w1=(dot(q,u)*vv-dot(q,v)*uv)/denominator;
+            float w2=(dot(q,v)*uu-dot(q,u)*uv)/denominator;
+            if(w1<-1.e-6f||w2<-1.e-6f||w1+w2>1.f+1.e-6f) continue;
+        }
+        V bary=closestWeights(p,a,b,c);
         V delta=p-(a*bary.x+b*bary.y+c*bary.z);float d2=dot(delta,delta);if(d2>margin*margin) continue;
         float signedDistance=sqrtf(d2)*(dot(delta,normal)>=0?1.f:-1.f);
         bool dynamic=false;
@@ -294,6 +318,8 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
         int slot=atomicAdd(contactCount,1);
         if(slot>=capacity) { atomicExch(failure,4);continue; }
         cache[slot]={vertex,node.triangle,bary,normal,-1,{1,0,0}};
+        bool material=incident[vertex]!=0;for(int j=0;j<4;++j) if(point.weights[j]<0) material=false;
+        if(material) cache[slot].state=16; // Retain a non-extrapolated vertex's material embedding.
     }
 }
 __device__ float clamp01(float x) { return fminf(1.f,fmaxf(0.f,x)); }

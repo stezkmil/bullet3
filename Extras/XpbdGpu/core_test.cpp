@@ -15,6 +15,36 @@ int failures=0;
 void require(bool value,const char* label) { if(!value) { std::fprintf(stderr,"FAIL: %s\n",label);++failures; } }
 float distance(btGpuXpbdVec a,btGpuXpbdVec b)
 { return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z)); }
+void testPartitionMomentum(const btGpuXpbdTgsApi* api,void* world)
+{
+    // Nine elements sharing one node force unequal copy counts across two lanes.
+    for(float young:{5.f,1.e6f,7.e7f}) for(float damping:{0.f,.01f})
+    {
+        std::vector<btGpuXpbdNode> nodes(28);
+        nodes[0]={{0,0,0},2,{1,0,0},0};
+        std::vector<btGpuXpbdTet> tets;
+        for(int i=0;i<9;++i)
+        {
+            int a=1+3*i;
+            nodes[a]={{1,0,0},3,{0,0,0},0};
+            nodes[a+1]={{0,1,0},4,{0,0,0},0};
+            nodes[a+2]={{0,0,1},5,{0,0,0},0};
+            tets.push_back({{0,a,a+1,a+2},{1,0,0,0,1,0,0,0,1},1.f/6,young,.4f,damping});
+        }
+        require(api->upload(world,int(nodes.size()),nodes.data(),int(tets.size()),tets.data())!=0,"partition momentum upload");
+        btGpuXpbdStep step={.001f,2,{0,0,0},0,0,20};
+        for(int i=0;i<10;++i) require(api->step(world,&step)!=0,"partition momentum step");
+        require(api->download(world,int(nodes.size()),nodes.data())!=0,"partition momentum download");
+        btGpuXpbdVec momentum={0,0,0};
+        for(const auto& n:nodes)
+        {
+            momentum.x+=n.velocity.x/n.inverseMass;
+            momentum.y+=n.velocity.y/n.inverseMass;
+            momentum.z+=n.velocity.z/n.inverseMass;
+        }
+        require(distance(momentum,{.5f,0,0})<2.e-5f,"unequal partition copies conserve momentum");
+    }
+}
 void testFriction(const btGpuXpbdTgsApi* api,void* world)
 {
     auto run=[&](float mu,float speed,float height,float push,int velocityIterations,bool movingGround)
@@ -70,6 +100,46 @@ void testFriction(const btGpuXpbdTgsApi* api,void* world)
     invalid[0]=std::numeric_limits<float>::quiet_NaN();
     require(!api->friction(world,1,invalid),"nonfinite friction rejected");
 }
+void testBroadGroundContact(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode nodes[]={{{-.05f,.02f,-.05f},1,{0,0,0},0},
+        {{0,.02f,.05f},1,{0,0,0},0},{{.05f,.02f,-.05f},1,{0,0,0},0}};
+    btGpuXpbdSurfaceVertex maps[7];
+    for(int i=0;i<3;++i) maps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},0};
+    const btGpuXpbdVec corners[]={{-5,0,-5},{-5,0,5},{5,0,5},{5,0,-5}};
+    for(int i=0;i<4;++i) maps[i+3]={{-1,-1,-1,-1},{0,0,0,0},corners[i],1};
+    btGpuXpbdSurfaceTriangle faces[]={{{0,1,2}},{{3,4,5}},{{3,5,6}}};
+    require(api->upload(world,3,nodes,0,nullptr)!=0,"broad ground nodes");
+    require(api->surface(world,7,maps,3,faces,.1f,0)!=0,"broad ground surface");
+    btGpuXpbdStep step={.001f,16,{0,-9.81f,0},0,0,50,0,0,1};
+    float minimum=1;
+    for(int i=0;i<150;++i)
+    {
+        require(api->step(world,&step)!=0,"broad ground falling step");
+        require(api->download(world,3,nodes)!=0,"broad ground result");
+        for(auto& node:nodes) minimum=std::fmin(minimum,node.position.y);
+    }
+    std::printf("broad ground minimum=%g\n",minimum);
+    require(minimum>-.00001f,"every incident surface vertex remains above the large ground face");
+    for(auto& node:nodes) require(std::fabs(node.position.y)<.00001f,"all corners settle on the floor");
+}
+void testOutsideStaticFace(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode nodes[]={{{-.02f,-.01f,.2f},1,{0,0,0},0},
+        {{-.03f,-.01f,.2f},1,{0,0,0},0},{{-.02f,-.01f,.3f},1,{0,0,0},0}};
+    btGpuXpbdSurfaceVertex maps[6];
+    for(int i=0;i<3;++i) maps[i]={{i,-1,-1,-1},{1,0,0,0},{0,0,0},0};
+    const btGpuXpbdVec corners[]={{0,0,0},{0,0,1},{1,0,0}};
+    for(int i=0;i<3;++i) maps[i+3]={{-1,-1,-1,-1},{0,0,0,0},corners[i],1};
+    btGpuXpbdSurfaceTriangle faces[]={{{0,1,2}},{{3,4,5}}};
+    require(api->upload(world,3,nodes,0,nullptr)!=0,"outside face nodes");
+    require(api->surface(world,6,maps,2,faces,.1f,0)!=0,"outside face surface");
+    btGpuXpbdStep step={.001f,1,{0,0,0},0,0,4,0,0,1};
+    require(api->step(world,&step)!=0,"outside face step");
+    api->download(world,3,nodes);
+    for(auto& node:nodes) require(distance(node.velocity,{0,0,0})<1.e-5f&&std::fabs(node.position.y+.01f)<1.e-6f,
+        "a point beyond a static face's edge is not pushed by its extended plane");
+}
 void testMouseSprings(const btGpuXpbdTgsApi* api,void* world)
 {
     btGpuXpbdNode node={{0,0,0},1,{0,0,0},0};
@@ -114,8 +184,11 @@ int main()
     const auto* api=btGetGpuXpbdTgsApi(5);void* world=api->create();
 #endif
     if(!world) { std::fprintf(stderr,"%s\n",api->error(nullptr));return 1; }
+    testOutsideStaticFace(api,world);
+    testBroadGroundContact(api,world);
     testFriction(api,world);
     testMouseSprings(api,world);
+    testPartitionMomentum(api,world);
     btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1.f/6,10000,.4f,.01f};
     std::vector<btGpuXpbdNode> rest={{{0,0,0},4,{0,0,0},0},{{1,0,0},4,{0,0,0},0},{{0,1,0},4,{0,0,0},0},{{0,0,1},4,{0,0,0},0}};
     btGpuXpbdStep cfg={.001f,10,{0,0,0},0,0,1};

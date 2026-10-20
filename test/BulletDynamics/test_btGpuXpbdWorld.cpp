@@ -232,8 +232,46 @@ static void testMousePicking(btScalar metersPerUnit,bool facePicking)
     world.removeForce(&body,&material);world.removeSoftBody(&body);
 }
 
+static void testRefinedBoundary()
+{
+    btSoftBodyRigidBodyCollisionConfiguration configuration;btCollisionDispatcher dispatcher(&configuration);
+    btDbvtBroadphase broadphase;btDeformableMultiBodyConstraintSolver constraints;btDeformableBodySolver solver;
+    btDeformableMultiBodyDynamicsWorld world(&dispatcher,&broadphase,&constraints,&configuration,&solver);
+    world.setGpuXpbdTgsSolver(true,.001,2,8,50);world.setGravity(btVector3(0,0,0));
+    btVector3 positions[]={{-10,-10,.01},{10,-10,.01},{0,0,10.01},{0,10,.01},{0,0,.01}};
+    btScalar masses[]={1,1,1,1,1};btTriangleMesh mesh;
+    MappedBody body(&world.getWorldInfo(),5,positions,masses);
+    int tets[][4]={{0,1,4,2},{1,3,4,2},{3,0,4,2}};
+    for(auto& t:tets)
+    {
+        if((positions[t[1]]-positions[t[0]]).cross(positions[t[2]]-positions[t[0]]).dot(positions[t[3]]-positions[t[0]])<0)
+            std::swap(t[0],t[1]);
+        body.appendTetra(t[0],t[1],t[2],t[3]);
+    }
+    body.initializeDmInverse();body.m_cfg.collisions=0;body.setFriction(0);
+    mesh.addTriangle(positions[0],positions[3],positions[1]);
+    auto* shape=new btGImpactMeshShape(&mesh);shape->updateBound();
+    auto* part=shape->getMeshPart(0);part->lockChildShapes();const auto* manager=part->getTrimeshPrimitiveManager();
+    for(unsigned i=0;i<manager->get_vertex_count();++i)
+    {
+        btVector3 p;manager->get_vertex(i,p,false);int id=0;while(id<5&&(positions[id]-p).length2()>1.e-10) ++id;
+        bool found=false;
+        for(int t=0;t<3&&!found;++t) for(int j=0;j<4;++j) if(tets[t][j]==id)
+        { btVector4 weights(0,0,0,0);weights[j]=1;body.mapping.push_back({unsigned(t),weights,btVector4(0,0,0,0)});found=true;break; }
+    }
+    part->unlockChildShapes();delete body.getCollisionShape();body.setCollisionShape(shape);world.addSoftBody(&body);
+    btDeformableLinearElasticityForce material(1,1,0,0);world.addForce(&body,&material);
+    btTriangleMesh floor;floor.addTriangle(btVector3(-100,-100,0),btVector3(100,-100,0),btVector3(0,100,0));
+    btBvhTriangleMeshShape floorShape(&floor,true);btCollisionObject obstacle;obstacle.setCollisionShape(&floorShape);
+    obstacle.setCollisionFlags(btCollisionObject::CF_STATIC_OBJECT);world.addCollisionObject(&obstacle);
+    body.m_nodes[4].m_v=btVector3(0,0,-100);
+    require(world.stepSimulation(.001,0)==1&&!world.hasDeformableStepFailed(),"refined boundary step accepted");
+    require(body.m_nodes[4].m_x.z()>-.002,"a boundary node inside a coarse collision face cannot fall through the floor");
+    world.removeCollisionObject(&obstacle);world.removeForce(&body,&material);world.removeSoftBody(&body);
+}
 int main()
 {
+    testRefinedBoundary();
     testWorld(1);testWorld(.001);testWorld(1,true);testWorld(.001,true);
     testWorld(1,false,true);testWorld(.001,false,true);testWorld(.001,false,true,0);
     testWorld(1,true,false,50,true);testWorld(.001,true,false,50,true);
