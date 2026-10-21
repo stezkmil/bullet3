@@ -101,7 +101,7 @@ int embed(void* value,int count,const btGpuXpbdVec* points,int begin,int end,int
     if(!s.cooking->api()->embed(s.cooking->state(),count,points,begin,end,body,maps)) return s.fail(s.cooking->error().c_str());
     s.ranges[body]={begin,end};return 1;
 }
-int surface(void* value,int count,const btGpuXpbdSurfaceVertex* maps,int faceCount,const btGpuXpbdSurfaceTriangle* faces,float margin,float clearance)
+int surface(void* value,int count,const btGpuXpbdSurfaceVertex* maps,int faceCount,const btGpuXpbdSurfaceTriangle* faces,double margin,double clearance)
 {
     auto& s=*static_cast<State*>(value);
     if(count<=0||faceCount<=0||!maps||!faces||clearance!=0) return s.fail("Unsupported bridge surface input");
