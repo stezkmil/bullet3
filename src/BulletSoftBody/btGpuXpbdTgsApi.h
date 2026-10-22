@@ -1,9 +1,9 @@
 #ifndef BT_GPU_XPBD_TGS_API_H
 #define BT_GPU_XPBD_TGS_API_H
 
-// ABI 7 uses double precision; it is incompatible with earlier scalar layouts.
+// ABI 8 adds an explicit material mode; shared state remains double precision.
 // POD boundary independent of Bullet's float/double scalar configuration.
-constexpr int BT_GPU_XPBD_ABI_VERSION = 7;
+constexpr int BT_GPU_XPBD_ABI_VERSION = 8;
 struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
@@ -27,6 +27,7 @@ struct btGpuXpbdStep
     int iterations;
     int settlingBegin,settlingEnd; // end=0 selects all nodes.
     int velocityIterations;
+    int materialMode; // 0: accurate direct StVK, 1: fast partitioned corotated.
 };
 struct btGpuXpbdSurfaceVertex
 {
@@ -73,5 +74,5 @@ struct btGpuXpbdTgsApi
     int (*springs)(void*, int, const btGpuXpbdSpring*);
 };
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);
-static_assert(sizeof(btGpuXpbdNode)==64 && sizeof(btGpuXpbdTet)==120 && sizeof(btGpuXpbdStep)==72, "GPU XPBD ABI mismatch");
+static_assert(sizeof(btGpuXpbdNode)==64 && sizeof(btGpuXpbdTet)==120 && sizeof(btGpuXpbdStep)==80, "GPU XPBD ABI mismatch");
 #endif

@@ -12,9 +12,36 @@ extern "C" __declspec(dllimport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int);
 namespace
 {
 int failures=0;
+int (*accurateStep)(void*,const btGpuXpbdStep*)=nullptr;
+int mediumStep(void* world,const btGpuXpbdStep* config)
+{
+    auto step=*config;step.materialMode=1;return accurateStep(world,&step);
+}
+
 void require(bool value,const char* label) { if(!value) { std::fprintf(stderr,"FAIL: %s\n",label);++failures; } }
 double distance(btGpuXpbdVec a,btGpuXpbdVec b)
 { return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z)); }
+void testMaterialModeSwitch(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode nodes[4]={{{1.e6,0,0},4,{0,0,0},0},{{1.e6+1,0,0},4,{0,0,0},0},
+        {{1.e6,1,0},4,{0,0,0},0},{{1.e6,0,1},4,{0,0,0},0}};
+    btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1./6,7.e7,.4,.01};
+    btGpuXpbdVec force[4]={{1,0,0},{1,0,0},{1,0,0},{1,0,0}};
+    require(api->upload(world,4,nodes,1,&tet)&&api->forces(world,4,force),"mode switch upload");
+    btGpuXpbdStep step={.0002,1,{0,0,0},0,0,50,0,0,0,0};
+    for(int mode:{0,1,0,1}) { step.materialMode=mode;require(api->step(world,&step)!=0,"switch material mode on live state"); }
+    require(api->download(world,4,nodes)!=0,"mode switch download");
+    double momentum=0;for(const auto& n:nodes) momentum+=n.velocity.x/n.inverseMass;
+    require(std::fabs(momentum-.0032)<1.e-8,"mode switching preserves applied impulse");
+    require(nodes[0].position.x>1.e6+1.e-7,"Medium retains small translation at large coordinates");
+    auto accepted=std::vector<btGpuXpbdNode>(nodes,nodes+4);
+    force[0].x=std::numeric_limits<double>::max();
+    require(api->forces(world,4,force)!=0,"Medium finite overflow force accepted");
+    require(api->step(world,&step)==0,"Medium rejects nonfinite projection");
+    require(api->download(world,4,nodes)!=0,"Medium rollback download");
+    require(std::memcmp(nodes,accepted.data(),sizeof(nodes))==0,"Medium rollback restores accepted nodes");
+    step.materialMode=2;require(!api->step(world,&step),"invalid material mode rejected");
+}
 void testDampedEquilibrium(const btGpuXpbdTgsApi* api,void* world)
 {
     // Uniaxial StVK equilibrium with nu=0: F = E V stretch (stretch^2-1)/2.
@@ -246,6 +273,14 @@ int main()
     testFriction(api,world);
     testMouseSprings(api,world);
     testPartitionMomentum(api,world);
+    testMaterialModeSwitch(api,world);
+    auto mediumApi=*api;accurateStep=api->step;mediumApi.step=mediumStep;
+    testPartitionMomentum(&mediumApi,world);
+    testOutsideStaticFace(&mediumApi,world);
+    testBroadGroundContact(&mediumApi,world);
+    testFriction(&mediumApi,world);
+    testMouseSprings(&mediumApi,world);
+
     btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1./6,10000,.4,.01};
     testMaterialScale(api,world);
     testDampedEquilibrium(api,world);

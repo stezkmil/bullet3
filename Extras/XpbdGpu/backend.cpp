@@ -24,6 +24,10 @@ struct State
     btGpuXpbdStep graphConfig={};
     CUfunction predict=nullptr,solve=nullptr,settle=nullptr,damp=nullptr;
     bool hasMaterialDamping=false;
+    CUfunction dampFast=nullptr,solveFast=nullptr,initializeCopies=nullptr,averageCopies=nullptr;
+    CUdeviceptr copies=0,copyActive=0,fastTets=0,rotations=0,acceptedRotations=0;
+    int copyLanes=0;
+    std::vector<int> fastBatches;
     CUfunction skin=nullptr,refit=nullptr,discoverContacts=nullptr,countContacts=nullptr,solveContacts=nullptr,applyContacts=nullptr,embed=nullptr;
     CUfunction startDrive=nullptr,drive=nullptr,releaseDrive=nullptr;
     CUfunction applyContactVelocities=nullptr;
@@ -66,6 +70,8 @@ struct State
     void clear()
     {
         clearSurface();
+        for(auto p:{copies,copyActive,fastTets,rotations,acceptedRotations}) if(p) cuMemFree(p);
+        copies=copyActive=fastTets=rotations=acceptedRotations=0;copyLanes=0;fastBatches.clear();
         for(auto p:{nodes,tets,forces,failure,targets,driveStart,inverseMasses,accumulated,acceptedNodes,springs}) if(p) cuMemFree(p);
         springs=0;springCount=0;
         acceptedNodes=0;
@@ -130,6 +136,10 @@ void* create()
         if(current.valid && s->check(cuStreamCreate(&s->stream,CU_STREAM_DEFAULT)) && s->check(cuModuleLoadData(&s->module,ptx)) &&
            s->check(cuModuleGetFunction(&s->predict,s->module,"predict")) &&
            s->check(cuModuleGetFunction(&s->solve,s->module,"solveTets")) &&
+           s->check(cuModuleGetFunction(&s->dampFast,s->module,"dampFastTets")) &&
+           s->check(cuModuleGetFunction(&s->solveFast,s->module,"solveFastTets")) &&
+           s->check(cuModuleGetFunction(&s->initializeCopies,s->module,"initializeCopies")) &&
+           s->check(cuModuleGetFunction(&s->averageCopies,s->module,"averageCopies")) &&
            s->check(cuModuleGetFunction(&s->damp,s->module,"dampTets")) &&
            s->check(cuModuleGetFunction(&s->settle,s->module,"settle")) &&
            s->check(cuModuleGetFunction(&s->skin,s->module,"skin")) &&
@@ -191,6 +201,30 @@ int upload(void* value,int count,const btGpuXpbdNode* nodes,int tetCount,const b
        !s.copy(s.acceptedNodes,nodes,count*sizeof(*nodes))||
        !s.copy(s.forces,zero.data(),zero.size()*sizeof(zero[0]))||!s.copy(s.accumulated,zero.data(),zero.size()*sizeof(zero[0]))||
        !s.copy(s.failure,&failure,sizeof(failure))||!s.copy(s.inverseMasses,masses.data(),masses.size()*sizeof(double))) { s.clear();return 0; }
+    // Eight serial passes, with disjoint node copies across groups of eight colors.
+    constexpr int passes=8;
+    s.copyLanes=(int(colors.size())+passes-1)/passes;
+    std::vector<int> active(size_t(s.copyLanes)*count,0);
+    std::vector<btGpuXpbdTet> work;
+    s.fastBatches.push_back(0);
+    for(int pass=0;pass<passes;++pass)
+    {
+        for(int color=pass;color<int(colors.size());color+=passes)
+            for(int i:colors[color])
+            {
+                auto tet=tets[i];int lane=color/passes;
+                for(int& node:tet.nodes) { active[size_t(lane)*count+node]=1;node+=lane*count; }
+                work.push_back(tet);
+            }
+        s.fastBatches.push_back(int(work.size()));
+    }
+    struct Quat { float x,y,z,w; };
+    std::vector<Quat> rotations(tetCount,{0,0,0,1});
+    if(!s.copy(s.fastTets,work.data(),work.size()*sizeof(work[0]))||
+       !s.copy(s.copyActive,active.data(),active.size()*sizeof(int))||
+       !s.copy(s.rotations,rotations.data(),rotations.size()*sizeof(Quat))||
+       !s.copy(s.acceptedRotations,rotations.data(),rotations.size()*sizeof(Quat))||
+       (s.copyLanes && !s.check(cuMemAlloc(&s.copies,size_t(count)*s.copyLanes*sizeof(*nodes))))) { s.clear();return 0; }
     s.restNodes.assign(nodes,nodes+count);s.count=count;return 1;
 }
 int forces(void* value,int count,const btGpuXpbdVec* values)
@@ -504,20 +538,35 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
         double increment=1./double(config->substeps*config->iterations);
         void* driveArgs[]={&s.nodes,&s.targets,&s.driveStart,&s.accumulated,&s.targetCount,&fraction,&increment};
         if(!s.launch(s.drive,s.targetCount,driveArgs)) return 0;
-        if(s.hasMaterialDamping) for(size_t c=1;c<s.batches.size();++c)
+        const bool fast=config->materialMode==1;
+        void* copyArgs[]={&s.nodes,&s.copies,&s.copyActive,&s.count,&s.copyLanes};
+        int positions=0;
+        void* averageArgs[]={&s.nodes,&s.copies,&s.copyActive,&s.accumulated,&s.count,&s.copyLanes,&dt,&positions};
+        auto& batches=fast?s.fastBatches:s.batches;
+        CUdeviceptr materialNodes=fast?s.copies:s.nodes,materialTets=fast?s.fastTets:s.tets;
+        if(s.hasMaterialDamping)
         {
-            int begin=s.batches[c-1],count=s.batches[c]-begin;
-            void* args[]={&s.nodes,&s.tets,&begin,&count,&dt};
-            if(!s.launch(s.damp,count,args)) return 0;
+            if(fast&&!s.launch(s.initializeCopies,s.count*s.copyLanes,copyArgs)) return 0;
+            for(size_t c=1;c<batches.size();++c)
+            {
+                int begin=batches[c-1],count=batches[c]-begin;
+                void* args[]={&materialNodes,&materialTets,&begin,&count,&dt};
+                if(!s.launch(fast?s.dampFast:s.damp,count,args)) return 0;
+            }
+            if(fast&&!s.launch(s.averageCopies,s.count,averageArgs)) return 0;
         }
         void* predictArgs[]={&s.nodes,&s.forces,&s.accumulated,&s.count,&dt,&gravity,&forceDt,&s.springs,&s.springCount};
         if(!s.launch(s.predict,s.count,predictArgs)) return 0;
-        for(size_t c=1;c<s.batches.size();++c)
+        if(fast&&!s.launch(s.initializeCopies,s.count*s.copyLanes,copyArgs)) return 0;
+        for(size_t c=1;c<batches.size();++c)
         {
-            int begin=s.batches[c-1],count=s.batches[c]-begin;
+            int begin=batches[c-1],count=batches[c]-begin,first=k%config->iterations==0;
             void* args[]={&s.nodes,&s.tets,&s.accumulated,&begin,&count,&dt};
-            if(!s.launch(s.solve,count,args)) return 0;
+            void* fastArgs[]={&s.copies,&s.fastTets,&s.rotations,&begin,&count,&dt,&first};
+            if(!s.launch(fast?s.solveFast:s.solve,count,fast?fastArgs:args)) return 0;
         }
+        positions=1;
+        if(fast&&!s.launch(s.averageCopies,s.count,averageArgs)) return 0;
         if(s.vertexCount)
         {
             if(!s.check(cuMemsetD32Async(s.corrections,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))||!s.check(cuMemsetD32Async(s.references,0,s.count,s.stream))) return 0;
@@ -548,15 +597,15 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
 }
 bool sameStep(const btGpuXpbdStep& a,const btGpuXpbdStep& b)
 {
-    // ABI 7 has alignment padding; comparing its bytes can spuriously rebuild the CUDA graph.
+    // The step structure has alignment padding; comparing its bytes can spuriously rebuild the CUDA graph.
     return a.dt==b.dt&&a.substeps==b.substeps&&a.gravity.x==b.gravity.x&&a.gravity.y==b.gravity.y&&a.gravity.z==b.gravity.z&&
         a.settlingSpeed==b.settlingSpeed&&a.settlingDamping==b.settlingDamping&&a.iterations==b.iterations&&
-        a.settlingBegin==b.settlingBegin&&a.settlingEnd==b.settlingEnd&&a.velocityIterations==b.velocityIterations;
+        a.settlingBegin==b.settlingBegin&&a.settlingEnd==b.settlingEnd&&a.velocityIterations==b.velocityIterations&&a.materialMode==b.materialMode;
 }
 int step(void* value,const btGpuXpbdStep* config)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
-    if(!config||s.count<=0||!std::isfinite(config->dt)||config->dt<=0||config->substeps<=0||config->substeps>4096||config->iterations<=0||config->iterations>255||config->velocityIterations<0||config->velocityIterations>255||
+    if(!config||config->materialMode<0||config->materialMode>1||s.count<=0||!std::isfinite(config->dt)||config->dt<=0||config->substeps<=0||config->substeps>4096||config->iterations<=0||config->iterations>255||config->velocityIterations<0||config->velocityIterations>255||
        !finite(config->gravity)||!std::isfinite(config->settlingSpeed)||config->settlingSpeed<0||
        !std::isfinite(config->settlingDamping)||config->settlingDamping<0||config->settlingBegin<0||config->settlingEnd<0||config->settlingEnd>s.count) { s.error="Invalid step configuration";return 0; }
     int failure=0;
@@ -573,11 +622,14 @@ int step(void* value,const btGpuXpbdStep* config)
     }
     // Preserve the last accepted state on numerical or contact-capacity rejection.
     const size_t nodeBytes=size_t(s.count)*sizeof(btGpuXpbdNode);
+    const size_t rotationBytes=size_t(s.batches.back())*4*sizeof(float);
+    if(config->materialMode==1 && rotationBytes && !s.check(cuMemcpyDtoDAsync(s.acceptedRotations,s.rotations,rotationBytes,s.stream))) return 0;
     if(!s.check(cuMemcpyDtoDAsync(s.acceptedNodes,s.nodes,nodeBytes,s.stream))) return 0;
     if(!s.check(cuGraphLaunch(s.graphExec,s.stream)) || !s.check(cuStreamSynchronize(s.stream))) return 0;
     if(!s.check(cuMemcpyDtoH(&failure,s.failure,sizeof(failure)))) return 0;
     if(failure)
     {
+        if(config->materialMode==1 && rotationBytes && !s.check(cuMemcpyDtoDAsync(s.rotations,s.acceptedRotations,rotationBytes,s.stream))) return 0;
         if(!s.check(cuMemcpyDtoDAsync(s.nodes,s.acceptedNodes,nodeBytes,s.stream)) ||
            !s.check(cuStreamSynchronize(s.stream))) return 0;
         s.error=failure==4?"Contact capacity exceeded":(failure==2?"Collision traversal stack overflow":"Nonfinite GPU state");

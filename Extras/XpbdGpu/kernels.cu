@@ -103,6 +103,151 @@ extern "C" __global__ void solveTets(Node* nodes,const Tet* tets,V* accumulated,
         nodes[t.n[j]]=p[j];accumulated[t.n[j]]=accumulated[t.n[j]]+dx;
     }
 }
+// Medium uses float material arithmetic in a local frame; accepted positions,
+// integration, contact response and correction accumulation retain double precision.
+namespace FastMaterial {
+struct V { float x,y,z; };
+struct Node { V p; float w; V v; float damping; };
+struct Tet { int n[4]; float rest[9]; float volume,young,poisson,damping; };
+struct M { V c[3]; };
+struct Q { float x,y,z,w; };
+__device__ V operator+(V a,V b) { return {a.x+b.x,a.y+b.y,a.z+b.z}; }
+__device__ V operator-(V a,V b) { return {a.x-b.x,a.y-b.y,a.z-b.z}; }
+__device__ V operator*(V a,float b) { return {a.x*b,a.y*b,a.z*b}; }
+__device__ float dot(V a,V b) { return a.x*b.x+a.y*b.y+a.z*b.z; }
+__device__ V cross(V a,V b) { return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x}; }
+__device__ V mul(M a,V b) { return a.c[0]*b.x+a.c[1]*b.y+a.c[2]*b.z; }
+__device__ M mul(M a,M b) { return {mul(a,b.c[0]),mul(a,b.c[1]),mul(a,b.c[2])}; }
+__device__ M rotation(Q q)
+{
+    return {{{1-2*(q.y*q.y+q.z*q.z),2*(q.x*q.y+q.z*q.w),2*(q.x*q.z-q.y*q.w)},
+             {2*(q.x*q.y-q.z*q.w),1-2*(q.x*q.x+q.z*q.z),2*(q.y*q.z+q.x*q.w)},
+             {2*(q.x*q.z+q.y*q.w),2*(q.y*q.z-q.x*q.w),1-2*(q.x*q.x+q.y*q.y)}}};
+}
+__device__ Q extract(M f,Q q,int iterations)
+{
+    for(int k=0;k<iterations;++k)
+    {
+        M r=rotation(q);
+        V omega=(cross(r.c[0],f.c[0])+cross(r.c[1],f.c[1])+cross(r.c[2],f.c[2]))*
+            (1.f/(fabsf(dot(r.c[0],f.c[0])+dot(r.c[1],f.c[1])+dot(r.c[2],f.c[2]))+1.e-6f));
+        float angle=sqrtf(dot(omega,omega));
+        if(angle<1.e-6f) break;
+        V a=omega*(sinf(angle*.5f)/angle), b={q.x,q.y,q.z};
+        float w=cosf(angle*.5f);
+        V c=a*q.w+b*w+cross(a,b);
+        q={c.x,c.y,c.z,w*q.w-dot(a,b)};
+        float s=rsqrtf(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
+        q={q.x*s,q.y*s,q.z*s,q.w*s};
+    }
+    return q;
+}
+__device__ M gradient(M tensor,M rest)
+{
+    return {{mul(tensor,V{rest.c[0].x,rest.c[1].x,rest.c[2].x}),
+             mul(tensor,V{rest.c[0].y,rest.c[1].y,rest.c[2].y}),
+             mul(tensor,V{rest.c[0].z,rest.c[1].z,rest.c[2].z})}};
+}
+__device__ void constrain(const Node* p,M tensor,M rest,float C,float compliance,float damping,float invDt,V* correction)
+{
+    M g=gradient(tensor,rest);
+    V grad[4]={(g.c[0]+g.c[1]+g.c[2])*-1.f,g.c[0],g.c[1],g.c[2]};
+    float weight=0,rate=0;
+    for(int j=0;j<4;++j) { weight+=p[j].w*dot(grad[j],grad[j]);rate+=dot(grad[j],p[j].v); }
+    float denominator=(1+damping*invDt)*weight+compliance;
+    if(denominator<1.e-15f) return;
+    float dl=(-C-damping*rate)/denominator;
+    for(int j=0;j<4;++j) correction[j]=correction[j]+grad[j]*(dl*p[j].w);
+}
+
+__device__ Tet loadTet(const ::Tet& t)
+{
+    Tet result;for(int i=0;i<4;++i)result.n[i]=t.n[i];
+    for(int i=0;i<9;++i)result.rest[i]=float(t.rest[i]);
+    result.volume=float(t.volume);result.young=float(t.young);result.poisson=float(t.poisson);result.damping=float(t.damping);return result;
+}
+__device__ void loadNodes(const ::Node* nodes,const Tet& t,Node* p)
+{
+    const ::V origin=nodes[t.n[0]].p;
+    for(int j=0;j<4;++j)
+    {
+        const ::Node n=nodes[t.n[j]];
+        p[j]={{float(n.p.x-origin.x),float(n.p.y-origin.y),float(n.p.z-origin.z)},float(n.w),
+              {float(n.v.x),float(n.v.y),float(n.v.z)},float(n.damping)};
+    }
+}
+__device__ void solveFastTet(::Node* nodes,const ::Tet* tets,Q* rotations,int i,double stepDt,int first)
+{
+    float dt=float(stepDt);Tet t=loadTet(tets[i]);Node p[4];loadNodes(nodes,t,p);
+    M rest={{{t.rest[0],t.rest[1],t.rest[2]},{t.rest[3],t.rest[4],t.rest[5]},{t.rest[6],t.rest[7],t.rest[8]}}};
+    M edges={{p[1].p-p[0].p,p[2].p-p[0].p,p[3].p-p[0].p}};
+    M f=mul(edges,rest);
+    Q q=extract(f,rotations[i],first?100:4);rotations[i]=q;M r=rotation(q);
+    M tensor;float c2=1.e-18f;
+    for(int j=0;j<3;++j) { tensor.c[j]=f.c[j]-r.c[j];c2+=dot(tensor.c[j],tensor.c[j]); }
+    float c=sqrtf(c2);for(int j=0;j<3;++j) tensor.c[j]=tensor.c[j]*(1.f/c);
+    float mu=t.young/(2*(1+t.poisson));float invDt=1.f/dt;
+    V correction[4]={{0,0,0},{0,0,0},{0,0,0},{0,0,0}};
+    constrain(p,tensor,rest,c,invDt*invDt/(2*mu*t.volume),0,invDt,correction);
+    if(t.poisson>0)
+    {
+        // Preserve sub-ULP shape corrections when constructing the volume constraint.
+        for(int j=0;j<3;++j) edges.c[j]=edges.c[j]+(correction[j+1]-correction[0]);
+        f=mul(edges,rest);
+        tensor={{cross(f.c[1],f.c[2]),cross(f.c[2],f.c[0]),cross(f.c[0],f.c[1])}};
+        float lambda=t.young*t.poisson/((1+t.poisson)*(1-2*t.poisson));
+        constrain(p,tensor,rest,dot(f.c[0],tensor.c[0])-1,invDt*invDt/(lambda*t.volume),0,invDt,correction);
+    }
+    for(int j=0;j<4;++j)
+    {
+        ::V dx={correction[j].x,correction[j].y,correction[j].z};
+        nodes[t.n[j]].p=::operator+(nodes[t.n[j]].p,dx);
+        nodes[t.n[j]].v=::operator+(nodes[t.n[j]].v,::operator*(dx,1./stepDt));
+    }
+}
+extern "C" __global__ void solveFastTets(::Node* nodes,const ::Tet* tets,Q* rotations,int begin,int count,double stepDt,int first)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i<count) solveFastTet(nodes,tets,rotations,begin+i,stepDt,first);
+}
+extern "C" __global__ void dampFastTets(::Node* nodes,const ::Tet* tets,int begin,int count,double stepDt)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;
+    float dt=float(stepDt);Tet t=loadTet(tets[begin+i]);if(t.damping<=0) return;
+    Node p[4];loadNodes(nodes,t,p);V correction[4]={};
+    M rest={{{t.rest[0],t.rest[1],t.rest[2]},{t.rest[3],t.rest[4],t.rest[5]},{t.rest[6],t.rest[7],t.rest[8]}}};
+    M f=mul(M{{p[1].p-p[0].p,p[2].p-p[0].p,p[3].p-p[0].p}},rest);
+    float mu=t.young/(2*(1+t.poisson)),lambda=t.young*t.poisson/((1+t.poisson)*(1-2*t.poisson));
+    const float a=0.57735026918962576451,b=0.70710678118654752440,c=0.40824829046386301637;
+    M modes[6]={{{{a,0,0},{0,a,0},{0,0,a}}},{{{b,0,0},{0,-b,0},{0,0,0}}},
+        {{{c,0,0},{0,c,0},{0,0,-2*c}}},{{{0,b,0},{b,0,0},{0,0,0}}},
+        {{{0,0,b},{0,0,0},{b,0,0}}},{{{0,0,0},{0,0,b},{0,b,0}}}};
+    for(int mode=0;mode<6;++mode)
+    {
+        M g=gradient(mul(f,modes[mode]),rest);
+        V grad[4]={(g.c[0]+g.c[1]+g.c[2])*-1,g.c[0],g.c[1],g.c[2]};
+        float weight=0,rate=0;
+        for(int j=0;j<4;++j) { weight+=p[j].w*dot(grad[j],grad[j]);rate+=dot(grad[j],p[j].v); }
+        float viscosity=t.damping*t.volume*(2*mu+(mode==0?3*lambda:0))*dt;
+        float impulse=-viscosity*rate/(1+viscosity*weight);
+        for(int j=0;j<4;++j) { V dv=grad[j]*(p[j].w*impulse);p[j].v=p[j].v+dv;correction[j]=correction[j]+dv; }
+    }
+    for(int j=0;j<4;++j) nodes[t.n[j]].v=::operator+(nodes[t.n[j]].v,::V{correction[j].x,correction[j].y,correction[j].z});
+}
+}
+extern "C" __global__ void initializeCopies(const Node* nodes,Node* copies,const int* active,int count,int lanes)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count*lanes) return;
+    int node=i%count,used=0;for(int lane=0;lane<lanes;++lane) used+=active[lane*count+node];
+    // Split physical mass between active copies so their averaged impulses conserve momentum.
+    Node copy=nodes[node];copy.w*=used;copies[i]=copy;
+}
+extern "C" __global__ void averageCopies(Node* nodes,const Node* copies,const int* active,V* accumulated,int count,int lanes,double dt,int positions)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count||nodes[i].w==0) return;
+    V delta={0,0,0};int used=0;
+    for(int lane=0;lane<lanes;++lane) if(active[lane*count+i]) { delta=delta+(copies[lane*count+i].v-nodes[i].v);++used; }
+    if(used) { delta=delta*(1.f/used);nodes[i].v=nodes[i].v+delta;if(positions) { V dx=delta*dt;nodes[i].p=nodes[i].p+dx;accumulated[i]=accumulated[i]+dx; } }
+}
 extern "C" __global__ void settle(Node* nodes,const V* accumulated,int count,double dt,double speed,double damping,int begin,int end,int* failure)
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;

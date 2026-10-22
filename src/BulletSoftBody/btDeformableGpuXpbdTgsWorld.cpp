@@ -283,7 +283,7 @@ bool btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSettling(btSoftBody* body,
     m_gpuXpbdTgsSettlingBody=body;m_gpuXpbdTgsSettlingSpeed=speed;m_gpuXpbdTgsSettlingDamping=damping;return true;
 }
 
-void btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSolver(bool enabled,btScalar metersPerUnit,int substeps,int iterations,btScalar maxMassRatio)
+void btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSolver(bool enabled,btScalar metersPerUnit,int substeps,int iterations,btScalar maxMassRatio,int materialMode)
 {
     if(m_gpuXpbdTgsEnabled!=enabled||m_gpuXpbdTgsMetersPerUnit!=metersPerUnit)
     {
@@ -301,6 +301,7 @@ void btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSolver(bool enabled,btScal
     m_gpuXpbdTgsEnabled=enabled;m_gpuXpbdTgsMetersPerUnit=metersPerUnit;
     m_gpuXpbdTgsSubsteps=substeps;m_gpuXpbdTgsIterations=iterations;
     m_gpuXpbdTgsMaxMassRatio=maxMassRatio;
+    m_gpuXpbdTgsMaterialMode=materialMode;
 }
 
 void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar timeStep)
@@ -508,7 +509,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         if(!cache.checked(api->disabledPairs(state,int(disabled.size()),disabled.data()))) { fail(cache.error);return; }
         cache.disabled=disabled;
     }
-    btGpuXpbdStep config={double(timeStep),m_gpuXpbdTgsSubsteps,{0,0,0},0,0,m_gpuXpbdTgsIterations,0,0,1};
+    btGpuXpbdStep config={double(timeStep),m_gpuXpbdTgsSubsteps,{0,0,0},0,0,m_gpuXpbdTgsIterations,0,0,1,m_gpuXpbdTgsMaterialMode};
     if(m_gpuXpbdTgsSettlingBody)
     {
         auto found=std::find(bodies.begin(),bodies.end(),m_gpuXpbdTgsSettlingBody);

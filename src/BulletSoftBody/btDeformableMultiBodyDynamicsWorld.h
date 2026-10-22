@@ -67,6 +67,7 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_gpuXpbdTgsEnabled = false;
 	btScalar m_gpuXpbdTgsMetersPerUnit = 1;
 	int m_gpuXpbdTgsSubsteps = 16, m_gpuXpbdTgsIterations = 50;
+	int m_gpuXpbdTgsMaterialMode = 0;
 	btScalar m_gpuXpbdTgsMaxMassRatio = 50;
 	std::vector<btGpuXpbdTgsWorldTarget> m_gpuXpbdTgsTargets;
 	btSoftBody* m_gpuXpbdTgsSettlingBody = nullptr;
@@ -101,7 +102,7 @@ public:
 	// Extra search range in scene units; negative uses the solver default.
 	void setContactDiscoveryPadding(btScalar padding) { m_contactDiscoveryPadding = padding; }
 	// Positive ratios >= 1 bound nodal mass disparity, as in PhysX; zero preserves raw masses.
-	void setGpuXpbdTgsSolver(bool enabled, btScalar metersPerUnit = 1, int substeps = 16, int iterations = 50, btScalar maxMassRatio = 50);
+	void setGpuXpbdTgsSolver(bool enabled, btScalar metersPerUnit = 1, int substeps = 16, int iterations = 50, btScalar maxMassRatio = 50, int materialMode = 0);
 	bool setGpuXpbdTgsKinematicTargets(const std::vector<btGpuXpbdTgsWorldTarget>& targets);
 	void clearGpuXpbdTgsKinematicTargets(btSoftBody* body = nullptr);
 	// Settling is evaluated on the GPU. Speed is in scene units/s; damping is in 1/s.
