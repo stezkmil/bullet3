@@ -16,14 +16,11 @@
 #ifndef BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD_H
 #define BT_DEFORMABLE_MULTIBODY_DYNAMICS_WORLD_H
 
-#include "btDeformableVbdSettings.h"
 #include <map>
 #include <memory>
 #include <vector>
 #include <string>
 struct btDeformableGpuXpbdTgsWorld;
-struct btDeformableVbdCollisionCache;
-struct btDeformableVbdMappingCache;
 #include "btSoftMultiBodyDynamicsWorld.h"
 #include "btDeformableLagrangianForce.h"
 #include "btDeformableMassSpringForce.h"
@@ -65,16 +62,8 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_implicit;
 	bool m_lineSearch;
 	bool m_useProjection;
-	bool m_vbdStepFailed = false;
-	bool m_vbdEnabled = false;
-	btScalar m_vbdLengthScale = 1;
-	int m_vbdIterations = 10;
-	btDeformableVbdSettings m_vbdSettings;
-	std::unique_ptr<btDeformableVbdCollisionCache> m_vbdCollisionCache;
-	std::unique_ptr<btDeformableVbdMappingCache> m_vbdMappingCache;
-	std::map<btSoftBody*, std::vector<btVector3>> m_vbdAcceptedPositions;
+	bool m_deformableStepFailed = false;
 	btScalar m_contactDiscoveryPadding = -1;
-	void vbdSingleStepSimulation(btScalar timeStep);
 	bool m_gpuXpbdTgsEnabled = false;
 	btScalar m_gpuXpbdTgsMetersPerUnit = 1;
 	int m_gpuXpbdTgsSubsteps = 16, m_gpuXpbdTgsIterations = 50;
@@ -109,19 +98,15 @@ protected:
 	void addSoftsWithSelfCollisionCheckToOverlappingPairs();
 
 public:
-	// Extra search range in scene units; negative retains the VBD reference default.
-	void setVbdSettings(const btDeformableVbdSettings& settings) { m_vbdSettings=settings; m_vbdIterations=settings.iterations; }
+	// Extra search range in scene units; negative uses the solver default.
 	void setContactDiscoveryPadding(btScalar padding) { m_contactDiscoveryPadding = padding; }
-	// Experimental Newton-style VBD for tetrahedral bodies and coupled rigid contacts.
-	void setVbdSolver(bool enabled, btScalar metersPerUnit = 1, int iterations = 10);
-	bool hasVbdStepFailed() const { return m_vbdStepFailed; }
 	// Positive ratios >= 1 bound nodal mass disparity, as in PhysX; zero preserves raw masses.
 	void setGpuXpbdTgsSolver(bool enabled, btScalar metersPerUnit = 1, int substeps = 16, int iterations = 50, btScalar maxMassRatio = 50);
 	bool setGpuXpbdTgsKinematicTargets(const std::vector<btGpuXpbdTgsWorldTarget>& targets);
 	void clearGpuXpbdTgsKinematicTargets(btSoftBody* body = nullptr);
 	// Settling is evaluated on the GPU. Speed is in scene units/s; damping is in 1/s.
 	bool setGpuXpbdTgsSettling(btSoftBody* body, btScalar speed, btScalar damping);
-	bool hasDeformableStepFailed() const { return m_vbdStepFailed; }
+	bool hasDeformableStepFailed() const { return m_deformableStepFailed; }
 	const std::string& getGpuXpbdTgsError() const { return m_gpuXpbdTgsError; }
 	// Call after editing collision topology or embedding arrays in place.
 	void invalidateGpuXpbdTgs() { m_gpuXpbdTgsWorld.reset(); }

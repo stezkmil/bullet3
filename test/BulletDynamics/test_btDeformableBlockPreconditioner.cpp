@@ -727,4 +727,3 @@ int main(int argc, char** argv)
 #include "BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include <thread>
-#include "deformable_vbd_tests.h"

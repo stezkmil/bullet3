@@ -11,7 +11,7 @@
 #endif
 
 // Owns the optional CUDA runtime and its context without linking Bullet to CUDA.
-// The DLL is loaded from the executable directory, as for the VBD backend.
+// The DLL is loaded from the executable directory.
 class btGpuXpbdTgsBackend
 {
     const btGpuXpbdTgsApi* m_api = nullptr;

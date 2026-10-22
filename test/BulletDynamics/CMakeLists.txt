@@ -50,12 +50,3 @@ IF(WIN32)
         ADD_TEST(Test_btGpuXpbdWorld_PASS Test_btGpuXpbdWorld)
     ENDIF()
 ENDIF()
-
-IF(TARGET BulletVbdGpu)
-    ADD_DEPENDENCIES(Test_btDeformableBlockPreconditioner BulletVbdGpu)
-    ADD_CUSTOM_COMMAND(TARGET Test_btDeformableBlockPreconditioner POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:BulletVbdGpu>
-            $<TARGET_FILE_DIR:Test_btDeformableBlockPreconditioner>
-        VERBATIM)
-ENDIF()

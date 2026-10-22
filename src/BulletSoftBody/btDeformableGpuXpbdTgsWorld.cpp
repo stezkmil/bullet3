@@ -296,7 +296,7 @@ void btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSolver(bool enabled,btScal
                 body->advanceDeformation();
                 body->updateLastSafeWorldTransform();
             }
-        m_gpuXpbdTgsWorld.reset();m_gpuXpbdTgsError.clear();m_vbdStepFailed=false;
+        m_gpuXpbdTgsWorld.reset();m_gpuXpbdTgsError.clear();m_deformableStepFailed=false;
     }
     m_gpuXpbdTgsEnabled=enabled;m_gpuXpbdTgsMetersPerUnit=metersPerUnit;
     m_gpuXpbdTgsSubsteps=substeps;m_gpuXpbdTgsIterations=iterations;
@@ -307,7 +307,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
 {
     auto fail=[&](const std::string& reason)
     {
-        m_vbdStepFailed=true;m_gpuXpbdTgsError=reason;
+        m_deformableStepFailed=true;m_gpuXpbdTgsError=reason;
         btDeformableDiagnostics::write("STEP_FAILED","solver=gpu_xpbd_tgs reason=%s",reason.c_str());
     };
     const btScalar units=m_gpuXpbdTgsMetersPerUnit*1000;
