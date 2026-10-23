@@ -42,11 +42,9 @@ IF(WIN32)
     SET_TARGET_PROPERTIES(Test_btGpuXpbdWorld PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
     TARGET_LINK_LIBRARIES(Test_btGpuXpbdWorld BulletSoftBody)
     IF(TARGET BulletGpuXpbdTgs)
-        ADD_DEPENDENCIES(Test_btGpuXpbdWorld BulletGpuXpbdTgs)
-        ADD_CUSTOM_COMMAND(TARGET Test_btGpuXpbdWorld POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:BulletGpuXpbdTgs> $<TARGET_FILE_DIR:Test_btGpuXpbdWorld>
-            VERBATIM)
+        SET_TARGET_PROPERTIES(Test_btGpuXpbdWorld XpbdWorldBridge PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<CONFIG>")
+        ADD_DEPENDENCIES(Test_btGpuXpbdWorld XpbdWorldBridge BulletGpuXpbdTgs)
         ADD_TEST(Test_btGpuXpbdWorld_PASS Test_btGpuXpbdWorld)
     ENDIF()
 ENDIF()

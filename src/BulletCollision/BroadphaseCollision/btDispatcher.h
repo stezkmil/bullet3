@@ -132,6 +132,7 @@ public:
 	virtual void freeCollisionAlgorithm(void* ptr) = 0;
 
 	virtual void addInitialCollisionParticipant(btInitialCollisionParticipants::value_type pair) = 0;
+	virtual void clearInitialCollisionParticipants() {}
 
 	virtual const btInitialCollisionParticipants& getInitialCollisionParticipants() const = 0;
 

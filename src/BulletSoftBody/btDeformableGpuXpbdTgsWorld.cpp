@@ -9,6 +9,8 @@
 #include "BulletCollision/Gimpact/btGImpactShape.h"
 #include "BulletCollision/CollisionShapes/btCompoundShape.h"
 #include "BulletCollision/CollisionShapes/btConcaveShape.h"
+#include "BulletCollision/CollisionShapes/btShapeHull.h"
+#include "BulletDynamics/ConstraintSolver/btGeneric6DofSpring2Constraint.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -68,9 +70,20 @@ void shapeKey(std::vector<unsigned char>& key,const btCollisionShape* shape)
 struct btDeformableGpuXpbdTgsWorld
 {
     btGpuXpbdTgsBackend backend;
+    btDispatcher* dispatcher=nullptr;
+    std::vector<btPersistentManifold*> manifolds;
+    void clearContacts()
+    {
+        for(auto* manifold:manifolds) dispatcher->releaseManifold(manifold);
+        manifolds.clear();
+    }
+    ~btDeformableGpuXpbdTgsWorld(){clearContacts();}
     std::vector<unsigned char> key;
     std::vector<btGpuXpbdNode> accepted;
     std::vector<btGpuXpbdDisabledPair> disabled;
+    std::vector<btGpuXpbdAttachment> attachments;
+    std::vector<btGpuXpbdJoint> joints;
+    std::vector<int> selfBodies;
     std::vector<btGpuXpbdSurfaceVertex> vertices;
     std::vector<btGpuXpbdSurfaceTriangle> triangles;
     std::string error;
@@ -81,9 +94,10 @@ struct btDeformableGpuXpbdTgsWorld
     bool fail(const char* message) { error=message;return false; }
     bool checked(int result) { if(!result) error=backend.error();return result!=0; }
 
-    void staticTriangle(const btVector3* points,const btTransform& transform,btScalar scale,int body)
+    void staticTriangle(const btVector3* points,const btTransform& transform,btScalar scale,int body,int part=-1,int face=-1)
     {
         btGpuXpbdSurfaceTriangle triangle{};
+        triangle.part=part;triangle.index=face;
         for(int i=0;i<3;++i)
         {
             triangle.vertices[i]=int(vertices.size());
@@ -110,6 +124,7 @@ struct btDeformableGpuXpbdTgsWorld
             {
                 unsigned int ids[3];manager->get_primitive_indices(face,ids[0],ids[1],ids[2]);
                 btGpuXpbdSurfaceTriangle triangle{};
+                triangle.part=part;triangle.index=face;
                 for(int c=0;c<3;++c)
                 {
                     auto found=indices.find(ids[c]);
@@ -162,12 +177,23 @@ struct btDeformableGpuXpbdTgsWorld
             if(impact->getGImpactShapeType()!=CONST_GIMPACT_TRIMESH_SHAPE) return fail("GPU XPBD requires triangle mesh obstacles");
             return mesh(static_cast<btGImpactMeshShape*>(shape),nullptr,0,transform,scale,body);
         }
-        if(!shape->isConcave()) return fail("GPU XPBD requires triangle mesh static obstacles");
+        if(shape->isConvex())
+        {
+            btShapeHull hull(static_cast<btConvexShape*>(shape));
+            if(!hull.buildHull(shape->getMargin())) return fail("Unable to build rigid convex collision surface");
+            for(int i=0;i<hull.numTriangles();++i)
+            {
+                btVector3 p[3];for(int j=0;j<3;++j) p[j]=hull.getVertexPointer()[hull.getIndexPointer()[3*i+j]];
+                staticTriangle(p,transform,scale,body);
+            }
+            return true;
+        }
+        if(!shape->isConcave()) return fail("GPU XPBD unsupported obstacle shape");
         struct Collector:btTriangleCallback
         {
             btDeformableGpuXpbdTgsWorld& output;const btTransform& transform;btScalar scale;int body;
             Collector(btDeformableGpuXpbdTgsWorld& o,const btTransform& t,btScalar s,int b):output(o),transform(t),scale(s),body(b){}
-            void processTriangle(btVector3* p,int,int) override { output.staticTriangle(p,transform,scale,body); }
+            void processTriangle(btVector3* p,int part,int face) override { output.staticTriangle(p,transform,scale,body,part,face); }
         } collector(*this,transform,scale,body);
         static_cast<btConcaveShape*>(shape)->processAllTriangles(&collector,btVector3(-BT_LARGE_FLOAT,-BT_LARGE_FLOAT,-BT_LARGE_FLOAT),btVector3(BT_LARGE_FLOAT,BT_LARGE_FLOAT,BT_LARGE_FLOAT));
         return true;
@@ -304,7 +330,15 @@ void btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSolver(bool enabled,btScal
     m_gpuXpbdTgsMaterialMode=materialMode;
 }
 
-void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar timeStep)
+void btDeformableMultiBodyDynamicsWorld::clearGpuXpbdTgsContacts()
+{
+    if(m_gpuXpbdTgsWorld) m_gpuXpbdTgsWorld->clearContacts();
+}
+void btDeformableMultiBodyDynamicsWorld::removeRigidBody(btRigidBody* body)
+{
+    clearGpuXpbdTgsContacts();btMultiBodyDynamicsWorld::removeRigidBody(body);
+}
+void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar timeStep,bool queryOnly)
 {
     auto fail=[&](const std::string& reason)
     {
@@ -317,30 +351,44 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     if(!std::isfinite(double(m_gpuXpbdTgsMaxMassRatio))||m_gpuXpbdTgsMaxMassRatio<0||
        (m_gpuXpbdTgsMaxMassRatio>0&&m_gpuXpbdTgsMaxMassRatio<1))
         { fail("GPU XPBD mass ratio must be zero or at least one");return; }
-    if(m_multiBodies.size()||m_constraints.size()||m_solverCallback)
-        { fail("GPU XPBD articulated bodies, rigid joints and solver callbacks are not implemented");return; }
-    if(m_internalPreTickCallback) (*m_internalPreTickCallback)(this,timeStep);
+    if(m_multiBodies.size())
+        { fail("GPU XPBD articulated bodies are not implemented");return; }
+    if(!queryOnly&&m_internalPreTickCallback) (*m_internalPreTickCallback)(this,timeStep);
+    for(int i=0;i<m_collisionObjects.size();++i)
+        if(m_collisionObjects[i]->getCollisionFlags()&btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS)
+        {
+            fail("Contact-count collection is unsupported by GPU XPBD/TGS (Medium/High quality); use Low quality");
+            return;
+        }
+
+    m_solverInfo.m_timeStep=timeStep;m_dispatchInfo.m_timeStep=timeStep;
+
     if(!m_gpuXpbdTgsWorld) m_gpuXpbdTgsWorld=std::make_shared<btDeformableGpuXpbdTgsWorld>();
     auto& cache=*m_gpuXpbdTgsWorld;
     if(!cache.backend.ready()) { fail(cache.backend.error());return; }
     const auto* api=cache.backend.api();void* state=cache.backend.state();
+    cache.dispatcher=getDispatcher();
+    const bool callbacks=queryOnly||m_internalPreTickCallback||m_internalPostDiscreteCollisionDetectionTickCallback||m_internalTickCallback||m_solverCallback||m_actions.size();
+    for(int phase=callbacks?0:1;phase<2;++phase)
+    {
     std::vector<btSoftBody*> bodies;std::vector<int> offsets,owners;
     std::vector<btGpuXpbdNode> nodes;std::vector<btGpuXpbdTet> tets;std::vector<btGpuXpbdVec> forces;
     std::vector<btGpuXpbdSpring> springs;
+    std::vector<int> selfBodies;
     std::vector<unsigned char> key;appendKey(key,units);
     for(int b=0;b<m_softBodies.size();++b)
     {
-        auto* body=m_softBodies[b];if(body->isStaticObject()) continue;
+        auto* body=m_softBodies[b];
         // Keep solver coordinates local by subtracting the origin in host precision.
         if(!cache.hasOrigin&&body->m_nodes.size())
         {
             cache.origin=body->m_nodes[0].m_x;cache.hasOrigin=true;
         }
-        if(!body->m_tetras.size()||body->m_anchors.size()||body->m_deformableAnchors.size()||
-           (body->m_cfg.collisions&btSoftBody::fCollision::CL_SELF))
-            { fail("GPU XPBD currently requires tetrahedral bodies without anchors or self-collision");return; }
+        if(!body->m_tetras.size()||body->m_anchors.size())
+            { fail("GPU XPBD requires tetrahedral bodies; use deformable anchors instead of legacy soft anchors");return; }
         int owner=m_collisionObjects.findLinearSearch(body);
         if(owner>=m_collisionObjects.size()) { fail("GPU XPBD body is absent from the world");return; }
+        if(body->hasContactResponse()&&(body->m_cfg.collisions&btSoftBody::fCollision::CL_SELF)) selfBodies.push_back(owner);
         const int offset=int(nodes.size());bodies.push_back(body);offsets.push_back(offset);owners.push_back(owner);
         btDeformableLinearElasticityForce* material=nullptr;
         std::vector<btVector3> external(body->m_nodes.size(),btVector3(0,0,0));
@@ -393,7 +441,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         const btScalar maxInverseMass=m_gpuXpbdTgsMaxMassRatio>0?minInverseMass*m_gpuXpbdTgsMaxMassRatio:SIMD_INFINITY;
         for(int n=0;n<body->m_nodes.size();++n)
         {
-            const auto& node=body->m_nodes[n];const btScalar inv=node.m_frozen>0?0:btMin(node.m_im,maxInverseMass);
+            const auto& node=body->m_nodes[n];const btScalar inv=(node.m_frozen>0||body->isStaticObject())?0:btMin(node.m_im,maxInverseMass);
             nodes.push_back({gpuVector(node.m_x-cache.origin,units),double(inv),gpuVector(inv>0?node.m_v:btVector3(0,0,0),units),double(material->m_damping_alpha)});
             const auto gravity=inv>0?getGravity()*(body->m_gravityFactor/inv):btVector3(0,0,0);
             forces.push_back(gpuVector(external[n]+node.m_f+gravity,units));
@@ -409,7 +457,90 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
             tet.damping=double(material->m_damping_beta);tets.push_back(tet);appendKey(key,tet);
         }
     }
-    if(nodes.empty()) { fail("GPU XPBD requires at least one dynamic tetrahedral body");return; }
+    std::vector<btRigidBody*> rigidBodies;
+    std::vector<btGpuXpbdRigid> rigidStates;
+    std::map<const btRigidBody*,int> rigidIds;
+    for(int i=0;i<m_collisionObjects.size();++i)
+    {
+        auto* rigid=btRigidBody::upcast(m_collisionObjects[i]);if(!rigid||rigid->isStaticObject()) continue;
+        if(!cache.hasOrigin) {cache.origin=rigid->getWorldTransform().getOrigin();cache.hasOrigin=true;}
+        btGpuXpbdRigid r={};auto transform=rigid->getCenterOfMassTransform();
+        const bool kinematic=rigid->isKinematicObject();
+        if(kinematic)
+        {
+            transform.getOrigin()-=rigid->getLinearVelocity()*m_gpuXpbdTgsKinematicTimeRemaining;
+            const auto omega=rigid->getAngularVelocity();const auto speed=omega.length();
+            if(speed>SIMD_EPSILON) transform.setRotation(btQuaternion(omega/speed,-speed*m_gpuXpbdTgsKinematicTimeRemaining)*transform.getRotation());
+        }
+        auto q=transform.getRotation();
+        r.position=gpuVector(transform.getOrigin()-cache.origin,units);for(int j=0;j<4;++j) r.orientation[j]=q[j];
+        r.linearVelocity=gpuVector(rigid->getLinearVelocity(),units);r.angularVelocity=gpuVector(rigid->getAngularVelocity(),1);
+        if(!kinematic)
+        {
+            r.inverseMass=rigid->getInvMass();r.inverseInertia=gpuVector(rigid->getInvInertiaDiagLocal(),1/(units*units));
+            r.force=gpuVector(rigid->getTotalForce()+rigid->getGravity()/rigid->getInvMass(),units);
+            r.torque=gpuVector(rigid->getTotalTorque(),units*units);
+        }
+        else if(m_gpuXpbdTgsKinematicTimeRemaining<=0) r.linearVelocity=r.angularVelocity={0,0,0};
+        r.linearDamping=-std::log(btMax(btScalar(1.e-12),1-rigid->getLinearDamping()));
+        r.angularDamping=-std::log(btMax(btScalar(1.e-12),1-rigid->getAngularDamping()));
+        rigidIds[rigid]=int(rigidBodies.size());rigidBodies.push_back(rigid);rigidStates.push_back(r);
+        appendKey(key,rigid);appendKey(key,r.inverseMass);appendKey(key,r.inverseInertia);
+    }
+    std::vector<btGpuXpbdJoint> joints;
+    for(int i=0;i<m_constraints.size();++i)
+    {
+        auto* constraint=m_constraints[i];if(!constraint->isEnabled()) continue;
+        if(constraint->getConstraintType()!=D6_SPRING_2_CONSTRAINT_TYPE) {fail("GPU XPBD supports Generic6DofSpring2 rigid constraints");return;}
+        auto* source=static_cast<btGeneric6DofSpring2Constraint*>(constraint);btGpuXpbdJoint joint={};
+        joint.rotationOrder=source->getRotationOrder();
+        const btRigidBody* ends[2]={&source->getRigidBodyA(),&source->getRigidBodyB()};
+        btTransform frames[2]={source->getFrameOffsetA(),source->getFrameOffsetB()};
+        for(int side=0;side<2;++side)
+        {
+            auto found=rigidIds.find(ends[side]);joint.bodies[side]=found==rigidIds.end()?-1:found->second;
+            if(joint.bodies[side]<0)
+            {
+                if(!ends[side]->isStaticObject()) {fail("GPU XPBD constraint body is absent from world");return;}
+                frames[side]=ends[side]->getWorldTransform()*frames[side];frames[side].getOrigin()-=cache.origin;
+            }
+            joint.points[side]=gpuVector(frames[side].getOrigin(),units);auto q=frames[side].getRotation();
+            for(int k=0;k<4;++k) joint.orientations[side][k]=q[k];
+        }
+        auto* linear=source->getTranslationalLimitMotor();
+        for(int axis=0;axis<6;++axis)
+        {
+            auto& a=joint.axes[axis];
+            if(axis<3)
+            {
+                a={double(linear->m_lowerLimit[axis]*units),double(linear->m_upperLimit[axis]*units),double(linear->m_springStiffness[axis]),double(linear->m_springDamping[axis]),double(linear->m_equilibriumPoint[axis]*units),
+                    double(linear->m_targetVelocity[axis]*units),double(linear->m_maxMotorForce[axis]*units),double(linear->m_servoTarget[axis]*units),double(linear->m_bounce[axis]),double(linear->m_stopERP[axis]),double(linear->m_stopCFM[axis]),double(linear->m_motorERP[axis]),double(linear->m_motorCFM[axis]),
+                    (linear->m_enableSpring[axis]?1:0)|(linear->m_enableMotor[axis]?2:0)|(linear->m_servoMotor[axis]?4:0)|(linear->m_springStiffnessLimited[axis]?8:0)|(linear->m_springDampingLimited[axis]?16:0)};
+            }
+            else
+            {
+                auto* r=source->getRotationalLimitMotor(axis-3);
+                a={double(r->m_loLimit),double(r->m_hiLimit),double(r->m_springStiffness*units*units),double(r->m_springDamping*units*units),double(r->m_equilibriumPoint),double(r->m_targetVelocity),double(r->m_maxMotorForce*units*units),double(r->m_servoTarget),double(r->m_bounce),double(r->m_stopERP),double(r->m_stopCFM/(units*units)),double(r->m_motorERP),double(r->m_motorCFM/(units*units)),
+                    (r->m_enableSpring?1:0)|(r->m_enableMotor?2:0)|(r->m_servoMotor?4:0)|(r->m_springStiffnessLimited?8:0)|(r->m_springDampingLimited?16:0)};
+            }
+        }
+        joints.push_back(joint);
+    }
+    if(nodes.empty()) {nodes.push_back({{0,0,0},0,{0,0,0},0});forces.push_back({0,0,0});}
+    std::vector<btGpuXpbdAttachment> attachments;
+    for(int b=0;b<int(bodies.size());++b) for(int a=0;a<bodies[b]->m_deformableAnchors.size();++a)
+    {
+        const auto& source=bodies[b]->m_deformableAnchors[a];
+        if(!source.m_body) {fail("GPU XPBD anchor has no rigid body");return;}
+        btGpuXpbdAttachment link={};link.a.rigid=link.b.rigid=-1;
+        for(int j=0;j<4;++j) link.a.nodes[j]=link.b.nodes[j]=-1;
+        link.a.nodes[0]=offsets[b]+int(source.m_node-&bodies[b]->m_nodes[0]);link.a.weights[0]=1;
+        const auto found=rigidIds.find(source.m_body);
+        if(found!=rigidIds.end()) {link.b.rigid=found->second;link.b.point=gpuVector(source.m_local,units);}
+        else if(source.m_body->isStaticObject()) link.b.point=gpuVector(source.m_body->getWorldTransform()*source.m_local-cache.origin,units);
+        else {fail("GPU XPBD anchor body is absent from the world");return;}
+        attachments.push_back(link);
+    }
     std::vector<btGpuXpbdTarget> targets;
     for(const auto& target:m_gpuXpbdTgsTargets)
     {
@@ -424,19 +555,19 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     std::vector<double> friction;
     for(int i=0;i<m_collisionObjects.size();++i)
     {
-        const auto* object=m_collisionObjects[i];appendKey(key,object);appendTransform(key,object->getWorldTransform());
+        const auto* object=m_collisionObjects[i];appendKey(key,object);if(object->isStaticObject()) appendTransform(key,object->getWorldTransform());
         const btScalar coefficient=object->getFriction();
         if(!std::isfinite(double(coefficient))||coefficient<0) { fail("GPU XPBD friction must be finite and nonnegative");return; }
         friction.push_back(double(coefficient));appendKey(key,friction.back());
         shapeKey(key,object->getCollisionShape());
-        if(!object->isStaticObject()&&std::find(bodies.begin(),bodies.end(),object)==bodies.end())
+        if(!object->isStaticObject()&&!btRigidBody::upcast(object)&&std::find(bodies.begin(),bodies.end(),object)==bodies.end())
             { fail("GPU XPBD moving rigid obstacles are not implemented");return; }
     }
     const double margin=double(m_contactDiscoveryPadding>=0?btMax(btScalar(.0001),m_contactDiscoveryPadding*units):btScalar(.1));
     appendKey(key,margin);
     if(cache.key!=key)
     {
-        cache.key.clear();cache.accepted.clear();cache.disabled.clear();cache.vertices.clear();cache.triangles.clear();
+        cache.key.clear();cache.accepted.clear();cache.disabled.clear();cache.attachments.clear();cache.joints.clear();cache.selfBodies.clear();cache.vertices.clear();cache.triangles.clear();
         // Reconstruct the undeformed geometry from element rest edges, even after a reset to a deformed pose.
         struct Edge { int node;btVector3 delta; };
         std::vector<std::vector<Edge>> edges(nodes.size());
@@ -466,6 +597,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         }
         if(!cache.checked(api->upload(state,int(rest.size()),rest.data(),int(tets.size()),tets.data()))||
            !cache.checked(api->updateNodes(state,int(nodes.size()),nodes.data()))) { fail(cache.error);return; }
+        if(!cache.checked(api->rigids(state,int(rigidStates.size()),rigidStates.data()))) {fail(cache.error);return;}
         cache.hasTargets=false;
         for(int b=0;b<int(bodies.size());++b)
         {
@@ -480,9 +612,20 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
             }
             else cache.boundary(body,offsets[b],owners[b]);
         }
-        for(int i=0;i<m_collisionObjects.size();++i) if(m_collisionObjects[i]->isStaticObject())
+        for(int i=0;i<m_collisionObjects.size();++i) if(m_collisionObjects[i]->isStaticObject()&&std::find(bodies.begin(),bodies.end(),m_collisionObjects[i])==bodies.end())
             if(!cache.obstacle(m_collisionObjects[i]->getCollisionShape(),m_collisionObjects[i]->getWorldTransform(),units,i)) { fail(cache.error);return; }
-        if(!cache.checked(api->surface(state,int(cache.vertices.size()),cache.vertices.data(),int(cache.triangles.size()),cache.triangles.data(),margin,0)))
+        for(int r=0;r<int(rigidBodies.size());++r)
+        {
+            const int first=int(cache.vertices.size());auto* rigid=rigidBodies[r];
+            if(!cache.obstacle(rigid->getCollisionShape(),rigid->getWorldTransform(),units,m_collisionObjects.findLinearSearch(rigid))) {fail(cache.error);return;}
+            for(int v=first;v<int(cache.vertices.size());++v)
+            {
+                auto& vertex=cache.vertices[v];
+                vertex.offset=gpuVector(rigid->getWorldTransform().invXform(bulletVector(vertex.offset,units)+cache.origin),units);
+                vertex.nodes[0]=-2-r;
+            }
+        }
+        if(!cache.triangles.empty()&&!cache.checked(api->surface(state,int(cache.vertices.size()),cache.vertices.data(),int(cache.triangles.size()),cache.triangles.data(),margin,0)))
             { fail(cache.error);return; }
         if(!cache.checked(api->friction(state,int(friction.size()),friction.data()))) { fail(cache.error);return; }
         cache.key=key;cache.accepted=nodes;
@@ -496,18 +639,90 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         }
         if(!cache.checked(api->updateNodes(state,int(nodes.size()),nodes.data()))) { fail(cache.error);return; }
     }
+    if(!cache.checked(api->updateRigids(state,int(rigidStates.size()),rigidStates.data()))) {fail(cache.error);return;}
+    if(selfBodies!=cache.selfBodies)
+    {
+        if(!cache.checked(api->selfCollision(state,int(selfBodies.size()),selfBodies.data()))) {fail(cache.error);return;}
+        cache.selfBodies=selfBodies;
+    }
+    if(joints.size()!=cache.joints.size()||(!joints.empty()&&std::memcmp(joints.data(),cache.joints.data(),joints.size()*sizeof(joints[0]))))
+    {
+        if(!cache.checked(api->joints(state,int(joints.size()),joints.data()))) {fail(cache.error);return;}
+        cache.joints=joints;
+    }
+    if(attachments.size()!=cache.attachments.size()||(!attachments.empty()&&std::memcmp(attachments.data(),cache.attachments.data(),attachments.size()*sizeof(attachments[0]))))
+    {
+        if(!cache.checked(api->attachments(state,int(attachments.size()),attachments.data()))) {fail(cache.error);return;}
+        cache.attachments=attachments;
+    }
+    // This fork permits custom collision filters without enabling Bullet's ignore-list dispatch.
+    const auto ignores=[](btCollisionObject* first,const btCollisionObject* second)
+    {
+        for(int i=0;i<first->getNumObjectsWithoutCollision();++i)
+            if(first->getObjectWithoutCollision(i)==second) return true;
+        return false;
+    };
     std::vector<btGpuXpbdDisabledPair> disabled;
+    std::vector<btGpuXpbdNotificationPair> notifications;
     for(int a=0;a<m_collisionObjects.size();++a) for(int b=a+1;b<m_collisionObjects.size();++b)
     {
         auto* first=m_collisionObjects[a];auto* second=m_collisionObjects[b];
         const auto* pa=first->getBroadphaseHandle();const auto* pb=second->getBroadphaseHandle();
-        if(!first->hasContactResponse()||!second->hasContactResponse()||!pa||!pb||!(pa->m_collisionFilterGroup&pb->m_collisionFilterMask)||!(pb->m_collisionFilterGroup&pa->m_collisionFilterMask)||
-           !first->checkCollideWith(second)||!second->checkCollideWith(first)) disabled.push_back({a,b});
+        const bool excluded=!pa||!pb||!(pa->m_collisionFilterGroup&pb->m_collisionFilterMask)||!(pb->m_collisionFilterGroup&pa->m_collisionFilterMask)||
+           ignores(first,second)||ignores(second,first)||!first->checkCollideWith(second)||!second->checkCollideWith(first);
+        const bool tolerated=first->isToleratingInitialCollisionsAll()||second->isToleratingInitialCollisionsAll()||
+            first->checkIsTolerated(second)||second->checkIsTolerated(first);
+        const bool notification=!first->hasContactResponse()||!second->hasContactResponse();
+        if(excluded||notification||tolerated) disabled.push_back({a,b});
+        if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0});
     }
     if(disabled.size()!=cache.disabled.size()||(!disabled.empty()&&std::memcmp(disabled.data(),cache.disabled.data(),disabled.size()*sizeof(disabled[0]))!=0))
     {
         if(!cache.checked(api->disabledPairs(state,int(disabled.size()),disabled.data()))) { fail(cache.error);return; }
         cache.disabled=disabled;
+    }
+    if(phase==0)
+    {
+        cache.clearContacts();
+        auto* dispatcher=getDispatcher();
+        dispatcher->clearInitialCollisionParticipants();
+        for(int i=0;i<dispatcher->getNumManifolds();++i) dispatcher->clearManifold(dispatcher->getManifoldByIndexInternal(i));
+        int count=0;
+        if(!cache.checked(api->contacts(state,int(notifications.size()),notifications.data(),&count))) {fail(cache.error);return;}
+        std::vector<btGpuXpbdContactReport> contacts(count);
+        if(!cache.checked(api->downloadContacts(state,count,contacts.data()))) {fail(cache.error);return;}
+        std::map<std::pair<int,int>,btPersistentManifold*> pairs;
+        for(const auto& contact:contacts)
+        {
+            if(contact.bodyA<0||contact.bodyA>=m_collisionObjects.size()||contact.bodyB<0||contact.bodyB>=m_collisionObjects.size())
+                {fail("Invalid GPU callback body ID");return;}
+            auto* a=m_collisionObjects[contact.bodyA];auto* b=m_collisionObjects[contact.bodyB];
+            const bool tolerated=a->isToleratingInitialCollisionsAll()||b->isToleratingInitialCollisionsAll()||a->checkIsTolerated(b)||b->checkIsTolerated(a);
+            if(tolerated&&a->hasContactResponse()&&b->hasContactResponse())
+            {
+                dispatcher->addInitialCollisionParticipant({a,b});
+                continue;
+            }
+            auto& manifold=pairs[{contact.bodyA,contact.bodyB}];
+            if(!manifold)
+            {
+                manifold=dispatcher->getNewManifold(a,b);
+                if(!manifold) {fail("Unable to allocate GPU callback manifold");return;}
+                cache.manifolds.push_back(manifold);
+            }
+            const auto pa=bulletVector(contact.pointA,units)+cache.origin,pb=bulletVector(contact.pointB,units)+cache.origin;
+            const btScalar distance=btScalar(contact.distance)/units;
+            btManifoldPoint point(a->getWorldTransform().invXform(pa),b->getWorldTransform().invXform(pb),bulletVector(contact.normal,1),distance,distance);
+            point.m_positionWorldOnA=pa;point.m_positionWorldOnB=pb;
+            point.m_partId0=contact.partA;point.m_index0=contact.indexA;point.m_partId1=contact.partB;point.m_index1=contact.indexB;
+            if(distance<0) point.m_contactPointFlags|=BT_CONTACT_FLAG_PENETRATING;
+            manifold->addManifoldPoint(point);
+        }
+        if(queryOnly) {m_gpuXpbdTgsError.clear();return;}
+        if(m_internalPostDiscreteCollisionDetectionTickCallback) (*m_internalPostDiscreteCollisionDetectionTickCallback)(this,timeStep);
+        if(m_solverCallback) (*m_solverCallback)(m_internalTime+timeStep,this);
+        // Repack inputs after callbacks: grab gains, forces, filters and frozen nodes can change here.
+        continue;
     }
     btGpuXpbdStep config={double(timeStep),m_gpuXpbdTgsSubsteps,{0,0,0},0,0,m_gpuXpbdTgsIterations,0,0,1,m_gpuXpbdTgsMaterialMode};
     if(m_gpuXpbdTgsSettlingBody)
@@ -523,6 +738,16 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     if(!cache.checked(api->springs(state,int(springs.size()),springs.data()))) { fail(cache.error);return; }
     if(!cache.checked(api->forces(state,int(forces.size()),forces.data()))||!cache.checked(api->step(state,&config))||
        !cache.checked(api->download(state,int(nodes.size()),nodes.data()))) { fail(cache.error);return; }
+    if(!cache.checked(api->downloadRigids(state,int(rigidStates.size()),rigidStates.data()))) {fail(cache.error);return;}
+    for(int r=0;r<int(rigidBodies.size());++r)
+    {
+        auto* rigid=rigidBodies[r];const auto& result=rigidStates[r];
+        if(rigid->isKinematicObject()) {updateSingleAabb(rigid);continue;}
+        btTransform transform(btQuaternion(result.orientation[0],result.orientation[1],result.orientation[2],result.orientation[3]),bulletVector(result.position,units)+cache.origin);
+        rigid->setCenterOfMassTransform(transform);rigid->setInterpolationWorldTransform(transform);
+        rigid->setLinearVelocity(bulletVector(result.linearVelocity,units));rigid->setAngularVelocity(bulletVector(result.angularVelocity,1));
+        rigid->activate();updateSingleAabb(rigid);
+    }
     cache.accepted=nodes;
     // Target kernels pin their nodes, but subsequent host comparisons use the original effective masses.
     for(int n=0;n<int(nodes.size());++n)
@@ -546,6 +771,12 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         body->updateNormals();body->updateBounds();updateSingleAabb(body);
     }
     m_gpuXpbdTgsError.clear();m_internalTime+=timeStep;m_solverInfo.m_timeStep=timeStep;m_dispatchInfo.m_timeStep=timeStep;
+    if(m_solverCallback) (*m_solverCallback)(m_internalTime,this);
+    btMultiBodyDynamicsWorld::updateActions(timeStep);
+    for(int i=0;i<m_constraints.size();++i)
+        if(m_constraints[i]->getConstraintType()==D6_SPRING_2_CONSTRAINT_TYPE)
+            static_cast<btGeneric6DofSpring2Constraint*>(m_constraints[i])->calculateTransforms();
     if(m_internalTickCallback) (*m_internalTickCallback)(this,timeStep);
     ++m_executed_step_counter;m_dispatchInfo.m_stepCounter=m_executed_step_counter;
+    }
 }

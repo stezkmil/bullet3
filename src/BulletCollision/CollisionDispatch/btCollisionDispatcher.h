@@ -105,6 +105,12 @@ public:
 		initialCollisionParticipants0.insert(pair.first);
 		initialCollisionParticipants1.insert(pair.second);
 	}
+	void clearInitialCollisionParticipants() override
+	{
+		initialCollisionParticipants.clear();
+		initialCollisionParticipants0.clear();
+		initialCollisionParticipants1.clear();
+	}
 
 	void addPreviouslyConsumedTime(btPreviouslyFoundPairMap::key_type key, btPreviouslyFoundPairMap::mapped_type value) override
 	{

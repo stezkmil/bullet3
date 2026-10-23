@@ -1,9 +1,9 @@
 #ifndef BT_GPU_XPBD_TGS_API_H
 #define BT_GPU_XPBD_TGS_API_H
 
-// ABI 8 adds an explicit material mode; shared state remains double precision.
+// ABI 11 adds original triangle provenance and GPU collision reports.
 // POD boundary independent of Bullet's float/double scalar configuration.
-constexpr int BT_GPU_XPBD_ABI_VERSION = 8;
+constexpr int BT_GPU_XPBD_ABI_VERSION = 11;
 struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
@@ -31,19 +31,63 @@ struct btGpuXpbdStep
 };
 struct btGpuXpbdSurfaceVertex
 {
-    int nodes[4]; // -1 denotes an unused support; all -1 denotes a static vertex.
+    int nodes[4]; // -1: unused; nodes[0] = -2-rigidIndex: rigid-local offset; all -1: static.
     double weights[4];
     btGpuXpbdVec offset;
     int body;
 };
-struct btGpuXpbdSurfaceTriangle { int vertices[3]; };
+struct btGpuXpbdSurfaceTriangle { int vertices[3];int part=-1,index=-1; };
+struct btGpuXpbdContactReport
+{
+    int bodyA,bodyB,partA,indexA,partB,indexB;
+    btGpuXpbdVec pointA,pointB,normal;
+    double distance;
+};
 struct btGpuXpbdTarget { int node;btGpuXpbdVec position; };
 struct btGpuXpbdDisabledPair { int bodyA, bodyB; };
+struct btGpuXpbdNotificationPair { int bodyA,bodyB;int touching; };
+static_assert(sizeof(btGpuXpbdSurfaceTriangle)==20 && sizeof(btGpuXpbdContactReport)==104 && sizeof(btGpuXpbdNotificationPair)==12, "Contact report GPU ABI mismatch");
 struct btGpuXpbdSpring
 {
     int node;
     btGpuXpbdVec target;
     double stiffness,damping,maxForce;
+};
+struct btGpuXpbdRigid
+{
+    btGpuXpbdVec position;
+    double orientation[4]; // x,y,z,w; principal inertia frame.
+    btGpuXpbdVec linearVelocity, angularVelocity;
+    double inverseMass;
+    btGpuXpbdVec inverseInertia;
+    btGpuXpbdVec force, torque;
+    double linearDamping, angularDamping;
+};
+struct btGpuXpbdEndpoint
+{
+    int rigid; // >=0: rigid index; -1: weighted soft nodes or fixed world point.
+    int nodes[4];
+    double weights[4];
+    btGpuXpbdVec point; // rigid-local offset, or world offset for soft/fixed points.
+};
+struct btGpuXpbdAttachment
+{
+    btGpuXpbdEndpoint a,b;
+    double compliance; // m/N in the backend length unit; zero gives a hard attachment.
+};
+struct btGpuXpbdJointAxis
+{
+    double lower,upper,stiffness,damping,equilibrium;
+    double velocity,maxForce,servoTarget,bounce,stopERP,stopCFM,motorERP,motorCFM;
+    int flags; // Spring: 1, motor: 2, servo: 4, stiffness cap: 8, damping cap: 16.
+};
+struct btGpuXpbdJoint
+{
+    int bodies[2]; // -1: fixed world frame.
+    btGpuXpbdVec points[2];
+    double orientations[2][4];
+    btGpuXpbdJointAxis axes[6];
+    int rotationOrder; // Bullet RotateOrder.
 };
 struct btGpuXpbdTgsApi
 {
@@ -72,7 +116,18 @@ struct btGpuXpbdTgsApi
     // ABI 5: compliant mouse attachments; count=0 releases all springs.
     // Target positions use the same coordinates as nodes; stiffness/damping are kg/s^2 and kg/s.
     int (*springs)(void*, int, const btGpuXpbdSpring*);
+    // Mesh upload clears rigid bodies and attachments. Rigid upload clears surfaces and attachments.
+    int (*rigids)(void*, int, const btGpuXpbdRigid*);
+    int (*downloadRigids)(void*, int, btGpuXpbdRigid*);
+    int (*attachments)(void*, int, const btGpuXpbdAttachment*);
+    int (*updateRigids)(void*, int, const btGpuXpbdRigid*);
+    int (*joints)(void*, int, const btGpuXpbdJoint*);
+    int (*selfCollision)(void*, int, const int*); // Replace enabled surface body IDs; surface upload clears this set.
+    // Query current geometry without advancing time. Notification pairs stop at their first hit.
+    int (*contacts)(void*, int, const btGpuXpbdNotificationPair*, int*);
+    int (*downloadContacts)(void*, int, btGpuXpbdContactReport*);
 };
+static_assert(sizeof(btGpuXpbdRigid)==200 && sizeof(btGpuXpbdEndpoint)==80 && sizeof(btGpuXpbdAttachment)==168, "Rigid GPU ABI mismatch");
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);
 static_assert(sizeof(btGpuXpbdNode)==64 && sizeof(btGpuXpbdTet)==120 && sizeof(btGpuXpbdStep)==80, "GPU XPBD ABI mismatch");
 #endif

@@ -3,6 +3,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(BulletGpuXpbdTgs LANGUAGES CXX)
     option(INSTALL_LIBS "Install the GPU XPBD TGS runtime" ON)
 endif()
+# This runtime does not use Bullet's directory-wide TBB/allocator libraries.
+set_property(DIRECTORY PROPERTY LINK_LIBRARIES "")
 if(NOT WIN32)
     message(FATAL_ERROR "GPU XPBD TGS currently requires Windows.")
 endif()

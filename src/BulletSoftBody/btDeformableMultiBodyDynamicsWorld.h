@@ -65,6 +65,7 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_deformableStepFailed = false;
 	btScalar m_contactDiscoveryPadding = -1;
 	bool m_gpuXpbdTgsEnabled = false;
+	btScalar m_gpuXpbdTgsKinematicTimeRemaining = 0;
 	btScalar m_gpuXpbdTgsMetersPerUnit = 1;
 	int m_gpuXpbdTgsSubsteps = 16, m_gpuXpbdTgsIterations = 50;
 	int m_gpuXpbdTgsMaterialMode = 0;
@@ -74,7 +75,8 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	btScalar m_gpuXpbdTgsSettlingSpeed = 0, m_gpuXpbdTgsSettlingDamping = 0;
 	std::shared_ptr<btDeformableGpuXpbdTgsWorld> m_gpuXpbdTgsWorld;
 	std::string m_gpuXpbdTgsError;
-	void gpuXpbdTgsSingleStepSimulation(btScalar timeStep);
+	void gpuXpbdTgsSingleStepSimulation(btScalar timeStep,bool queryOnly=false);
+	void clearGpuXpbdTgsContacts();
 
 	DeformableBodyInplaceSolverIslandCallback* m_solverDeformableBodyIslandCallback;
 
@@ -123,6 +125,7 @@ public:
 	}
 
 	virtual ~btDeformableMultiBodyDynamicsWorld();
+	void removeRigidBody(btRigidBody* body) override;
 
 	virtual btMultiBodyDynamicsWorld* getMultiBodyDynamicsWorld()
 	{

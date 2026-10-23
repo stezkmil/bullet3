@@ -21,6 +21,190 @@ int mediumStep(void* world,const btGpuXpbdStep* config)
 void require(bool value,const char* label) { if(!value) { std::fprintf(stderr,"FAIL: %s\n",label);++failures; } }
 double distance(btGpuXpbdVec a,btGpuXpbdVec b)
 { return std::sqrt((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)+(a.z-b.z)*(a.z-b.z)); }
+btGpuXpbdRigid rigidState(double inverseMass=1)
+{
+    btGpuXpbdRigid r={};r.orientation[3]=1;r.inverseMass=inverseMass;
+    r.inverseInertia={inverseMass,inverseMass,inverseMass};return r;
+}
+btGpuXpbdEndpoint softEndpoint(int node)
+{
+    btGpuXpbdEndpoint e={};e.rigid=-1;for(int& n:e.nodes) n=-1;e.nodes[0]=node;e.weights[0]=node>=0?1:0;return e;
+}
+btGpuXpbdEndpoint rigidEndpoint(int rigid,btGpuXpbdVec point={0,0,0})
+{
+    auto e=softEndpoint(-1);e.rigid=rigid;e.point=point;return e;
+}
+void testContactReports(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode node={};
+    require(api->upload(world,1,&node,0,nullptr)!=0,"report fixture upload");
+    const btGpuXpbdVec points[]={{-1,-1,0},{1,-1,0},{0,1,0},{0,-.5,-1},{0,-.5,1},{0,.5,0}};
+    btGpuXpbdSurfaceVertex vertices[6]={};
+    for(int i=0;i<6;++i)
+    {
+        for(int& n:vertices[i].nodes) n=-1;
+        vertices[i].offset=points[i];vertices[i].body=i/3;
+    }
+    btGpuXpbdSurfaceTriangle triangles[]={{{0,1,2},7,41},{{3,4,5},9,83},{{3,4,5},9,84}};
+    btGpuXpbdDisabledPair pair={0,1};btGpuXpbdNotificationPair notification={0,1,0};int count=-1;
+    require(api->surface(world,6,vertices,3,triangles,.1,0)&&api->disabledPairs(world,1,&pair),"notification report fixture");
+    require(api->contacts(world,1,&notification,&count)&&count==1,"GPU notification first-hit query");
+    btGpuXpbdContactReport report={};
+    if(count==1)
+    {
+        require(api->downloadContacts(world,1,&report)!=0,"GPU report download");
+        require(report.bodyA==0&&report.bodyB==1&&report.partA==7&&report.indexA==41&&report.partB==9&&report.indexB==83,"original mesh triangle provenance survives GPU query");
+        require(report.distance<0&&std::isfinite(report.normal.x),"penetrating report has finite signed geometry");
+        for(int i=0;i<4;++i)
+        {
+            btGpuXpbdContactReport repeat={};
+            require(api->contacts(world,1,&notification,&count)&&count==1&&api->downloadContacts(world,1,&repeat)&&
+                std::memcmp(&repeat,&report,sizeof(report))==0,"first-hit report is independent of CUDA scheduling");
+        }
+    }
+    require(api->contacts(world,0,nullptr,&count)&&count==0,"notification reports do not persist without a requested pair");
+    for(int i=3;i<6;++i) vertices[i].offset.x+=10;
+    require(api->surface(world,6,vertices,2,triangles,.1,0)&&api->contacts(world,1,&notification,&count)&&count==0,"separated notification pair loses contact");
+    require(api->download(world,1,&node)&&distance(node.position,{0,0,0})==0,"report query never advances simulation");
+    node.position={0,0,-.01};node.inverseMass=1;
+    require(api->updateNodes(world,1,&node)!=0,"response report node update");
+    const btGpuXpbdVec responsePoints[]={{-.1,-.1,0},{.1,-.1,0},{0,.1,0},{-1,-1,0},{1,-1,0},{0,1,0}};
+    for(int i=0;i<6;++i)
+    {
+        vertices[i].offset=responsePoints[i];
+        if(i<3) {vertices[i].nodes[0]=0;vertices[i].weights[0]=1;}
+    }
+    require(api->surface(world,6,vertices,2,triangles,.1,0)&&api->contacts(world,0,nullptr,&count)&&count>0,"response contacts reuse GPU narrowphase data");
+    std::vector<btGpuXpbdContactReport> response(count);
+    require(api->downloadContacts(world,count,response.data())!=0,"response report download");
+    for(const auto& contact:response)
+        require(contact.partA==7&&contact.indexA==41&&contact.partB==9&&contact.indexB==83&&contact.distance<0,
+            "vertex response reports retain original incident triangle IDs and penetration");
+}
+void testRigidCoupling(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode node={};btGpuXpbdStep step={.1,2,{0,0,0},0,0,10,0,0,0,0};
+    require(api->upload(world,1,&node,0,nullptr)!=0,"rigid fixture upload");
+    auto r=rigidState(.5);r.inverseInertia={1,2,3};r.force={4,0,0};r.torque={0,0,2};
+    require(api->rigids(world,1,&r)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"rigid force and torque integration");
+    require(std::fabs(r.linearVelocity.x-.2)<1.e-12,"rigid force impulse");
+    require(std::fabs(r.angularVelocity.z-.6)<1.e-11,"rigid torque impulse");
+    require(std::fabs(r.orientation[0]*r.orientation[0]+r.orientation[1]*r.orientation[1]+r.orientation[2]*r.orientation[2]+r.orientation[3]*r.orientation[3]-1)<1.e-12,"rigid normalized orientation");
+    // An off-centre anchor must partition a node impulse into rigid translation and spin.
+    node={ {0,1,0},1,{1,0,0},0 };r=rigidState();step.dt=1.e-5;step.substeps=step.iterations=1;
+    require(api->upload(world,1,&node,0,nullptr)&&api->rigids(world,1,&r),"off-centre setup");
+    btGpuXpbdAttachment anchor={softEndpoint(0),rigidEndpoint(0,{0,1,0}),0};
+    require(api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node)&&api->downloadRigids(world,1,&r),"off-centre GPU attachment");
+    require(std::fabs(node.velocity.x-2./3)<1.e-9&&std::fabs(r.linearVelocity.x-1./3)<1.e-9&&std::fabs(r.angularVelocity.z+1./3)<1.e-8,"off-centre effective mass includes inertia");
+    require(std::fabs(node.velocity.x+r.linearVelocity.x-1)<1.e-12,"rigid-soft linear momentum");
+    double angular=node.position.x*node.velocity.y-node.position.y*node.velocity.x+r.position.x*r.linearVelocity.y-r.position.y*r.linearVelocity.x+r.angularVelocity.z;
+    require(std::fabs(angular+1)<1.e-8,"rigid-soft angular momentum");
+    // A fixed endpoint and a soft-soft attachment use the same generalized solve.
+    btGpuXpbdNode pair[2]={{{0,0,0},1,{1,0,0},0},{{0,0,0},.5,{0,0,0},0}};
+    anchor={softEndpoint(0),softEndpoint(1),0};
+    require(api->upload(world,2,pair,0,nullptr)&&api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,2,pair),"soft-soft attachment");
+    require(std::fabs(pair[0].velocity.x-1./3)<1.e-12&&std::fabs(pair[1].velocity.x-1./3)<1.e-12,"soft-soft attachment impulse balance");
+    anchor={softEndpoint(0),softEndpoint(-1),0};node={ {0,0,0},1,{1,0,0},0 };
+    require(api->upload(world,1,&node,0,nullptr)&&api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node),"world attachment");
+    require(std::fabs(node.position.x)<1.e-12&&std::fabs(node.velocity.x)<1.e-12,"world attachment holds node");
+    // Rejected steps must roll back both sides of a coupled island.
+    r=rigidState();r.force={std::numeric_limits<double>::max(),0,0};r.inverseMass=100;
+    require(api->rigids(world,1,&r)!=0,"finite rigid overflow input");auto accepted=r;
+    step.dt=1;require(!api->step(world,&step),"rigid overflow rejection");
+    require(api->downloadRigids(world,1,&r)&&std::memcmp(&r,&accepted,sizeof(r))==0,"rigid rollback exact state");
+    r=rigidState();r.orientation[3]=2;require(!api->rigids(world,1,&r),"invalid rigid orientation rejected");
+}
+void testRigidContacts(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode node={{0,.001,0},1,{0,-1,0},0};auto r=rigidState();
+    btGpuXpbdSurfaceVertex maps[]={{{0,-1,-1,-1},{1,0,0,0},{0,0,0},0},
+        {{-2,-1,-1,-1},{0,0,0,0},{-2,0,-2},1},{{-2,-1,-1,-1},{0,0,0,0},{0,0,2},1},{{-2,-1,-1,-1},{0,0,0,0},{2,0,-2},1}};
+    btGpuXpbdSurfaceTriangle triangle={{1,2,3}};
+    require(api->upload(world,1,&node,0,nullptr)&&api->rigids(world,1,&r)&&api->surface(world,4,maps,1,&triangle,.1,0),"rigid-soft contact upload");
+    btGpuXpbdStep step={.01,2,{0,0,0},0,0,20,0,0,1};
+    require(api->step(world,&step)&&api->download(world,1,&node)&&api->downloadRigids(world,1,&r),"rigid-soft contact step");
+    require(r.linearVelocity.y<-.1,"soft contact pushes dynamic rigid");
+    require(std::fabs(node.velocity.y+r.linearVelocity.y+1)<1.e-9,"rigid-soft contact conserves momentum");
+    require(node.position.y-r.position.y> -1.e-5,"rigid-soft contact limits penetration");
+    // A rigid point against a fixed plane exercises the rigid-only contact path.
+    node={};r=rigidState();r.position={0,.001,0};r.linearVelocity={0,-1,0};maps[0]={{-2,-1,-1,-1},{0,0,0,0},{0,0,0},0};
+    for(int i=1;i<4;++i) maps[i].nodes[0]=-1;
+    require(api->upload(world,1,&node,0,nullptr)&&api->rigids(world,1,&r)&&api->surface(world,4,maps,1,&triangle,.1,0),"rigid ground upload");
+    require(api->step(world,&step)&&api->downloadRigids(world,1,&r),"rigid ground step");
+    require(r.position.y> -1.e-6&&r.linearVelocity.y> -1.e-5,"rigid ground contact stops fall");
+    // Tangential inertia differs from normal inertia for a contact below the COM.
+    r=rigidState();r.position={0,1,0};r.linearVelocity={1,0,0};maps[0].offset={0,-1,0};
+    require(api->rigids(world,1,&r)&&api->surface(world,4,maps,1,&triangle,.1,0),"rigid friction upload");
+    double friction[2]={10,10};require(api->friction(world,2,friction)!=0,"rigid friction coefficient");
+    step={.001,1,{0,-100,0},0,0,1,0,0,0};
+    require(api->step(world,&step)&&api->downloadRigids(world,1,&r),"rigid friction step");
+    std::printf("rigid friction vx=%g vy=%g omegaZ=%g\n",r.linearVelocity.x,r.linearVelocity.y,r.angularVelocity.z);
+    require(std::fabs(r.linearVelocity.x-.5)<1.e-6&&std::fabs(r.angularVelocity.z+.5)<1.e-6,"rigid friction uses tangential effective inertia");
+    require(std::fabs(r.linearVelocity.x+r.angularVelocity.z)<1.e-6,"rigid contact slip removed without reversing it");
+    // Replacing rigid IDs must drop old surfaces; state-only updates must retain them.
+    auto malformed=maps[0];maps[0].nodes[1]=0;maps[0].weights[1]=1;
+    require(!api->surface(world,4,maps,1,&triangle,.1,0),"mixed rigid-soft surface support rejected");maps[0]=malformed;
+    r=rigidState();r.position={0,1,0};r.linearVelocity={0,-1,0};
+    require(api->updateRigids(world,1,&r)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"rigid state update retains contacts");
+    require(r.linearVelocity.y>-.001,"updated rigid is stopped by retained surface");
+    require(api->rigids(world,0,nullptr)&&api->step(world,&step),"removing rigids clears dependent surface references");
+}
+btGpuXpbdJoint freeJoint(int a,int b)
+{
+    btGpuXpbdJoint j={};j.bodies[0]=a;j.bodies[1]=b;j.orientations[0][3]=j.orientations[1][3]=1;
+    for(auto& axis:j.axes){axis.lower=1;axis.upper=-1;axis.stopERP=1;axis.motorERP=1;}return j;
+}
+void testRigidJoints(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode node={};require(api->upload(world,1,&node,0,nullptr)!=0,"joint fixture");
+    auto r=rigidState();r.force={2,3,4};r.torque={1,2,3};auto j=freeJoint(-1,0);
+    for(auto& axis:j.axes) axis.lower=axis.upper=0;
+    btGpuXpbdStep step={.01,1,{0,0,0},0,0,20,0,0,0};
+    require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"fixed GPU joint");
+    require(distance(r.position,{0,0,0})<1.e-10&&distance(r.linearVelocity,{0,0,0})<1.e-8,"fixed joint holds position under force");
+    require(distance(r.angularVelocity,{0,0,0})<1.e-7,"fixed joint holds rotation under torque");
+    r=rigidState(.5);j=freeJoint(-1,0);j.axes[0].flags=2;j.axes[0].velocity=1;j.axes[0].maxForce=.4;step.dt=.1;
+    require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"force limited joint motor");
+    require(std::fabs(r.linearVelocity.x-.02)<1.e-10,"motor impulse equals force times time");
+    r=rigidState();r.force={2,0,0};j=freeJoint(-1,0);j.axes[0].flags=1;j.axes[0].stiffness=100;j.axes[0].damping=20;step.dt=.02;
+    require(api->rigids(world,1,&r)&&api->joints(world,1,&j),"spring joint upload");
+    for(int i=0;i<100;++i) require(api->step(world,&step)!=0,"spring joint step");
+    require(api->downloadRigids(world,1,&r)&&std::fabs(r.position.x-.02)<1.e-6,"joint spring reaches force over stiffness equilibrium");
+    r=rigidState();r.linearVelocity={1,0,0};j=freeJoint(-1,0);j.axes[0].lower=-.01;j.axes[0].upper=.01;
+    require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"joint upper stop");
+    require(std::fabs(r.position.x-.01)<1.e-8&&std::fabs(r.linearVelocity.x)<1.e-7,"joint limit stops at its bound");
+    r=rigidState();j=freeJoint(-1,0);j.axes[0].flags=6;j.axes[0].velocity=1;j.axes[0].maxForce=100;j.axes[0].servoTarget=.05;
+    require(api->rigids(world,1,&r)&&api->joints(world,1,&j),"joint servo setup");
+    for(int i=0;i<20;++i) require(api->step(world,&step)!=0,"joint servo step");
+    require(api->downloadRigids(world,1,&r)&&std::fabs(r.position.x-.05)<1.e-7,"joint servo reaches target without drift");
+    btGpuXpbdRigid pair[2]={rigidState(),rigidState(.5)};pair[0].linearVelocity={1,0,0};j=freeJoint(0,1);j.axes[0].lower=j.axes[0].upper=0;
+    require(api->rigids(world,2,pair)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,2,pair),"two body joint");
+    require(std::fabs(pair[0].linearVelocity.x-1./3)<1.e-9&&std::fabs(pair[1].linearVelocity.x-1./3)<1.e-9,"joint transfers momentum by physical masses");
+    pair[0]=rigidState(0);pair[0].linearVelocity={1,0,0};pair[0].angularVelocity={0,0,1};pair[1]=rigidState(.5);
+    j=freeJoint(0,1);for(auto& a:j.axes)a.lower=a.upper=0;
+    require(api->rigids(world,2,pair)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,2,pair),"kinematic core joint");
+    require(std::fabs(pair[0].position.x-step.dt)<1.e-10&&std::fabs(pair[1].position.x-step.dt)<1.e-7,"kinematic core joint follows translation");
+}
+void testSelfCollision(const btGpuXpbdTgsApi* api,void* world)
+{
+    btGpuXpbdNode nodes[6]={{{-2,.001,-2},1,{0,-1,0},0},{{2,.001,-2},1,{0,-1,0},0},{{0,.001,2},1,{0,-1,0},0},
+        {{-2,0,-2},1,{0,0,0},0},{{0,0,2},1,{0,0,0},0},{{2,0,-2},1,{0,0,0},0}};
+    btGpuXpbdSurfaceVertex maps[6]={};for(int i=0;i<6;++i) {for(int& n:maps[i].nodes)n=-1;maps[i].nodes[0]=i;maps[i].weights[0]=1;}
+    btGpuXpbdSurfaceTriangle triangles[2]={{{0,1,2}},{{3,4,5}}};
+    btGpuXpbdStep step={.01,4,{0,0,0},0,0,20,0,0,2};int self=0;
+    for(int enabled=0;enabled<2;++enabled)
+    {
+        require(api->upload(world,6,nodes,0,nullptr)&&api->surface(world,6,maps,2,triangles,.1,0)&&api->selfCollision(world,enabled,&self),"self collision surface setup");
+        btGpuXpbdNode result[6];require(api->step(world,&step)&&api->download(world,6,result),"self collision step");
+        double momentum=0,lower=0;for(int i=0;i<6;++i){momentum+=result[i].velocity.y;if(i>=3)lower+=result[i].velocity.y;}
+        require(std::fabs(momentum+3)<1.e-8,"self collision preserves total momentum");
+        require(enabled?lower<-.1:std::fabs(lower)<1.e-12,"self collision enabled only for requested bodies");
+    }
+    triangles[1]={{0,2,1}};
+    require(api->upload(world,3,nodes,0,nullptr)&&api->surface(world,3,maps,2,triangles,.1,0)&&api->selfCollision(world,1,&self),"adjacent self collision setup");
+    btGpuXpbdNode result[3];require(api->step(world,&step)&&api->download(world,3,result),"adjacent self collision step");
+    require(std::fabs(result[0].velocity.y+1)<1.e-12,"shared mesh support does not self collide");
+}
 void testMaterialModeSwitch(const btGpuXpbdTgsApi* api,void* world)
 {
     btGpuXpbdNode nodes[4]={{{1.e6,0,0},4,{0,0,0},0},{{1.e6+1,0,0},4,{0,0,0},0},
@@ -257,6 +441,43 @@ void testMouseSprings(const btGpuXpbdTgsApi* api,void* world)
     spring.node=0;spring.damping=-1;require(!api->springs(world,1,&spring),"invalid picking damping rejected");
 }
 }
+// Collision geometry can overlap another element without changing its material ownership.
+static void testSoftContactMaterial(const btGpuXpbdTgsApi* api,void* world)
+{
+    for(int mode : {0,1})
+    {
+        btGpuXpbdNode nodes[12]={};
+        const btGpuXpbdVec rest[4]={{0,0,0},{1,0,0},{0,1,0},{0,0,1}};
+        btGpuXpbdTet tets[3]={};
+        for(int body=0;body<3;++body)
+        {
+            tets[body]={{body*4,body*4+1,body*4+2,body*4+3},{1,0,0,0,1,0,0,0,1},1./6,10000,.4,0};
+            for(int j=0;j<4;++j)
+            {
+                auto p=rest[j];
+                if(body==1) p.y+=2;
+                if(body==2) {p.x+=.2;p.y+=2.00005;p.z+=.2;}
+                nodes[body*4+j]={p,1,{0,body==2?-1.:0.,0},0};
+            }
+        }
+        btGpuXpbdSurfaceVertex maps[5]={
+            {{0,1,2,3},{1,0,0,0},{0,2,0},0},
+            {{0,1,2,3},{0,0,0,1},{0,2,0},0},
+            {{0,1,2,3},{0,1,0,0},{0,2,0},0},
+            {{4,5,6,7},{1,0,0,0},{10,0,0},0},
+            {{8,9,10,11},{1,0,0,0},{0,0,0},1}};
+        btGpuXpbdSurfaceTriangle face={{0,1,2}};
+        btGpuXpbdStep step={.0001,1,{0,0,0},0,0,1,0,0,1};step.materialMode=mode;
+        require(api->upload(world,12,nodes,3,tets)&&api->surface(world,5,maps,1,&face,.01,0)&&
+            api->step(world,&step)&&api->download(world,12,nodes),"soft contact material setup and solve");
+        double supportedMomentum=0,totalMomentum=0;
+        for(int i=0;i<12;++i) {totalMomentum+=nodes[i].velocity.y;if(i<4)supportedMomentum+=nodes[i].velocity.y;}
+        require(supportedMomentum<-.01,"soft contact impulse reaches the surface embedding");
+        for(int i=4;i<8;++i) require(distance(nodes[i].velocity,{0,0,0})<1.e-8,"nearby tetrahedron does not steal soft contact");
+        require(std::fabs(totalMomentum+4)<1.e-6,"embedded soft contact conserves momentum");
+    }
+}
+
 int main()
 {
 #ifdef XPBD_TEST_RUNTIME_LOADER
@@ -268,12 +489,18 @@ int main()
     const auto* api=btGetGpuXpbdTgsApi(BT_GPU_XPBD_ABI_VERSION);void* world=api->create();
 #endif
     if(!world) { std::fprintf(stderr,"%s\n",api->error(nullptr));return 1; }
+    testSoftContactMaterial(api,world);
     testOutsideStaticFace(api,world);
     testBroadGroundContact(api,world);
     testFriction(api,world);
     testMouseSprings(api,world);
     testPartitionMomentum(api,world);
     testMaterialModeSwitch(api,world);
+    testContactReports(api,world);
+    testRigidCoupling(api,world);
+    testRigidContacts(api,world);
+    testRigidJoints(api,world);
+    testSelfCollision(api,world);
     auto mediumApi=*api;accurateStep=api->step;mediumApi.step=mediumStep;
     testPartitionMomentum(&mediumApi,world);
     testOutsideStaticFace(&mediumApi,world);
@@ -405,6 +632,24 @@ int main()
     for(int i=0;i<6;++i) { sumVelocity+=crossedResult[i].velocity.y;if(i>=3) otherVelocity+=crossedResult[i].velocity.y; }
     require(otherVelocity<-.01,"crossing edges transfer momentum without vertex-face proximity");
     require(std::fabs(sumVelocity+3)<1.e-4,"triangle contacts preserve equal and opposite momentum");
+    // Crossed volume faces must collide even when no vertex is near the other face.
+    for(int materialMode : {0,1})
+    {
+        cfg.materialMode=materialMode;
+        auto edgeVolumes=crossed;
+        edgeVolumes.push_back({{-2,1.00015,-.1},1,{0,-1,0},0});
+        edgeVolumes.push_back({{-.1,-1,-2},1,{0,0,0},0});
+        btGpuXpbdTet edgeTets[2]={
+            {{0,1,2,6},{.25,0,0,0,0,1,-5,5,0},.8/6,10000,.4,0},
+            {{3,4,5,7},{0,5,0,0,0,-1,.25,-.125,0},.8/6,10000,.4,0}};
+        require(api->upload(world,8,edgeVolumes.data(),2,edgeTets)&&api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0),"crossing volume edge setup");
+        require(api->step(world,&cfg)&&api->download(world,8,edgeVolumes.data()),"crossing volume edge step");
+        double edgeMomentum=0,lowerEdgeMomentum=0;
+        for(int i=0;i<8;++i) {edgeMomentum+=edgeVolumes[i].velocity.y;if((i>=3&&i<6)||i==7)lowerEdgeMomentum+=edgeVolumes[i].velocity.y;}
+        require(lowerEdgeMomentum<-.01,"crossing volume edges transfer momentum without nearby vertices");
+        require(std::fabs(edgeMomentum+4)<1.e-4,"crossing volume edges conserve momentum");
+    }
+    cfg.materialMode=0;
     for(int i=3;i<6;++i) crossingMaps[i]={{-1,-1,-1,-1},{0,0,0,0},crossed[i].position,1};
     require(api->upload(world,6,crossed.data(),0,nullptr)!=0,"static crossing edge nodes");
     require(api->surface(world,6,crossingMaps.data(),2,crossingFaces,.01,0)!=0,"static crossing edge surfaces");
@@ -532,6 +777,16 @@ int main()
     for(int i=0;i<8;++i) { totalY+=volumes[i].velocity.y;if(i>=4) lowerY+=volumes[i].velocity.y; }
     require(lowerY<-.01,"signed deformable vertex contacts transfer momentum");
     require(std::fabs(totalY+4)<1.e-3,"signed deformable vertex contacts conserve momentum");
+    // Separate collision vertices retain their tetrahedral support for self contact too.
+    auto selfVolumes=rest;selfVolumes.insert(selfVolumes.end(),rest.begin(),rest.end());
+    for(int i=0;i<4;++i) {selfVolumes[i].position.y+=.00015;selfVolumes[i].velocity={0,-1,0};selfVolumes[i+4].position.y=-selfVolumes[i+4].position.y;}
+    btGpuXpbdSurfaceVertex selfMaps[6];std::memcpy(selfMaps,volumeMaps,sizeof(selfMaps));
+    for(auto& map:selfMaps)map.body=0;int selfId=0;
+    require(api->upload(world,8,selfVolumes.data(),2,volumeTets)&&api->surface(world,6,selfMaps,2,crossingFaces,.01,0)&&api->selfCollision(world,1,&selfId),"mapped volumetric self contact setup");
+    require(api->step(world,&cfg)&&api->download(world,8,selfVolumes.data()),"mapped volumetric self contact solve");
+    totalY=0;lowerY=0;for(int i=0;i<8;++i){totalY+=selfVolumes[i].velocity.y;if(i>=4)lowerY+=selfVolumes[i].velocity.y;}
+    require(lowerY<-.01&&std::fabs(totalY+4)<1.e-3,"mapped volumetric self contact transfers and conserves momentum");
+    require(api->selfCollision(world,0,nullptr)&&api->step(world,&cfg),"disable self collision on a captured graph");
     // A collision surface outside its simulation tetrahedron has signed support.
     // Dropping its negative contributions would create net contact momentum.
     auto extrapolatedVolumes=rest;extrapolatedVolumes.insert(extrapolatedVolumes.end(),rest.begin(),rest.end());

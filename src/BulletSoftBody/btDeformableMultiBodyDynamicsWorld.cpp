@@ -71,6 +71,16 @@ btDeformableMultiBodyDynamicsWorld::btDeformableMultiBodyDynamicsWorld(btDispatc
 
 void btDeformableMultiBodyDynamicsWorld::performDiscreteCollisionDetection()
 {
+    if(m_gpuXpbdTgsEnabled)
+    {
+        bool inspection=false;
+        for(int i=0;i<m_collisionObjects.size();++i) inspection|=(m_collisionObjects[i]->getCollisionFlags()&
+            (btCollisionObject::CF_ONLY_GATHER_CONTACT_COUNTS|btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH))!=0;
+        if(!inspection) {gpuXpbdTgsSingleStepSimulation(btMax(btScalar(1.e-6),m_dispatchInfo.m_timeStep),true);return;}
+        // Explicit inspection retains CPU mesh-margin and overlap-count semantics, outside TGS stepping.
+        clearGpuXpbdTgsContacts();
+    }
+
 	BT_PROFILE("performDiscreteCollisionDetection");
 
 	btDispatcherInfo& dispatchInfo = getDispatchInfo();
@@ -112,7 +122,7 @@ void btDeformableMultiBodyDynamicsWorld::addSoftsWithSelfCollisionCheckToOverlap
 
 void btDeformableMultiBodyDynamicsWorld::internalSingleStepSimulation(btScalar timeStep)
 {
-	if (m_gpuXpbdTgsEnabled && m_softBodies.size()) { gpuXpbdTgsSingleStepSimulation(timeStep); return; }
+	if (m_gpuXpbdTgsEnabled) { gpuXpbdTgsSingleStepSimulation(timeStep); return; }
 	BT_PROFILE("internalSingleStepSimulation");
 
 	if (0 != m_internalPreTickCallback)
@@ -770,6 +780,7 @@ void btDeformableMultiBodyDynamicsWorld::removeSoftBodyForce(btSoftBody* psb)
 
 void btDeformableMultiBodyDynamicsWorld::removeSoftBody(btSoftBody* body)
 {
+	clearGpuXpbdTgsContacts();
 	clearGpuXpbdTgsKinematicTargets(body);
 	if(m_gpuXpbdTgsSettlingBody==body) setGpuXpbdTgsSettling(nullptr,0,0);
 	removeSoftBodyForce(body);
@@ -781,6 +792,7 @@ void btDeformableMultiBodyDynamicsWorld::removeSoftBody(btSoftBody* body)
 
 void btDeformableMultiBodyDynamicsWorld::removeCollisionObject(btCollisionObject* collisionObject)
 {
+	clearGpuXpbdTgsContacts();
 	btSoftBody* body = btSoftBody::upcast(collisionObject);
 	if (body)
 		removeSoftBody(body);
@@ -838,6 +850,7 @@ int btDeformableMultiBodyDynamicsWorld::stepSimulation(btScalar timeStep, int ma
 		int clampedSimulationSteps = (numSimulationSubSteps > maxSubSteps) ? maxSubSteps : numSimulationSubSteps;
 
 		saveKinematicState(fixedTimeStep * clampedSimulationSteps);
+		m_gpuXpbdTgsKinematicTimeRemaining = fixedTimeStep * clampedSimulationSteps;
 
 		for (int i = 0; i < clampedSimulationSteps; i++)
 		{
@@ -855,6 +868,7 @@ int btDeformableMultiBodyDynamicsWorld::stepSimulation(btScalar timeStep, int ma
 				return i;
 			}
 			synchronizeMotionStates();
+			m_gpuXpbdTgsKinematicTimeRemaining = btMax(btScalar(0),m_gpuXpbdTgsKinematicTimeRemaining-fixedTimeStep);
 		}
 	}
 	else

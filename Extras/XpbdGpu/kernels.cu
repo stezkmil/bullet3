@@ -23,6 +23,209 @@ __device__ M gradient(M tensor,M rest)
              mul(tensor,V{rest.c[0].y,rest.c[1].y,rest.c[2].y}),
              mul(tensor,V{rest.c[0].z,rest.c[1].z,rest.c[2].z})}};
 }
+// Euler conventions from Bullet btGeneric6DofSpring2Constraint.cpp (zlib license).
+__device__ double btGetMatrixElem(const M& m,int i) { V c=m.c[i/3];return i%3==0?c.x:(i%3==1?c.y:c.z); }
+__device__ bool matrixToEulerXYZ(const M& mat, double* xyz)
+{
+	// rot =  cy*cz          -cy*sz           sy
+	//        cz*sx*sy+cx*sz  cx*cz-sx*sy*sz -cy*sx
+	//       -cx*cz*sy+sx*sz  cz*sx+cx*sy*sz  cx*cy
+
+	double fi = btGetMatrixElem(mat, 2);
+	if (fi < double(1.0f))
+	{
+		if (fi > double(-1.0f))
+		{
+			xyz[0] = atan2(-btGetMatrixElem(mat, 5), btGetMatrixElem(mat, 8));
+			xyz[1] = asin(btGetMatrixElem(mat, 2));
+			xyz[2] = atan2(-btGetMatrixElem(mat, 1), btGetMatrixElem(mat, 0));
+			return true;
+		}
+		else
+		{
+			// WARNING.  Not unique.  XA - ZA = -atan2(r10,r11)
+			xyz[0] = -atan2(btGetMatrixElem(mat, 3), btGetMatrixElem(mat, 4));
+			xyz[1] = -1.57079632679489661923;
+			xyz[2] = double(0.0);
+			return false;
+		}
+	}
+	else
+	{
+		// WARNING.  Not unique.  XAngle + ZAngle = atan2(r10,r11)
+		xyz[0] = atan2(btGetMatrixElem(mat, 3), btGetMatrixElem(mat, 4));
+		xyz[1] = 1.57079632679489661923;
+		xyz[2] = 0.0;
+	}
+	return false;
+}
+
+__device__ bool matrixToEulerXZY(const M& mat, double* xyz)
+{
+	// rot =  cy*cz          -sz           sy*cz
+	//        cy*cx*sz+sx*sy  cx*cz        sy*cx*sz-cy*sx
+	//        cy*sx*sz-cx*sy  sx*cz        sy*sx*sz+cx*cy
+
+	double fi = btGetMatrixElem(mat, 1);
+	if (fi < double(1.0f))
+	{
+		if (fi > double(-1.0f))
+		{
+			xyz[0] = atan2(btGetMatrixElem(mat, 7), btGetMatrixElem(mat, 4));
+			xyz[1] = atan2(btGetMatrixElem(mat, 2), btGetMatrixElem(mat, 0));
+			xyz[2] = asin(-btGetMatrixElem(mat, 1));
+			return true;
+		}
+		else
+		{
+			xyz[0] = -atan2(-btGetMatrixElem(mat, 6), btGetMatrixElem(mat, 8));
+			xyz[1] = double(0.0);
+			xyz[2] = 1.57079632679489661923;
+			return false;
+		}
+	}
+	else
+	{
+		xyz[0] = atan2(-btGetMatrixElem(mat, 6), btGetMatrixElem(mat, 8));
+		xyz[1] = 0.0;
+		xyz[2] = -1.57079632679489661923;
+	}
+	return false;
+}
+
+__device__ bool matrixToEulerYXZ(const M& mat, double* xyz)
+{
+	// rot =  cy*cz+sy*sx*sz  cz*sy*sx-cy*sz  cx*sy
+	//        cx*sz           cx*cz           -sx
+	//        cy*sx*sz-cz*sy  sy*sz+cy*cz*sx  cy*cx
+
+	double fi = btGetMatrixElem(mat, 5);
+	if (fi < double(1.0f))
+	{
+		if (fi > double(-1.0f))
+		{
+			xyz[0] = asin(-btGetMatrixElem(mat, 5));
+			xyz[1] = atan2(btGetMatrixElem(mat, 2), btGetMatrixElem(mat, 8));
+			xyz[2] = atan2(btGetMatrixElem(mat, 3), btGetMatrixElem(mat, 4));
+			return true;
+		}
+		else
+		{
+			xyz[0] = 1.57079632679489661923;
+			xyz[1] = -atan2(-btGetMatrixElem(mat, 1), btGetMatrixElem(mat, 0));
+			xyz[2] = double(0.0);
+			return false;
+		}
+	}
+	else
+	{
+		xyz[0] = -1.57079632679489661923;
+		xyz[1] = atan2(-btGetMatrixElem(mat, 1), btGetMatrixElem(mat, 0));
+		xyz[2] = 0.0;
+	}
+	return false;
+}
+
+__device__ bool matrixToEulerYZX(const M& mat, double* xyz)
+{
+	// rot =  cy*cz   sy*sx-cy*cx*sz   cx*sy+cy*sz*sx
+	//        sz           cz*cx           -cz*sx
+	//        -cz*sy  cy*sx+cx*sy*sz   cy*cx-sy*sz*sx
+
+	double fi = btGetMatrixElem(mat, 3);
+	if (fi < double(1.0f))
+	{
+		if (fi > double(-1.0f))
+		{
+			xyz[0] = atan2(-btGetMatrixElem(mat, 5), btGetMatrixElem(mat, 4));
+			xyz[1] = atan2(-btGetMatrixElem(mat, 6), btGetMatrixElem(mat, 0));
+			xyz[2] = asin(btGetMatrixElem(mat, 3));
+			return true;
+		}
+		else
+		{
+			xyz[0] = double(0.0);
+			xyz[1] = -atan2(btGetMatrixElem(mat, 7), btGetMatrixElem(mat, 8));
+			xyz[2] = -1.57079632679489661923;
+			return false;
+		}
+	}
+	else
+	{
+		xyz[0] = double(0.0);
+		xyz[1] = atan2(btGetMatrixElem(mat, 7), btGetMatrixElem(mat, 8));
+		xyz[2] = 1.57079632679489661923;
+	}
+	return false;
+}
+
+__device__ bool matrixToEulerZXY(const M& mat, double* xyz)
+{
+	// rot =  cz*cy-sz*sx*sy    -cx*sz   cz*sy+cy*sz*sx
+	//        cy*sz+cz*sx*sy     cz*cx   sz*sy-cz*xy*sx
+	//        -cx*sy              sx     cx*cy
+
+	double fi = btGetMatrixElem(mat, 7);
+	if (fi < double(1.0f))
+	{
+		if (fi > double(-1.0f))
+		{
+			xyz[0] = asin(btGetMatrixElem(mat, 7));
+			xyz[1] = atan2(-btGetMatrixElem(mat, 6), btGetMatrixElem(mat, 8));
+			xyz[2] = atan2(-btGetMatrixElem(mat, 1), btGetMatrixElem(mat, 4));
+			return true;
+		}
+		else
+		{
+			xyz[0] = -1.57079632679489661923;
+			xyz[1] = double(0.0);
+			xyz[2] = -atan2(btGetMatrixElem(mat, 2), btGetMatrixElem(mat, 0));
+			return false;
+		}
+	}
+	else
+	{
+		xyz[0] = 1.57079632679489661923;
+		xyz[1] = double(0.0);
+		xyz[2] = atan2(btGetMatrixElem(mat, 2), btGetMatrixElem(mat, 0));
+	}
+	return false;
+}
+
+__device__ bool matrixToEulerZYX(const M& mat, double* xyz)
+{
+	// rot =  cz*cy   cz*sy*sx-cx*sz   sz*sx+cz*cx*sy
+	//        cy*sz   cz*cx+sz*sy*sx   cx*sz*sy-cz*sx
+	//        -sy          cy*sx         cy*cx
+
+	double fi = btGetMatrixElem(mat, 6);
+	if (fi < double(1.0f))
+	{
+		if (fi > double(-1.0f))
+		{
+			xyz[0] = atan2(btGetMatrixElem(mat, 7), btGetMatrixElem(mat, 8));
+			xyz[1] = asin(-btGetMatrixElem(mat, 6));
+			xyz[2] = atan2(btGetMatrixElem(mat, 3), btGetMatrixElem(mat, 0));
+			return true;
+		}
+		else
+		{
+			xyz[0] = double(0.0);
+			xyz[1] = 1.57079632679489661923;
+			xyz[2] = -atan2(btGetMatrixElem(mat, 1), btGetMatrixElem(mat, 2));
+			return false;
+		}
+	}
+	else
+	{
+		xyz[0] = double(0.0);
+		xyz[1] = -1.57079632679489661923;
+		xyz[2] = atan2(-btGetMatrixElem(mat, 1), -btGetMatrixElem(mat, 2));
+	}
+	return false;
+}
+
+
 struct Spring { int node;V target;double stiffness,damping,maxForce; };
 extern "C" __global__ void predict(Node* nodes,const V* force,V* accumulated,int count,double dt,V gravity,double forceDt,
     const Spring* springs,int springCount)
@@ -280,8 +483,92 @@ extern "C" __global__ void releaseDrive(Node* nodes,const Target* targets,const 
     int node=targets[i].node;nodes[node].w=masses[node];
 }
 
+// Generalized rigid mass and point Jacobians follow PhysX's rigid/deformable
+// attachment formulation. State and arithmetic use double precision here.
+struct Q { double x,y,z,w; };
+struct Rigid { V p;Q q;V v,omega;double w;V invI,force,torque;double damping,angularDamping; };
+struct Endpoint { int rigid;int nodes[4];double weights[4];V point; };
+struct Attachment { Endpoint a,b;double compliance; };
+struct JointAxis { double lower,upper,stiffness,damping,equilibrium,velocity,maxForce,servoTarget,bounce,stopERP,stopCFM,motorERP,motorCFM;int flags; };
+struct Joint { int bodies[2];V points[2];Q orientations[2];JointAxis axes[6];int rotationOrder; };
+__device__ Q qmul(Q a,Q b)
+{
+    V u={a.x,a.y,a.z},v={b.x,b.y,b.z};V c=u*b.w+v*a.w+cross(u,v);
+    return {c.x,c.y,c.z,a.w*b.w-dot(u,v)};
+}
+__device__ Q qconj(Q q) { return {-q.x,-q.y,-q.z,q.w}; }
+__device__ V rotate(Q q,V v) { V u={q.x,q.y,q.z};return v+cross(u,cross(u,v)+v*q.w)*2.; }
+__device__ Q advance(Q q,V delta)
+{
+    double angle=sqrt(dot(delta,delta));double scale=angle>1.e-12?sin(angle*.5)/angle:.5;
+    Q r=qmul(Q{delta.x*scale,delta.y*scale,delta.z*scale,cos(angle*.5)},q);
+    double norm=sqrt(r.x*r.x+r.y*r.y+r.z*r.z+r.w*r.w);
+    return {r.x/norm,r.y/norm,r.z/norm,r.w/norm};
+}
+__device__ V inverseInertia(Rigid r,V v)
+{
+    V local=rotate(qconj(r.q),v);return rotate(r.q,V{local.x*r.invI.x,local.y*r.invI.y,local.z*r.invI.z});
+}
+__device__ V angularMomentum(Rigid r)
+{
+    V v=rotate(qconj(r.q),r.omega);
+    return rotate(r.q,V{r.invI.x>0?v.x/r.invI.x:0,r.invI.y>0?v.y/r.invI.y:0,r.invI.z>0?v.z/r.invI.z:0});
+}
+extern "C" __global__ void predictRigids(Rigid* bodies,int count,double dt,V gravity)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;
+    Rigid r=bodies[i];if(r.w==0) {r.p=r.p+r.v*dt;r.q=advance(r.q,r.omega*dt);bodies[i]=r;return;}
+    r.v=r.v*exp(-r.damping*dt)+(r.force*r.w+gravity)*dt;
+    V L=angularMomentum(r)*exp(-r.angularDamping*dt)+r.torque*dt;
+    // Midpoint orientation keeps torque-free motion from explicitly amplifying spin.
+    Rigid mid=r;V omega=inverseInertia(r,L);
+    for(int j=0;j<3;++j) {mid.q=advance(r.q,omega*(dt*.5));omega=inverseInertia(mid,L);}
+    r.p=r.p+r.v*dt;r.q=advance(r.q,omega*dt);r.omega=inverseInertia(r,L);bodies[i]=r;
+}
+
+__device__ Rigid* activeRigids;
+__device__ Rigid* startRigids;
+__device__ V* rigidImpulse;
+__device__ V* rigidTorqueImpulse;
+__device__ int* rigidReferences;
+extern "C" __global__ void bindRigids(Rigid* bodies,Rigid* start,V* impulses,V* torques,int* references)
+{
+    if(blockIdx.x||threadIdx.x) return;
+    activeRigids=bodies;startRigids=start;rigidImpulse=impulses;rigidTorqueImpulse=torques;rigidReferences=references;
+}
 struct Map { int nodes[4];double weights[4];V offset;int body; };
-struct Tri { int v[3]; };
+__device__ int rigidIndex(Map m) { return m.nodes[0]<-1?-2-m.nodes[0]:-1; }
+__device__ V rigidPosition(Map m) { Rigid r=activeRigids[rigidIndex(m)];return r.p+rotate(r.q,m.offset); }
+__device__ V rigidDelta(Map m)
+{
+    Rigid a=activeRigids[rigidIndex(m)],b=startRigids[rigidIndex(m)];
+    return a.p-b.p+rotate(a.q,m.offset)-rotate(b.q,m.offset);
+}
+__device__ V rigidVelocity(Map m)
+{
+    Rigid r=activeRigids[rigidIndex(m)];return r.v+cross(r.omega,rotate(r.q,m.offset));
+}
+__device__ double rigidWeight(Map m,V axis)
+{
+    if(rigidIndex(m)<0) return 0;Rigid r=activeRigids[rigidIndex(m)];V j=cross(rotate(r.q,m.offset),axis);
+    return r.w+dot(j,inverseInertia(r,j));
+}
+__device__ V rigidResponse(Map m,V impulse)
+{
+    if(rigidIndex(m)<0) return {0,0,0};
+    Rigid r=activeRigids[rigidIndex(m)];V arm=rotate(r.q,m.offset);
+    return (impulse*r.w+cross(inverseInertia(r,cross(arm,impulse)),arm))*rigidReferences[rigidIndex(m)];
+}
+struct Tri { int v[3];int part,index; };
+__device__ bool sharedSupport(Map a,Map b)
+{
+    for(int i=0;i<4;++i) if(a.nodes[i]>=0) for(int j=0;j<4;++j) if(a.nodes[i]==b.nodes[j]) return true;
+    return false;
+}
+__device__ bool adjacentPoint(Map a,Tri b,const Map* maps)
+{
+    for(int i=0;i<3;++i) if(sharedSupport(a,maps[b.v[i]])) return true;return false;
+}
 struct Bvh { int left,right,parent,triangle,body; };
 struct Box { V low,high; };
 __device__ V minimum(V a,V b) { return {fmin(a.x,b.x),fmin(a.y,b.y),fmin(a.z,b.z)}; }
@@ -291,7 +578,7 @@ extern "C" __global__ void skin(const Node* nodes,const Map* maps,V* positions,i
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;
     Map m=maps[i];V p=m.offset;
     for(int j=0;j<4;++j) if(m.nodes[j]>=0) p=p+nodes[m.nodes[j]].p*m.weights[j];
-    positions[i]=p;
+    positions[i]=rigidIndex(m)>=0?rigidPosition(m):p;
 }
 extern "C" __global__ void refit(const V* positions,const Tri* tris,const Bvh* tree,const int* leaves,Box* boxes,int* ready,int count)
 {
@@ -330,6 +617,7 @@ struct Contact { int vertex,triangle;V bary,normal;int triangleA;V baryA;Map sim
 static_assert(sizeof(Contact)==312,"Contact allocation size");
 __device__ V mappedPosition(const Node* nodes,Map m)
 {
+    if(rigidIndex(m)>=0) return rigidPosition(m);
     V p=m.offset;for(int j=0;j<4;++j) if(m.nodes[j]>=0) p=p+nodes[m.nodes[j]].p*m.weights[j];return p;
 }
 __device__ int contactSupport(Contact contact,const Map* maps,const Tri* tris,int* ids,double* weights)
@@ -360,20 +648,28 @@ __device__ int contactSupport(Contact contact,const Map* maps,const Tri* tris,in
 }
 __device__ V mappedDelta(const V* accumulated,Map m)
 {
+    if(rigidIndex(m)>=0) return rigidDelta(m);
     V delta={0,0,0};for(int j=0;j<4;++j) if(m.nodes[j]>=0) delta=delta+accumulated[m.nodes[j]]*m.weights[j];return delta;
 }
 __device__ V sourceTriangleDelta(Contact contact,const V* accumulated,const Map* maps,const Tri* tris)
 {
+    if(contact.triangleA<0) return mappedDelta(accumulated,maps[contact.vertex]);
     Tri t=tris[contact.triangleA];
     return mappedDelta(accumulated,maps[t.v[0]])*contact.baryA.x+
         mappedDelta(accumulated,maps[t.v[1]])*contact.baryA.y+mappedDelta(accumulated,maps[t.v[2]])*contact.baryA.z;
+}
+__device__ V targetTriangleDelta(Contact contact,const V* accumulated,const Map* maps,const Tri* tris)
+{
+    Tri t=tris[contact.triangle];
+    return mappedDelta(accumulated,maps[t.v[0]])*contact.bary.x+
+        mappedDelta(accumulated,maps[t.v[1]])*contact.bary.y+mappedDelta(accumulated,maps[t.v[2]])*contact.bary.z;
 }
 __device__ double separation(Contact contact,const Node* nodes,const V* accumulated,const Map* maps,const Tri* tris)
 {
     // PhysX tracks contact motion using accumulated displacement, avoiding the
     // loss of small corrections when subtracting rounded world positions.
-    if(contact.prepared) return dot((contact.prepared==2?sourceTriangleDelta(contact,accumulated,maps,tris):mappedDelta(accumulated,contact.simA))-
-        mappedDelta(accumulated,contact.simB),contact.normal)+contact.bias;
+    if(contact.prepared) return dot((contact.prepared>=2?sourceTriangleDelta(contact,accumulated,maps,tris):mappedDelta(accumulated,contact.simA))-
+        (contact.prepared==3?targetTriangleDelta(contact,accumulated,maps,tris):mappedDelta(accumulated,contact.simB)),contact.normal)+contact.bias;
     Tri t=tris[contact.triangle];
     V point;
     if(contact.triangleA<0) point=mappedPosition(nodes,maps[contact.vertex]);
@@ -382,10 +678,10 @@ __device__ double separation(Contact contact,const Node* nodes,const V* accumula
         mappedPosition(nodes,maps[t.v[1]])*contact.bary.y-mappedPosition(nodes,maps[t.v[2]])*contact.bary.z;
     return dot(delta,contact.normal);
 }
-__device__ bool pairDisabled(int a,int b,const unsigned long long* pairs,int count)
+__device__ bool pairDisabled(int a,int b,const unsigned long long* pairs,int count,const int* selfBodies,int selfBodyCount)
 {
     if(a<0||b<0) return false; // A mixed BVH branch must still be traversed.
-    if(a==b) return true;
+    if(a==b) {int lo=0,hi=selfBodyCount;while(lo<hi){int m=lo+(hi-lo)/2;if(selfBodies[m]<a)lo=m+1;else hi=m;}return lo==selfBodyCount||selfBodies[lo]!=a;}
     if(a>b) { int t=a;a=b;b=t; }
     unsigned long long key=(static_cast<unsigned long long>(a)<<32)|static_cast<unsigned int>(b);
     int lo=0,hi=count;
@@ -394,18 +690,18 @@ __device__ bool pairDisabled(int a,int b,const unsigned long long* pairs,int cou
 }
 extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,const V* positions,const Tri* tris,
     const Bvh* tree,const Box* boxes,Contact* cache,int* contactCount,int capacity,int count,double margin,int* failure,const int* incident,
-    const unsigned long long* disabledPairs,int disabledPairCount)
+    const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount)
 {
     int vertex=blockIdx.x*blockDim.x+threadIdx.x;if(vertex>=count) return;
     Map point=maps[vertex];V p=positions[vertex];
-    bool movingPoint=false;for(int j=0;j<4;++j) movingPoint|=point.nodes[j]>=0;
+    bool movingPoint=rigidIndex(point)>=0;for(int j=0;j<4;++j) movingPoint|=point.nodes[j]>=0;
     if(incident[vertex]&&!movingPoint) return;
     // Static vertices are queried too: narrow pegs must also collide against dynamic faces.
     int stack[64],top=0;stack[top++]=0;
     while(top)
     {
         int index=stack[--top];Bvh node=tree[index];Box box=boxes[index];
-        if(pairDisabled(node.body,point.body,disabledPairs,disabledPairCount) || p.x<box.low.x-margin||p.y<box.low.y-margin||p.z<box.low.z-margin||
+        if(pairDisabled(node.body,point.body,disabledPairs,disabledPairCount,selfBodies,selfBodyCount) || p.x<box.low.x-margin||p.y<box.low.y-margin||p.z<box.low.z-margin||
            p.x>box.high.x+margin||p.y>box.high.y+margin||p.z>box.high.z+margin) continue;
         if(node.triangle<0)
         {
@@ -413,10 +709,11 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
             stack[top++]=node.left;stack[top++]=node.right;continue;
         }
         Tri t=tris[node.triangle];
+        if(point.body==node.body&&adjacentPoint(point,t,maps)) continue;
         // Triangle witnesses alone do not constrain every corner of a broad contact patch.
         if(incident[vertex])
         {
-            bool moving=false;for(int k=0;k<3;++k) for(int j=0;j<4;++j) moving|=maps[t.v[k]].nodes[j]>=0;
+            bool moving=rigidIndex(maps[t.v[0]])>=0;for(int k=0;k<3;++k) for(int j=0;j<4;++j) moving|=maps[t.v[k]].nodes[j]>=0;
             if(moving) continue;
         }
         V a=positions[t.v[0]],b=positions[t.v[1]],c=positions[t.v[2]];
@@ -436,7 +733,7 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
         V bary=closestWeights(p,a,b,c);
         V delta=p-(a*bary.x+b*bary.y+c*bary.z);double d2=dot(delta,delta);if(d2>margin*margin) continue;
         double signedDistance=sqrt(d2)*(dot(delta,normal)>=0?1.:-1.);
-        bool dynamic=false;
+        bool dynamic=rigidIndex(point)>=0||rigidIndex(maps[t.v[0]])>=0;
         for(int j=0;j<4;++j) if(point.nodes[j]>=0 && nodes[point.nodes[j]].w>0) dynamic=true;
         for(int k=0;k<3;++k) for(int j=0;j<4;++j) if(maps[t.v[k]].nodes[j]>=0 && nodes[maps[t.v[k]].nodes[j]].w>0) dynamic=true;
         if(!dynamic) continue;
@@ -479,8 +776,25 @@ __device__ void edgeFaceCandidate(const V* a,const V* b,int i,bool reverse,doubl
     if(reverse) closestCandidate(b,a,wb,wa,distance,bestA,bestB);
     else closestCandidate(a,b,wa,wb,distance,bestA,bestB);
 }
+__device__ double closestTriangleWeights(const V* a,const V* b,V& wa,V& wb)
+{
+    double best=1.e100;wa=wb=corner(0);
+    for(int k=0;k<3;++k)
+    {
+        closestCandidate(a,b,corner(k),closestWeights(a[k],b[0],b[1],b[2]),best,wa,wb);
+        closestCandidate(a,b,closestWeights(b[k],a[0],a[1],a[2]),corner(k),best,wa,wb);
+        edgeFaceCandidate(a,b,k,false,best,wa,wb);edgeFaceCandidate(b,a,k,true,best,wa,wb);
+        for(int j=0;j<3;++j)
+        {
+            double u,v;edgeParameters(a[k],a[(k+1)%3]-a[k],b[j],b[(j+1)%3]-b[j],u,v);
+            closestCandidate(a,b,corner(k)*(1-u)+corner((k+1)%3)*u,corner(j)*(1-v)+corner((j+1)%3)*v,best,wa,wb);
+        }
+    }
+    return best;
+}
 __device__ bool movingTriangle(Tri t,const Map* maps,const Node* nodes)
 {
+    if(rigidIndex(maps[t.v[0]])>=0) return activeRigids[rigidIndex(maps[t.v[0]])].w>0;
     for(int i=0;i<3;++i) for(int j=0;j<4;++j)
         if(maps[t.v[i]].nodes[j]>=0&&nodes[maps[t.v[i]].nodes[j]].w>0) return true;
     return false;
@@ -512,7 +826,7 @@ __device__ double triangleSeparation(const V* a,const V* b,V an,V bn,double tole
 }
 extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map* maps,const V* positions,const Tri* tris,
     const Bvh* tree,const Box* boxes,Contact* cache,int* contactCount,int capacity,int count,double margin,int* failure,
-    const int* volumeBodies,int volumeCount,const unsigned long long* disabledPairs,int disabledPairCount)
+    const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount)
 {
     int indexA=blockIdx.x*blockDim.x+threadIdx.x;if(indexA>=count) return;
     Tri ta=tris[indexA];if(!movingTriangle(ta,maps,nodes)) return;
@@ -525,7 +839,7 @@ extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map*
     while(top)
     {
         int index=stack[--top];Bvh node=tree[index];Box box=boxes[index];
-        if(pairDisabled(node.body,body,disabledPairs,disabledPairCount)||bound.high.x<box.low.x-margin||bound.low.x>box.high.x+margin||
+        if(pairDisabled(node.body,body,disabledPairs,disabledPairCount,selfBodies,selfBodyCount)||bound.high.x<box.low.x-margin||bound.low.x>box.high.x+margin||
             bound.high.y<box.low.y-margin||bound.low.y>box.high.y+margin||bound.high.z<box.low.z-margin||bound.low.z>box.high.z+margin) continue;
         if(node.triangle<0)
         {
@@ -533,9 +847,12 @@ extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map*
             stack[top++]=node.left;stack[top++]=node.right;continue;
         }
         Tri tb=tris[node.triangle];bool dynamicB=movingTriangle(tb,maps,nodes);
-        bool volumeA=false,volumeB=false;
-        for(int j=0;j<volumeCount;++j) { volumeA|=volumeBodies[j]==body;volumeB|=volumeBodies[j]==maps[tb.v[0]].body; }
-        if(volumeA&&volumeB) continue; // separate signed vertex/surface path below
+        if(body==node.body)
+        {
+            bool adjacent=false;for(int k=0;k<3;++k) adjacent|=adjacentPoint(maps[ta.v[k]],tb,maps);
+            if(adjacent) continue;
+        }
+        // Volume vertex contacts cannot cover crossings between triangle edges.
         if(dynamicB&&node.triangle<indexA) continue;
         V b[3]={positions[tb.v[0]],positions[tb.v[1]],positions[tb.v[2]]};
         V bn=cross(b[1]-b[0],b[2]-b[0]);double n2=dot(bn,bn);if(n2<1.e-20) continue;
@@ -557,12 +874,12 @@ extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map*
 // signed contact per source collision vertex and target deformable volume.
 extern "C" __global__ void discoverVolumeContacts(const Map* maps,const V* positions,const Tri* tris,const Bvh* tree,
     const Box* boxes,const int* incident,const int* volumeBodies,int volumeCount,int vertexCount,
-    Contact* cache,int* contactCount,int capacity,double margin,int* failure,const unsigned long long* disabledPairs,int disabledPairCount)
+    Contact* cache,int* contactCount,int capacity,double margin,int* failure,const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount)
 {
     int job=blockIdx.x*blockDim.x+threadIdx.x;
     if(job>=vertexCount*volumeCount) return;
     int vertex=job%vertexCount,target=volumeBodies[job/vertexCount],source=maps[vertex].body;
-    if(!incident[vertex]||pairDisabled(source,target,disabledPairs,disabledPairCount)) return;
+    if(!incident[vertex]||pairDisabled(source,target,disabledPairs,disabledPairCount,selfBodies,selfBodyCount)) return;
     bool sourceVolume=false;for(int j=0;j<volumeCount;++j) sourceVolume|=volumeBodies[j]==source;
     if(!sourceVolume) return;
     V p=positions[vertex];int stack[64],top=0;stack[top++]=0;
@@ -577,7 +894,9 @@ extern "C" __global__ void discoverVolumeContacts(const Map* maps,const V* posit
             if(top>61) { atomicExch(failure,2);return; }
             stack[top++]=node.left;stack[top++]=node.right;continue;
         }
-        Tri t=tris[node.triangle];V a=positions[t.v[0]],b=positions[t.v[1]],c=positions[t.v[2]];
+        Tri t=tris[node.triangle];
+        if(source==target&&adjacentPoint(maps[vertex],t,maps)) continue;
+        V a=positions[t.v[0]],b=positions[t.v[1]],c=positions[t.v[2]];
         V n=cross(b-a,c-a);double area=dot(n,n);if(area<=0||!isfinite(area)) continue;
         V bary=closestWeights(p,a,b,c),delta=p-(a*bary.x+b*bary.y+c*bary.z);
         double d2=dot(delta,delta);if(d2>=best) continue;
@@ -635,7 +954,10 @@ extern "C" __global__ void refineTriangleContacts(const Node* nodes,const Map* m
                 auto n=s.output.direction.getNormalized();V normal={-n.x,-n.y,-n.z};
                 auto pa=s.output.closestPointA,pb=s.output.closestPointB;
                 if(!isfinite(n.x)||!isfinite(n.y)||!isfinite(n.z)||!isfinite(pa.x)||!isfinite(pa.y)||!isfinite(pa.z)||
-                    !isfinite(pb.x)||!isfinite(pb.y)||!isfinite(pb.z)) { atomicExch(failure,1);c.state=4; }
+                    !isfinite(pb.x)||!isfinite(pb.y)||!isfinite(pb.z))
+                {
+                    c.state|=32; // Complete singular triangle witnesses in a separate kernel.
+                }
                 else if(!movingTriangle(tb,maps,nodes)&&dot(normal,cross(positions[tb.v[1]]-positions[tb.v[0]],positions[tb.v[2]]-positions[tb.v[0]]))<0) c.state=4;
                 else
                 {
@@ -650,6 +972,27 @@ extern "C" __global__ void refineTriangleContacts(const Node* nodes,const Map* m
             cache[i]=c;
         }
         __syncwarp();
+    }
+}
+extern "C" __global__ void completeTriangleContacts(const V* positions,const Tri* tris,Contact* cache,const int* contactCount,int capacity,double margin,int* failure)
+{
+    int count=min(*contactCount,capacity);
+    for(int i=blockIdx.x*blockDim.x+threadIdx.x;i<count;i+=blockDim.x*gridDim.x)
+    {
+        if(!(cache[i].state&32)) continue;
+        Contact c=cache[i];c.state&=~32;Tri ta=tris[c.triangleA],tb=tris[c.triangle];
+        // EPA can have a singular witness for intersecting zero-thickness triangles.
+        // Keeping this rare geometric fallback separate preserves the GJK kernel's register budget.
+        V a[3]={positions[ta.v[0]],positions[ta.v[1]],positions[ta.v[2]]};
+        V b[3]={positions[tb.v[0]],positions[tb.v[1]],positions[tb.v[2]]};
+        double d2=closestTriangleWeights(a,b,c.baryA,c.bary);
+        if(!isfinite(d2)||!isfinite(dot(c.normal,c.normal))) {atomicExch(failure,1);c.state=4;}
+        else
+        {
+            c.simA.offset=trianglePoint(a,c.baryA);c.simB.offset=trianglePoint(b,c.bary);c.state|=8;
+            if(d2>margin*margin) c.state|=4;
+        }
+        cache[i]=c;
     }
 }
 __device__ bool remapContactPoint(V point,int body,const Node* nodes,const Tet* tets,const int* tetBodies,int tetCount,
@@ -702,7 +1045,9 @@ extern "C" __global__ void prepareContacts(const Node* nodes,const Tet* tets,con
             for(int j=0;j<3;++j) for(int k=0;k<4;++k) dynamicA|=maps[ta.v[j]].nodes[k]>=0;
         }
         for(int j=0;j<3;++j) for(int k=0;k<4;++k) dynamicB|=maps[tb.v[j]].nodes[k]>=0;
-        if(c.state&8) { pa=c.simA.offset;pb=c.simB.offset; }
+        // Contact gradients must follow the embeddings that move both soft surfaces.
+        bool surfaceSupport=dynamicA&&dynamicB;
+        if((c.state&8)&&!surfaceSupport) { pa=c.simA.offset;pb=c.simB.offset; }
         c.simA={{-1,-1,-1,-1},{0,0,0,0},pa,bodyA};c.simB={{-1,-1,-1,-1},{0,0,0,0},pb,bodyB};
         // PhysX's rigid-volume writer remaps the rigid witness point onto the volume.
         V remapA=dynamicA&&!dynamicB?pb:pa;
@@ -712,18 +1057,21 @@ extern "C" __global__ void prepareContacts(const Node* nodes,const Tet* tets,con
             Tri ta=tris[c.triangleA];
             for(int j=0;j<3;++j) for(int k=0;k<4;++k) if(maps[ta.v[j]].weights[k]<0) materialSupport=false;
         }
-        bool a=!dynamicA||materialSupport;
+        bool a=!dynamicA||materialSupport||surfaceSupport;
         if(c.state&16) { c.simA=maps[c.vertex];a=true; }
-        else if(dynamicA&&!materialSupport) a=remapContactPoint(remapA,bodyA,nodes,tets,tetBodies,tetCount,c.triangleA,offsets,candidates,c.simA);
-        bool b=!dynamicB||remapContactPoint(pb,bodyB,nodes,tets,tetBodies,tetCount,c.triangle,offsets,candidates,c.simB);
+        else if(dynamicA&&!materialSupport&&!surfaceSupport) a=remapContactPoint(remapA,bodyA,nodes,tets,tetBodies,tetCount,c.triangleA,offsets,candidates,c.simA);
+        bool b=!dynamicB||surfaceSupport||remapContactPoint(pb,bodyB,nodes,tets,tetBodies,tetCount,c.triangle,offsets,candidates,c.simB);
         // Keep the force on the collision triangle's material when nearby elements fold over it.
-        c.prepared=a&&b?(materialSupport?2:1):0;
-        c.impulse=0;c.state=(!dynamicA||!dynamicB)?1:0;
+        c.prepared=surfaceSupport?3:(a&&b?(materialSupport?2:1):0);
+        int rigidA=rigidIndex(maps[c.vertex]),rigidB=rigidIndex(maps[tb.v[0]]);
+        if(rigidA>=0) {c.simA.nodes[0]=-2-rigidA;c.simA.offset=rotate(qconj(activeRigids[rigidA].q),pa-activeRigids[rigidA].p);}
+        if(rigidB>=0) {c.simB.nodes[0]=-2-rigidB;c.simB.offset=rotate(qconj(activeRigids[rigidB].q),pb-activeRigids[rigidB].p);}
+        c.impulse=0;c.state=(!(dynamicA||(rigidA>=0&&activeRigids[rigidA].w>0))||!(dynamicB||(rigidB>=0&&activeRigids[rigidB].w>0)))?1:0;
         c.tangentImpulse={0,0,0};
         c.friction=bodyA>=0&&bodyA<frictionCount&&bodyB>=0&&bodyB<frictionCount?
             fmin(10.,friction[bodyA]*friction[bodyB]):0.;
-        c.bias=dot(pa-pb,c.normal)-dot((materialSupport?sourceTriangleDelta(c,accumulated,maps,tris):mappedDelta(accumulated,c.simA))-
-            mappedDelta(accumulated,c.simB),c.normal);
+        c.bias=dot(pa-pb,c.normal)-dot(((materialSupport||surfaceSupport)?sourceTriangleDelta(c,accumulated,maps,tris):mappedDelta(accumulated,c.simA))-
+            (surfaceSupport?targetTriangleDelta(c,accumulated,maps,tris):mappedDelta(accumulated,c.simB)),c.normal);
         cache[i]=c;
     }
 }
@@ -738,10 +1086,14 @@ extern "C" __global__ void countContacts(const Node* nodes,const V* accumulated,
         if(velocityOnly)
         {
             V velocity={0,0,0};for(int j=0;j<used;++j) velocity=velocity+nodes[ids[j]].v*weights[j];
+            if(rigidIndex(c.simA)>=0) velocity=velocity+rigidVelocity(c.simA);
+            if(rigidIndex(c.simB)>=0) velocity=velocity-rigidVelocity(c.simB);
             C=fmax(0.,C)/dt+dot(velocity,c.normal);
         }
         if(C>=0&&!(c.state&2)&&c.impulse<=0) continue;
         if(c.state&1) cache[i].state|=2;
+        if(rigidIndex(c.simA)>=0) atomicAdd(rigidReferences+rigidIndex(c.simA),1);
+        if(rigidIndex(c.simB)>=0) atomicAdd(rigidReferences+rigidIndex(c.simB),1);
         // PhysX bumpDbRefCountTet ignores barycentric contributions <= 1e-3.
         for(int j=0;j<used;++j) if(fabs(weights[j])>1.e-3 && nodes[ids[j]].w>0) atomicAdd(references+ids[j],1);
     }
@@ -758,10 +1110,15 @@ extern "C" __global__ void solveContacts(const Node* nodes,const V* accumulated,
         {
             V velocity={0,0,0};for(int j=0;j<used;++j) velocity=velocity+nodes[ids[j]].v*weights[j];
             // Match PhysX: remove only velocity that closes the remaining gap within dt.
+            if(rigidIndex(c.simA)>=0) velocity=velocity+rigidVelocity(c.simA);
+            if(rigidIndex(c.simB)>=0) velocity=velocity-rigidVelocity(c.simB);
             C=fmax(0.,C)/dt+dot(velocity,c.normal);
         }
         if(C>=0&&!(c.state&2)&&c.impulse<=0) continue;
         for(int j=0;j<used;++j) denominator+=weights[j]*weights[j]*nodes[ids[j]].w*references[ids[j]];
+        double softWeight=denominator;
+        if(rigidIndex(c.simA)>=0) denominator+=rigidWeight(c.simA,c.normal)*rigidReferences[rigidIndex(c.simA)];
+        if(rigidIndex(c.simB)>=0) denominator+=rigidWeight(c.simB,c.normal)*rigidReferences[rigidIndex(c.simB)];
         if(denominator<1.e-15) continue;
         double velocityError=velocityOnly?C:C/dt;
         double impulse=fmax(-velocityError/denominator,-c.impulse);
@@ -773,12 +1130,28 @@ extern "C" __global__ void solveContacts(const Node* nodes,const V* accumulated,
             V relative={0,0,0};
             for(int j=0;j<used;++j)
                 relative=relative+(velocityOnly?nodes[ids[j]].v:accumulated[ids[j]]*(1./dt))*weights[j];
+            if(rigidIndex(c.simA)>=0) relative=relative+(velocityOnly?rigidVelocity(c.simA):rigidDelta(c.simA)*(1./dt));
+            if(rigidIndex(c.simB)>=0) relative=relative-(velocityOnly?rigidVelocity(c.simB):rigidDelta(c.simB)*(1./dt));
             V tangent=relative-c.normal*dot(relative,c.normal);
-            V target=c.tangentImpulse-tangent*(1./denominator);
+            V target=c.tangentImpulse;double tangentLength=sqrt(dot(tangent,tangent));
+            if(tangentLength>0)
+            {
+                V u=tangent*(1./tangentLength),v=cross(c.normal,u);
+                V responseU=u*softWeight+rigidResponse(c.simA,u)+rigidResponse(c.simB,u);
+                V responseV=v*softWeight+rigidResponse(c.simA,v)+rigidResponse(c.simB,v);
+                double a=dot(u,responseU),b=dot(v,responseU),d=dot(v,responseV),det=a*d-b*b;
+                if(det>0) target=target-u*(tangentLength*d/det)+v*(tangentLength*b/det);
+            }
             double limit=c.friction*cache[i].impulse,length=sqrt(dot(target,target));
             if(length>limit) target=target*(limit/length);
             deltaImpulse=deltaImpulse+target-c.tangentImpulse;
             cache[i].tangentImpulse=target;
+        }
+        Map ends[2]={c.simA,c.simB};
+        for(int side=0;side<2;++side) if(rigidIndex(ends[side])>=0)
+        {
+            int id=rigidIndex(ends[side]);V impulse=deltaImpulse*(side?-1.:1.);
+            add(rigidImpulse+id,impulse);add(rigidTorqueImpulse+id,cross(rotate(activeRigids[id].q,ends[side].offset),impulse));
         }
         V correction=deltaImpulse*(velocityOnly?1.:dt);
         // Refcount-inflated scatter divided by max(refcount,1) at application:
@@ -827,4 +1200,206 @@ extern "C" __global__ void embed(const Node* nodes,const Tet* tets,int tetCount,
     }
     if(result.nodes[0]<0) atomicExch(failure,3);
     maps[i]=result;
+}
+
+__device__ V endpointPosition(Endpoint e,const Node* nodes,const Rigid* bodies)
+{
+    if(e.rigid>=0) {Rigid r=bodies[e.rigid];return r.p+rotate(r.q,e.point);}
+    V p=e.point;for(int j=0;j<4;++j) if(e.nodes[j]>=0) p=p+nodes[e.nodes[j]].p*e.weights[j];return p;
+}
+__device__ V endpointResponse(Endpoint e,const Node* nodes,const Rigid* bodies,V impulse)
+{
+    if(e.rigid>=0) {Rigid r=bodies[e.rigid];V arm=rotate(r.q,e.point);return impulse*r.w+cross(inverseInertia(r,cross(arm,impulse)),arm);}
+    double w=0;for(int j=0;j<4;++j) if(e.nodes[j]>=0) w+=nodes[e.nodes[j]].w*e.weights[j]*e.weights[j];return impulse*w;
+}
+__device__ void correctEndpoint(Endpoint e,Node* nodes,Rigid* bodies,V* accumulated,V impulse,double dt)
+{
+    if(e.rigid>=0)
+    {
+        Rigid r=bodies[e.rigid];if(r.w==0) return;
+        V L=angularMomentum(r)+cross(rotate(r.q,e.point),impulse);
+        V dx=impulse*(r.w*dt),angle=inverseInertia(r,cross(rotate(r.q,e.point),impulse))*dt;
+        r.v=r.v+impulse*r.w;r.p=r.p+dx;r.q=advance(r.q,angle);r.omega=inverseInertia(r,L);bodies[e.rigid]=r;
+    }
+    else for(int j=0;j<4;++j) if(e.nodes[j]>=0)
+    {
+        int n=e.nodes[j];V dv=impulse*(nodes[n].w*e.weights[j]);nodes[n].v=nodes[n].v+dv;
+        V dx=dv*dt;nodes[n].p=nodes[n].p+dx;accumulated[n]=accumulated[n]+dx;
+    }
+}
+extern "C" __global__ void solveAttachments(Node* nodes,Rigid* bodies,V* accumulated,const Attachment* attachments,int begin,int count,double dt)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;Attachment a=attachments[begin+i];
+    V error=endpointPosition(a.a,nodes,bodies)-endpointPosition(a.b,nodes,bodies);
+    V axis[3]={{1,0,0},{0,1,0},{0,0,1}},columns[3];double alpha=a.compliance/(dt*dt);
+    for(int j=0;j<3;++j) columns[j]=endpointResponse(a.a,nodes,bodies,axis[j])+endpointResponse(a.b,nodes,bodies,axis[j])+axis[j]*alpha;
+    double det=dot(columns[0],cross(columns[1],columns[2]));if(det<=0) return;
+    V impulse={-dot(error,cross(columns[1],columns[2]))/(det*dt),-dot(columns[0],cross(error,columns[2]))/(det*dt),-dot(columns[0],cross(columns[1],error))/(det*dt)};
+    correctEndpoint(a.a,nodes,bodies,accumulated,impulse,dt);correctEndpoint(a.b,nodes,bodies,accumulated,impulse*-1,dt);
+}
+__device__ Rigid jointBody(const Rigid* bodies,int id)
+{
+    if(id>=0) return bodies[id];Rigid r={};r.q.w=1;return r;
+}
+__device__ void jointImpulse(Rigid& r,V linear,V angular,double impulse,double dt)
+{
+    if(r.w==0) return;
+    V L=angularMomentum(r)+angular*impulse;
+    V dv=linear*(r.w*impulse);r.v=r.v+dv;r.p=r.p+dv*dt;
+    r.q=advance(r.q,inverseInertia(r,angular)*(impulse*dt));r.omega=inverseInertia(r,L);
+}
+extern "C" __global__ void solveJoints(Rigid* bodies,const Joint* joints,int begin,int count,double dt)
+{
+    int index=blockIdx.x*blockDim.x+threadIdx.x;if(index>=count) return;
+    Joint j=joints[begin+index];Rigid a=jointBody(bodies,j.bodies[0]),b=jointBody(bodies,j.bodies[1]);
+    const V basis[3]={{1,0,0},{0,1,0},{0,0,1}};
+    const int orders[6][3]={{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
+    for(int row=0;row<6;++row)
+    {
+        JointAxis c=j.axes[row];if(c.lower>c.upper&&!(c.flags&3)) continue;
+        Q qa=qmul(a.q,j.orientations[0]),qb=qmul(b.q,j.orientations[1]);
+        V pa=a.p+rotate(a.q,j.points[0]),pb=b.p+rotate(b.q,j.points[1]);
+        V la={0,0,0},lb={0,0,0},aa,ab;double position;
+        if(row<3)
+        {
+            V axis=rotate(qa,basis[row]);position=dot(pb-pa,axis);la=axis*-1;lb=axis;
+            // The axis rotates with frame A: both reaction forces act at B's pivot.
+            aa=cross(pb-a.p,la);ab=cross(pb-b.p,lb);
+        }
+        else
+        {
+            Q relative=qmul(qconj(qa),qb);M m={{rotate(relative,basis[0]),rotate(relative,basis[1]),rotate(relative,basis[2])}};
+            double angles[3];
+            switch(j.rotationOrder) {
+                case 0:matrixToEulerXYZ(m,angles);break;case 1:matrixToEulerXZY(m,angles);break;
+                case 2:matrixToEulerYXZ(m,angles);break;case 3:matrixToEulerYZX(m,angles);break;
+                case 4:matrixToEulerZXY(m,angles);break;default:matrixToEulerZYX(m,angles);break;
+            }
+            position=angles[row-3];int first=orders[j.rotationOrder][0],middle=orders[j.rotationOrder][1],last=orders[j.rotationOrder][2];
+            V x=rotate(qb,basis[first]),z=rotate(qa,basis[last]);double cosine=dot(x,z),denominator=fmax(1.e-12,1-cosine*cosine);
+            if(row-3==first) aa=(x-z*cosine)*(1./denominator);
+            else if(row-3==last) aa=(z-x*cosine)*(1./denominator);
+            else {double parity=(first==0&&middle==1)||(first==1&&middle==2)||(first==2&&middle==0)?1.:-1.;aa=cross(z,x)*(parity/sqrt(denominator));}
+            ab=aa*-1;
+        }
+        double weight=a.w*dot(la,la)+b.w*dot(lb,lb)+dot(aa,inverseInertia(a,aa))+dot(ab,inverseInertia(b,ab));
+        if(weight<=0) continue;
+        double rate=dot(la,a.v)+dot(lb,b.v)+dot(aa,a.omega)+dot(ab,b.omega),impulse=0;
+        if(c.flags&1)
+        {
+            // Bullet Spring2 optional sampling caps, evaluated at the TGS microstep.
+            if(c.flags&8) c.stiffness=fmin(c.stiffness,1/(16*dt*dt*weight));
+            if(c.flags&16) c.damping=fmin(c.damping,1/(dt*weight));
+            double spring=-(c.stiffness*dt*(position-c.equilibrium)+c.damping*dt*rate)/(1+(c.stiffness*dt*dt+c.damping*dt)*weight);
+            impulse+=spring;rate+=spring*weight;position+=spring*weight*dt;
+        }
+        if(c.flags&2)
+        {
+            double desired=c.velocity;
+            if(c.flags&4) {double speed=fabs(c.velocity);desired=fmax(-speed,fmin(speed,rate+(c.servoTarget-position)*c.motorERP/dt));}
+            double motor=(desired-rate)/(weight+c.motorCFM/dt),limit=c.maxForce*dt;
+            motor=fmax(-limit,fmin(limit,motor));impulse+=motor;rate+=motor*weight;position+=motor*weight*dt;
+        }
+        if(c.lower<=c.upper)
+        {
+            double error=position-fmax(c.lower,fmin(c.upper,position));
+            if(error!=0||c.lower==c.upper)
+            {
+                double correction=-c.stopERP*error/dt;
+                if(c.lower<c.upper&&error*rate>0) correction+=-c.bounce*rate;
+                impulse+=correction/(weight+c.stopCFM/dt);
+            }
+        }
+        jointImpulse(a,la,aa,impulse,dt);jointImpulse(b,lb,ab,impulse,dt);
+    }
+    if(j.bodies[0]>=0) bodies[j.bodies[0]]=a;if(j.bodies[1]>=0) bodies[j.bodies[1]]=b;
+}
+extern "C" __global__ void checkRigids(const Rigid* bodies,int count,int* failure)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;Rigid r=bodies[i];
+    if(!isfinite(r.p.x)||!isfinite(r.p.y)||!isfinite(r.p.z)||!isfinite(r.v.x)||!isfinite(r.v.y)||!isfinite(r.v.z)||
+       !isfinite(r.omega.x)||!isfinite(r.omega.y)||!isfinite(r.omega.z)||!isfinite(r.q.x)||!isfinite(r.q.y)||!isfinite(r.q.z)||!isfinite(r.q.w)) atomicExch(failure,1);
+}
+
+extern "C" __global__ void applyRigidContacts(Rigid* bodies,int count,double dt,int velocityOnly)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;Rigid r=bodies[i];if(r.w==0) return;
+    V dv=rigidImpulse[i]*r.w,L=angularMomentum(r)+rigidTorqueImpulse[i];r.v=r.v+dv;
+    if(!velocityOnly) {r.p=r.p+dv*dt;r.q=advance(r.q,inverseInertia(r,rigidTorqueImpulse[i])*dt);}
+    r.omega=inverseInertia(r,L);bodies[i]=r;
+}
+
+struct ContactReport
+{
+    int bodyA,bodyB,partA,indexA,partB,indexB;
+    V pointA,pointB,normal;
+    double distance;
+};
+static_assert(sizeof(Tri)==20 && sizeof(ContactReport)==104,"Contact report GPU ABI mismatch");
+__device__ void appendReport(ContactReport report,ContactReport* output,int* count,int capacity,int* failure)
+{
+    int slot=atomicAdd(count,1);
+    if(slot>=capacity) { atomicExch(failure,4);return; }
+    output[slot]=report;
+}
+extern "C" __global__ void reportContacts(const V* positions,const Map* maps,const Tri* tris,const int* vertexTriangles,
+    const Contact* contacts,const int* count,ContactReport* output,int* outputCount,int capacity,int* failure)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=min(*count,capacity)) return;
+    Contact c=contacts[i];if(c.state&4) return;
+    int source=c.triangleA>=0?c.triangleA:vertexTriangles[c.vertex];if(source<0) return;
+    Tri a=tris[source],b=tris[c.triangle];
+    V pa=c.triangleA>=0?positions[a.v[0]]*c.baryA.x+positions[a.v[1]]*c.baryA.y+positions[a.v[2]]*c.baryA.z:positions[c.vertex];
+    V pb=positions[b.v[0]]*c.bary.x+positions[b.v[1]]*c.bary.y+positions[b.v[2]]*c.bary.z;
+    double distance=dot(pa-pb,c.normal);
+    if(distance>0||!isfinite(distance)) return;
+    appendReport({maps[a.v[0]].body,maps[b.v[0]].body,a.part,a.index,b.part,b.index,pa,pb,c.normal,distance},output,outputCount,capacity,failure);
+}
+// Notification-only pairs share the response BVH, but never enter the constraint list.
+// The first triangle pair in mesh order wins, independently of CUDA scheduling.
+struct NotificationPair { int x,y,touching; };
+extern "C" __global__ void reportNotifications(const Map* maps,const V* positions,const Tri* tris,const Bvh* tree,const Box* boxes,
+    const NotificationPair* pairs,int pairCount,int triangleCount,unsigned long long* winners,ContactReport* output,int* outputCount,int capacity,int* failure)
+{
+    int job=blockIdx.x*blockDim.x+threadIdx.x;if(job>=pairCount*triangleCount) return;
+    int pair=job/triangleCount,source=job%triangleCount;NotificationPair bodies=pairs[pair];
+    Tri ta=tris[source];if(maps[ta.v[0]].body!=bodies.x||(atomicAdd(winners+pair,0ULL)>>32)<static_cast<unsigned>(source)) return;
+    V a[3]={positions[ta.v[0]],positions[ta.v[1]],positions[ta.v[2]]};
+    V an=cross(a[1]-a[0],a[2]-a[0]);double a2=dot(an,an);if(a2<1.e-20) return;an=an*rsqrt(a2);
+    Box bound={minimum(a[0],minimum(a[1],a[2])),maximum(a[0],maximum(a[1],a[2]))};
+    int stack[64],top=0;stack[top++]=0;
+    while(top&&(atomicAdd(winners+pair,0ULL)>>32)>=static_cast<unsigned>(source))
+    {
+        int index=stack[--top];Bvh node=tree[index];Box box=boxes[index];
+        if((node.body>=0&&node.body!=bodies.y)||bound.high.x<box.low.x||bound.low.x>box.high.x||
+            bound.high.y<box.low.y||bound.low.y>box.high.y||bound.high.z<box.low.z||bound.low.z>box.high.z) continue;
+        if(node.triangle<0)
+        {
+            if(top>61) {atomicExch(failure,2);return;}
+            stack[top++]=node.left;stack[top++]=node.right;continue;
+        }
+        Tri tb=tris[node.triangle];V b[3]={positions[tb.v[0]],positions[tb.v[1]],positions[tb.v[2]]};
+        V bn=cross(b[1]-b[0],b[2]-b[0]);double b2=dot(bn,bn);if(b2<1.e-20) continue;bn=bn*rsqrt(b2);
+        if(triangleSeparation(a,b,an,bn,0)>0) continue;
+        V wa,wb;double best=closestTriangleWeights(a,b,wa,wb);
+        if(best>1.e-16) continue;
+        int deepest=0;
+        for(int k=1;k<3;++k) if(dot(a[k]-b[0],bn)<dot(a[deepest]-b[0],bn)) deepest=k;
+        double depth=dot(a[deepest]-b[0],bn);
+        if(depth>0||(depth==0&&!bodies.touching)) continue;
+        atomicMin(winners+pair,(static_cast<unsigned long long>(source)<<32)|static_cast<unsigned>(node.triangle));
+    }
+}
+
+extern "C" __global__ void finishNotifications(const V* positions,const Tri* tris,const NotificationPair* pairs,int pairCount,
+    const unsigned long long* winners,ContactReport* output,int* outputCount,int capacity,int* failure)
+{
+    int pair=blockIdx.x*blockDim.x+threadIdx.x;if(pair>=pairCount||winners[pair]==~0ULL) return;
+    Tri ta=tris[winners[pair]>>32],tb=tris[static_cast<unsigned>(winners[pair])];
+    V a[3]={positions[ta.v[0]],positions[ta.v[1]],positions[ta.v[2]]};
+    V b[3]={positions[tb.v[0]],positions[tb.v[1]],positions[tb.v[2]]};
+    V bn=cross(b[1]-b[0],b[2]-b[0]);bn=bn*rsqrt(dot(bn,bn));
+    int deepest=0;for(int k=1;k<3;++k) if(dot(a[k]-b[0],bn)<dot(a[deepest]-b[0],bn)) deepest=k;
+    V pa=a[deepest],pb=trianglePoint(b,closestWeights(pa,b[0],b[1],b[2]));
+    appendReport({pairs[pair].x,pairs[pair].y,ta.part,ta.index,tb.part,tb.index,pa,pb,bn,dot(pa-pb,bn)},output,outputCount,capacity,failure);
 }

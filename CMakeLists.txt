@@ -472,7 +472,7 @@ ENDIF()
 
 
 
-OPTION(BUILD_GPU_XPBD_TGS "Build the optional Windows CUDA XPBD TGS runtime backend" OFF)
+OPTION(BUILD_GPU_XPBD_TGS "Build the optional Windows CUDA XPBD TGS runtime backend" ${WIN32})
 IF(BUILD_GPU_XPBD_TGS)
   ADD_SUBDIRECTORY(Extras/XpbdGpu)
 ENDIF()
