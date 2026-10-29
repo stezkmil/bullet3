@@ -280,6 +280,30 @@ extern "C" __global__ void solveTets(Node* nodes,const Tet* tets,V* accumulated,
     Tet t=tets[begin+i];Node p[4];for(int j=0;j<4;++j) p[j]=nodes[t.n[j]];
     M rest={{{t.rest[0],t.rest[1],t.rest[2]},{t.rest[3],t.rest[4],t.rest[5]},{t.rest[6],t.rest[7],t.rest[8]}}};
     M f=mul(M{{p[1].p-p[0].p,p[2].p-p[0].p,p[3].p-p[0].p}},rest);
+    // StVK cannot distinguish a reflection from rest. Penalize signed volumes below 5% of rest.
+    const double minimumJ=.05;
+    M cofactor={{cross(f.c[1],f.c[2]),cross(f.c[2],f.c[0]),cross(f.c[0],f.c[1])}};
+    double J=dot(f.c[0],cofactor.c[0]);
+    if(J<minimumJ)
+    {
+        M g=gradient(cofactor,rest);
+        V grad[4]={(g.c[0]+g.c[1]+g.c[2])*-1,g.c[0],g.c[1],g.c[2]};
+        double weight=0;for(int j=0;j<4;++j) weight+=p[j].w*dot(grad[j],grad[j]);
+        // Fully collapsed elements have no volume gradient; never divide by zero.
+        if(weight>0)
+        {
+            // Match the longitudinal modulus; compliance avoids an impulsive hard projection on recovery.
+            double stiffness=t.young*(1-t.poisson)/((1+t.poisson)*(1-2*t.poisson));
+            double multiplier=(minimumJ-J)/(weight+1/(stiffness*t.volume*dt*dt));
+            for(int j=0;j<4;++j)
+            {
+                V dx=grad[j]*(p[j].w*multiplier);
+                p[j].p=p[j].p+dx;p[j].v=p[j].v+dx*(1/dt);
+                nodes[t.n[j]]=p[j];accumulated[t.n[j]]=accumulated[t.n[j]]+dx;
+            }
+            f=mul(M{{p[1].p-p[0].p,p[2].p-p[0].p,p[3].p-p[0].p}},rest);
+        }
+    }
     M strain;
     for(int j=0;j<3;++j)
         strain.c[j]={(dot(f.c[0],f.c[j])-(j==0))*.5,(dot(f.c[1],f.c[j])-(j==1))*.5,(dot(f.c[2],f.c[j])-(j==2))*.5};

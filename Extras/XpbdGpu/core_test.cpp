@@ -478,6 +478,29 @@ static void testSoftContactMaterial(const btGpuXpbdTgsApi* api,void* world)
     }
 }
 
+void testInversionRecovery(const btGpuXpbdTgsApi* api,void* world)
+{
+    for(double scale : { .001,1.,1000. })
+    {
+        btGpuXpbdTet tet={{0,1,2,3},{1/scale,0,0,0,1/scale,0,0,0,1/scale},scale*scale*scale/6,50,.4,0};
+        btGpuXpbdStep step={.01*scale,1,{0,0,0},0,0,1,0,0,1};
+        for(double height : {-1.,0.,1.})
+        {
+            btGpuXpbdNode nodes[]={{{0,0,0},0},{{scale,0,0},0},{{0,scale,0},0},{{0,0,height*scale},1/(scale*scale*scale),{0,0,0},4/scale}};
+            require(api->upload(world,4,nodes,1,&tet)!=0,"inversion recovery upload");
+            for(int k=0;k<500;++k) require(api->step(world,&step)!=0,"inversion recovery step");
+            require(api->download(world,4,nodes)!=0,"inversion recovery download");
+            require(std::fabs(nodes[3].position.z/scale-1)<.01,"inverted and flat tetrahedra recover rest shape");
+            require(distance(nodes[0].position,{0,0,0})==0&&distance(nodes[1].position,{scale,0,0})==0&&
+                distance(nodes[2].position,{0,scale,0})==0,"recovery preserves fixed nodes");
+            if(height==1) require(distance(nodes[3].position,{0,0,scale})<scale*1.e-10,"recovery leaves rest equilibrium unchanged");
+        }
+        btGpuXpbdNode collapsed[4]={};
+        for(auto& node:collapsed) node.inverseMass=1;
+        require(api->upload(world,4,collapsed,1,&tet)&&api->step(world,&step)&&api->download(world,4,collapsed),"fully collapsed element remains finite");
+    }
+}
+
 int main()
 {
 #ifdef XPBD_TEST_RUNTIME_LOADER
@@ -501,6 +524,7 @@ int main()
     testRigidContacts(api,world);
     testRigidJoints(api,world);
     testSelfCollision(api,world);
+    testInversionRecovery(api,world);
     auto mediumApi=*api;accurateStep=api->step;mediumApi.step=mediumStep;
     testPartitionMomentum(&mediumApi,world);
     testOutsideStaticFace(&mediumApi,world);
