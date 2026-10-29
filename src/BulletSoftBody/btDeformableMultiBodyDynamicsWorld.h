@@ -37,6 +37,15 @@ struct MultiBodyInplaceSolverIslandCallback;
 struct DeformableBodyInplaceSolverIslandCallback;
 class btDeformableMultiBodyConstraintSolver;
 
+struct btGpuXpbdTgsWorldContactImpulse
+{
+    const btCollisionObject* bodyA;
+    const btCollisionObject* bodyB;
+    int triangleA,triangleB;
+    btVector3 pointA,pointB,normal;
+    btScalar impulse; // Mass times scene-units/second, integrated over the outer step.
+};
+
 struct btGpuXpbdTgsWorldTarget
 {
 	btSoftBody* body;
@@ -65,6 +74,9 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_deformableStepFailed = false;
 	btScalar m_contactDiscoveryPadding = -1;
 	bool m_gpuXpbdTgsEnabled = false;
+    bool m_gpuXpbdTgsReportImpulses = false;
+    std::vector<btGpuXpbdTgsWorldContactImpulse> m_gpuXpbdTgsContactImpulses;
+    std::string m_gpuXpbdTgsImpulseError;
 	btScalar m_gpuXpbdTgsKinematicTimeRemaining = 0;
 	btScalar m_gpuXpbdTgsMetersPerUnit = 1;
 	int m_gpuXpbdTgsSubsteps = 16, m_gpuXpbdTgsIterations = 50;
@@ -101,6 +113,9 @@ protected:
 	void addSoftsWithSelfCollisionCheckToOverlappingPairs();
 
 public:
+    void setGpuXpbdTgsImpulseReporting(bool enabled) { m_gpuXpbdTgsReportImpulses=enabled; if(!enabled) m_gpuXpbdTgsContactImpulses.clear(); }
+    const std::vector<btGpuXpbdTgsWorldContactImpulse>& getGpuXpbdTgsContactImpulses() const { return m_gpuXpbdTgsContactImpulses; }
+    const std::string& getGpuXpbdTgsImpulseError() const { return m_gpuXpbdTgsImpulseError; }
 	// Extra search range in scene units; negative uses the solver default.
 	void setContactDiscoveryPadding(btScalar padding) { m_contactDiscoveryPadding = padding; }
 	// Positive ratios >= 1 bound nodal mass disparity, as in PhysX; zero preserves raw masses.

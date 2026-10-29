@@ -57,7 +57,7 @@ public:
         m_api = get ? get(BT_GPU_XPBD_ABI_VERSION) : nullptr;
         if (!m_api || !m_api->create || !m_api->destroy || !m_api->upload || !m_api->forces || !m_api->step ||
             !m_api->download || !m_api->error || !m_api->surface || !m_api->surfacePositions || !m_api->embed || !m_api->targets || !m_api->disabledPairs || !m_api->updateNodes || !m_api->friction || !m_api->springs ||
-            !m_api->rigids || !m_api->downloadRigids || !m_api->attachments || !m_api->updateRigids || !m_api->joints || !m_api->selfCollision || !m_api->contacts || !m_api->downloadContacts)
+            !m_api->rigids || !m_api->downloadRigids || !m_api->attachments || !m_api->updateRigids || !m_api->joints || !m_api->selfCollision || !m_api->contacts || !m_api->downloadContacts || !m_api->enableContactImpulses || !m_api->contactImpulses)
         {
             m_api = nullptr;
             m_error = "Incompatible GPU XPBD TGS backend";

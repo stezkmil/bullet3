@@ -1,9 +1,9 @@
 #ifndef BT_GPU_XPBD_TGS_API_H
 #define BT_GPU_XPBD_TGS_API_H
 
-// ABI 11 adds original triangle provenance and GPU collision reports.
+// ABI 12 adds optional solved contact impulse reporting.
 // POD boundary independent of Bullet's float/double scalar configuration.
-constexpr int BT_GPU_XPBD_ABI_VERSION = 11;
+constexpr int BT_GPU_XPBD_ABI_VERSION = 12;
 struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
@@ -43,6 +43,9 @@ struct btGpuXpbdContactReport
     btGpuXpbdVec pointA,pointB,normal;
     double distance;
 };
+// Normal impulse integrated over one outer step, aggregated by surface contact identity.
+struct btGpuXpbdContactImpulse { btGpuXpbdContactReport contact; double impulse; };
+static_assert(sizeof(btGpuXpbdContactImpulse)==112, "Contact impulse GPU ABI mismatch");
 struct btGpuXpbdTarget { int node;btGpuXpbdVec position; };
 struct btGpuXpbdDisabledPair { int bodyA, bodyB; };
 struct btGpuXpbdNotificationPair { int bodyA,bodyB;int touching; };
@@ -126,6 +129,9 @@ struct btGpuXpbdTgsApi
     // Query current geometry without advancing time. Notification pairs stop at their first hit.
     int (*contacts)(void*, int, const btGpuXpbdNotificationPair*, int*);
     int (*downloadContacts)(void*, int, btGpuXpbdContactReport*);
+    int (*enableContactImpulses)(void*, int);
+    // Null output queries the count; otherwise capacity must cover all reports. Cleared on each step.
+    int (*contactImpulses)(void*, int*, btGpuXpbdContactImpulse*, int);
 };
 static_assert(sizeof(btGpuXpbdRigid)==200 && sizeof(btGpuXpbdEndpoint)==80 && sizeof(btGpuXpbdAttachment)==168, "Rigid GPU ABI mismatch");
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);

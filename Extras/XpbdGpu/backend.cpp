@@ -49,6 +49,10 @@ struct State
     std::vector<btGpuXpbdNode> restNodes;
     CUdeviceptr incident=0,vertexTriangles=0;
     CUfunction reportContacts=nullptr,reportNotifications=nullptr,finishNotifications=nullptr;
+    CUfunction accumulateContactImpulses=nullptr,finishContactImpulses=nullptr;
+    CUdeviceptr impulseKeys=0,impulseSums=0,impulseReports=0,impulseCount=0,impulseOverflow=0;
+    bool impulseReporting=false;
+    int impulseCapacity=0,lastImpulseCount=0,lastImpulseOverflow=0;
     CUdeviceptr reports=0,reportCount=0,notificationPairs=0,notificationWinners=0;
     int notificationCapacity=0,lastReportCount=0;
     CUdeviceptr targets=0,driveStart=0,inverseMasses=0;
@@ -98,6 +102,9 @@ struct State
     void clearSurface()
     {
         clearGraph();
+        for(auto p:{impulseKeys,impulseSums,impulseReports,impulseCount,impulseOverflow}) if(p) cuMemFree(p);
+        impulseKeys=impulseSums=impulseReports=impulseCount=impulseOverflow=0;
+        impulseReporting=false;impulseCapacity=lastImpulseCount=lastImpulseOverflow=0;
         if(friction) cuMemFree(friction);friction=0;frictionCount=0;
         if(disabledPairs) cuMemFree(disabledPairs);disabledPairs=0;disabledPairCount=0;
         if(selfBodies) cuMemFree(selfBodies);selfBodies=0;selfBodyCount=0;
@@ -174,6 +181,8 @@ void* create()
            s->check(cuModuleGetFunction(&s->reportNotifications,s->module,"reportNotifications")) &&
            s->check(cuModuleGetFunction(&s->finishNotifications,s->module,"finishNotifications")) &&
            s->check(cuModuleGetFunction(&s->discoverTriangleContacts,s->module,"discoverTriangleContacts")) &&
+           s->check(cuModuleGetFunction(&s->accumulateContactImpulses,s->module,"accumulateContactImpulses")) &&
+           s->check(cuModuleGetFunction(&s->finishContactImpulses,s->module,"finishContactImpulses")) &&
            s->check(cuModuleGetFunction(&s->prepareContacts,s->module,"prepareContacts")) &&
            s->check(cuModuleGetFunction(&s->refineTriangleContacts,s->module,"refineTriangleContacts")) &&
            s->check(cuModuleGetFunction(&s->completeTriangleContacts,s->module,"completeTriangleContacts")) &&
@@ -697,6 +706,13 @@ bool discoverSurfaceContacts(State& s)
 }
 bool enqueueStep(State& s,const btGpuXpbdStep* config)
 {
+    if(s.impulseReporting)
+    {
+        if(!s.check(cuMemsetD8Async(s.impulseKeys,0xff,size_t(s.impulseCapacity)*8,s.stream))||
+           !s.check(cuMemsetD8Async(s.impulseSums,0,size_t(s.impulseCapacity)*80,s.stream))||
+           !s.check(cuMemsetD32Async(s.impulseCount,0,1,s.stream))||
+           !s.check(cuMemsetD32Async(s.impulseOverflow,0,1,s.stream))) return 0;
+    }
     double externalDt=config->dt/config->substeps,dt=externalDt/config->iterations;auto gravity=config->gravity;
     double speed=config->settlingSpeed,damping=config->settlingDamping;
     int settlingBegin=config->settlingBegin,settlingEnd=config->settlingEnd?config->settlingEnd:s.count;
@@ -788,9 +804,21 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
                 void* rigidApply[]={&s.rigids,&s.rigidCount,&dt,&velocityOnly};
                 if(!s.launch(s.applyRigidContacts,s.rigidCount,rigidApply)) return 0;
             }
+            if(s.impulseReporting && s.vertexCount)
+            {
+                if(!updateSurface(s)) return false;
+                void* args[]={&s.positions,&s.maps,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,
+                    &s.impulseKeys,&s.impulseSums,&s.impulseCapacity,&s.impulseOverflow};
+                if(!s.launch(s.accumulateContactImpulses,16384,args)) return false;
+            }
             void* settleArgs[]={&s.nodes,&s.accumulated,&s.count,&externalDt,&speed,&damping,&settlingBegin,&settlingEnd,&s.failure};
             if(!s.launch(s.settle,s.count,settleArgs)) return 0;
         }
+    }
+    if(s.impulseReporting)
+    {
+        void* args[]={&s.maps,&s.triangles,&s.vertexTriangles,&s.impulseKeys,&s.impulseSums,&s.impulseCapacity,&s.impulseReports,&s.impulseCount};
+        if(!s.launch(s.finishContactImpulses,s.impulseCapacity,args)) return false;
     }
     void* rigidCheck[]={&s.rigids,&s.rigidCount,&s.failure};
     return s.launch(s.checkRigids,s.rigidCount,rigidCheck);
@@ -805,6 +833,7 @@ bool sameStep(const btGpuXpbdStep& a,const btGpuXpbdStep& b)
 int step(void* value,const btGpuXpbdStep* config)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    s.lastImpulseCount=s.lastImpulseOverflow=0;
     if(!config||config->materialMode<0||config->materialMode>1||s.count<=0||!std::isfinite(config->dt)||config->dt<=0||config->substeps<=0||config->substeps>4096||config->iterations<=0||config->iterations>255||config->velocityIterations<0||config->velocityIterations>255||
        !finite(config->gravity)||!std::isfinite(config->settlingSpeed)||config->settlingSpeed<0||
        !std::isfinite(config->settlingDamping)||config->settlingDamping<0||config->settlingBegin<0||config->settlingEnd<0||config->settlingEnd>s.count) { s.error="Invalid step configuration";return 0; }
@@ -838,6 +867,8 @@ int step(void* value,const btGpuXpbdStep* config)
         s.error=(failure==4?"Contact capacity exceeded":(failure==2?"Collision traversal stack overflow":"Nonfinite GPU state"));
         return 0;
     }
+    if(s.impulseReporting && (!s.check(cuMemcpyDtoH(&s.lastImpulseCount,s.impulseCount,sizeof(int)))||
+        !s.check(cuMemcpyDtoH(&s.lastImpulseOverflow,s.impulseOverflow,sizeof(int))))) return 0;
     return 1;
 }
 int download(void* value,int count,btGpuXpbdNode* nodes)
@@ -888,7 +919,34 @@ int downloadContacts(void* value,int count,btGpuXpbdContactReport* output)
     if(count!=s.lastReportCount||(count&&!output)) {s.error="Invalid GPU callback report download";return 0;}
     return !count||s.check(cuMemcpyDtoH(output,s.reports,size_t(count)*sizeof(*output)));
 }
-const btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,updateRigids,joints,selfCollision,contacts,downloadContacts};
+int enableContactImpulses(void* value,int enabled)
+{
+    auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    if(bool(enabled)==s.impulseReporting) return 1;
+    s.clearGraph();s.lastImpulseCount=s.lastImpulseOverflow=0;
+    if(enabled && !s.impulseKeys)
+    {
+        int capacity=1024;
+        while(capacity<s.contactCapacity && size_t(capacity)<8*(size_t(s.vertexCount)+s.triangleCount)) capacity*=2;
+        CUdeviceptr keys=0,sums=0,reports=0,count=0,overflow=0;
+        if(!s.check(cuMemAlloc(&keys,size_t(capacity)*8))||!s.check(cuMemAlloc(&sums,size_t(capacity)*80))||
+           !s.check(cuMemAlloc(&reports,size_t(capacity)*sizeof(btGpuXpbdContactImpulse)))||
+           !s.check(cuMemAlloc(&count,4))||!s.check(cuMemAlloc(&overflow,4)))
+        {for(auto p:{keys,sums,reports,count,overflow}) if(p) cuMemFree(p);return 0;}
+        s.impulseKeys=keys;s.impulseSums=sums;s.impulseReports=reports;s.impulseCount=count;s.impulseOverflow=overflow;s.impulseCapacity=capacity;
+    }
+    s.impulseReporting=bool(enabled);return 1;
+}
+int contactImpulses(void* value,int* count,btGpuXpbdContactImpulse* output,int capacity)
+{
+    auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    if(!count||capacity<0||(output&&capacity<s.lastImpulseCount)) {s.error="Invalid contact impulse download";return 0;}
+    *count=0;
+    if(s.lastImpulseOverflow) {s.error="GPU contact impulse reporting capacity exceeded";return 0;}
+    *count=s.lastImpulseCount;
+    return !output||!s.lastImpulseCount||s.check(cuMemcpyDtoH(output,s.impulseReports,size_t(s.lastImpulseCount)*sizeof(*output)));
+}
+const btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,updateRigids,joints,selfCollision,contacts,downloadContacts,enableContactImpulses,contactImpulses};
 }
 extern "C" __declspec(dllexport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int version)
 {

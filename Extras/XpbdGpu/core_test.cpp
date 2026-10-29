@@ -81,6 +81,35 @@ void testContactReports(const btGpuXpbdTgsApi* api,void* world)
         require(contact.partA==7&&contact.indexA==41&&contact.partB==9&&contact.indexB==83&&contact.distance<0,
             "vertex response reports retain original incident triangle IDs and penetration");
 }
+void testContactImpulses(const btGpuXpbdTgsApi* api,void* world)
+{
+    for(int substeps: {1,4})
+    {
+        btGpuXpbdNode initial={{0,0,0},1,{0,0,0},0},baseline={};
+        btGpuXpbdSurfaceVertex maps[]={{{0,-1,-1,-1},{1,0,0,0},{0,0,0},0},
+            {{-1,-1,-1,-1},{0,0,0,0},{-2,0,-2},1},{{-1,-1,-1,-1},{0,0,0,0},{0,0,2},1},{{-1,-1,-1,-1},{0,0,0,0},{2,0,-2},1}};
+        btGpuXpbdSurfaceTriangle triangle={{1,2,3},7,42};
+        btGpuXpbdStep step={.01,substeps,{0,-10,0},0,0,10,0,0,1};
+        require(api->upload(world,1,&initial,0,nullptr)&&api->surface(world,4,maps,1,&triangle,.1,0),"impulse fixture");
+        require(api->step(world,&step)&&api->download(world,1,&baseline),"reporting disabled baseline");
+        int count=-1;
+        require(api->contactImpulses(world,&count,nullptr,0)&&count==0,"reporting disabled by default");
+        require(api->updateNodes(world,1,&initial)&&api->enableContactImpulses(world,1)&&api->step(world,&step),"reported step");
+        btGpuXpbdNode reported={};require(api->download(world,1,&reported)!=0,"reported state");
+        require(std::memcmp(&reported,&baseline,sizeof(reported))==0,"reporting does not change physical state");
+        require(api->contactImpulses(world,&count,nullptr,0)&&count==1,"substeps aggregate one contact");
+        btGpuXpbdContactImpulse impulse={};
+        if(count==1)
+        {
+            require(api->contactImpulses(world,&count,&impulse,1)!=0,"impulse readback");
+            require(std::fabs(impulse.impulse-.1)<1.e-8&&impulse.contact.normal.y>.999,"reported impulse balances gravity across all substeps");
+            require(impulse.contact.bodyA==0&&impulse.contact.bodyB==1&&impulse.contact.indexB==42,"impulse body and triangle identity");
+        }
+        auto invalid=step;invalid.dt=0;
+        require(!api->step(world,&invalid)&&api->contactImpulses(world,&count,nullptr,0)&&count==0,"failed step clears stale reports");
+        require(api->enableContactImpulses(world,0)&&api->step(world,&step)&&api->contactImpulses(world,&count,nullptr,0)&&count==0,"disable clears reports and captured reporting work");
+    }
+}
 void testRigidCoupling(const btGpuXpbdTgsApi* api,void* world)
 {
     btGpuXpbdNode node={};btGpuXpbdStep step={.1,2,{0,0,0},0,0,10,0,0,0,0};
@@ -520,12 +549,14 @@ int main()
     testPartitionMomentum(api,world);
     testMaterialModeSwitch(api,world);
     testContactReports(api,world);
+    testContactImpulses(api,world);
     testRigidCoupling(api,world);
     testRigidContacts(api,world);
     testRigidJoints(api,world);
     testSelfCollision(api,world);
     testInversionRecovery(api,world);
     auto mediumApi=*api;accurateStep=api->step;mediumApi.step=mediumStep;
+    testContactImpulses(&mediumApi,world);
     testPartitionMomentum(&mediumApi,world);
     testOutsideStaticFace(&mediumApi,world);
     testBroadGroundContact(&mediumApi,world);

@@ -340,6 +340,7 @@ void btDeformableMultiBodyDynamicsWorld::removeRigidBody(btRigidBody* body)
 }
 void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar timeStep,bool queryOnly)
 {
+    m_gpuXpbdTgsContactImpulses.clear();m_gpuXpbdTgsImpulseError.clear();
     auto fail=[&](const std::string& reason)
     {
         m_deformableStepFailed=true;m_gpuXpbdTgsError=reason;
@@ -736,6 +737,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     if(!cache.checked(api->targets(state,int(targets.size()),targets.data()))) { fail(cache.error);return; }
     cache.hasTargets=!targets.empty();
     if(!cache.checked(api->springs(state,int(springs.size()),springs.data()))) { fail(cache.error);return; }
+    if(!cache.checked(api->enableContactImpulses(state,m_gpuXpbdTgsReportImpulses))) { fail(cache.error);return; }
     if(!cache.checked(api->forces(state,int(forces.size()),forces.data()))||!cache.checked(api->step(state,&config))||
        !cache.checked(api->download(state,int(nodes.size()),nodes.data()))) { fail(cache.error);return; }
     if(!cache.checked(api->downloadRigids(state,int(rigidStates.size()),rigidStates.data()))) {fail(cache.error);return;}
@@ -747,6 +749,24 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         rigid->setCenterOfMassTransform(transform);rigid->setInterpolationWorldTransform(transform);
         rigid->setLinearVelocity(bulletVector(result.linearVelocity,units));rigid->setAngularVelocity(bulletVector(result.angularVelocity,1));
         rigid->activate();updateSingleAabb(rigid);
+    }
+    if(m_gpuXpbdTgsReportImpulses)
+    {
+        int count=0;
+        if(!api->contactImpulses(state,&count,nullptr,0)) m_gpuXpbdTgsImpulseError=api->error(state);
+        else
+        {
+            std::vector<btGpuXpbdContactImpulse> reports(count);
+            if(!api->contactImpulses(state,&count,reports.data(),count)) m_gpuXpbdTgsImpulseError=api->error(state);
+            else for(const auto& report:reports)
+            {
+                const auto& c=report.contact;
+                if(c.bodyA<0||c.bodyA>=m_collisionObjects.size()||c.bodyB<0||c.bodyB>=m_collisionObjects.size()) continue;
+                m_gpuXpbdTgsContactImpulses.push_back({m_collisionObjects[c.bodyA],m_collisionObjects[c.bodyB],c.indexA,c.indexB,
+                    bulletVector(c.pointA,units)+cache.origin,bulletVector(c.pointB,units)+cache.origin,
+                    bulletVector(c.normal,1),btScalar(report.impulse)/units});
+            }
+        }
     }
     cache.accepted=nodes;
     // Target kernels pin their nodes, but subsequent host comparisons use the original effective masses.

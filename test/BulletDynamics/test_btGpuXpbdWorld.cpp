@@ -104,6 +104,7 @@ static void testWorld(btScalar metersPerUnit,bool mapped=false,bool disparateMas
     ground.setWorldTransform(btTransform(btQuaternion::getIdentity(),translation));
     world.addCollisionObject(&ground);
     body.setCheckCollideWith(true);
+    world.setGpuXpbdTgsImpulseReporting(true);
     for(int pass=0;pass<5;++pass)
     {
         const bool disabled=pass==1||pass==3;
@@ -116,6 +117,21 @@ static void testWorld(btScalar metersPerUnit,bool mapped=false,bool disparateMas
         }
         require(world.stepSimulation(dt,0)==1&&!world.hasDeformableStepFailed(),"static mesh contact step accepted");
         if(world.hasDeformableStepFailed()) std::fprintf(stderr,"contact error: %s\n",world.getGpuXpbdTgsError().c_str());
+        require(world.getGpuXpbdTgsImpulseError().empty(),"world impulse readback succeeds");
+        const auto& reports=world.getGpuXpbdTgsContactImpulses();
+        require(disabled?reports.empty():!reports.empty(),"world reports only solved response contacts");
+        btScalar impulseZ=0;
+        for(const auto& report:reports)
+        {
+            require((report.bodyA==&body&&report.bodyB==&ground)||(report.bodyB==&body&&report.bodyA==&ground),"reported world body identity");
+            impulseZ+=(report.bodyA==&body?1:-1)*report.normal.z()*report.impulse;
+        }
+        if(!disparateMass)
+        {
+            btScalar momentumChange=0;
+            for(int i=0;i<4;++i) momentumChange+=body.m_nodes[i].m_v.z()+btScalar(.1)/metersPerUnit;
+            require(btFabs((impulseZ-momentumChange)*metersPerUnit)<1.e-4,"world impulse converted to scene units matches momentum change");
+        }
         btScalar minimum=body.m_nodes[0].m_x.z();
         for(int i=1;i<4;++i) minimum=btMin(minimum,body.m_nodes[i].m_x.z());
         const double depth=double((minimum-translation.z()-surfaceOffset-plane)*metersPerUnit);

@@ -1379,6 +1379,48 @@ extern "C" __global__ void reportContacts(const V* positions,const Map* maps,con
     if(distance>0||!isfinite(distance)) return;
     appendReport({maps[a.v[0]].body,maps[b.v[0]].body,a.part,a.index,b.part,b.index,pa,pb,c.normal,distance},output,outputCount,capacity,failure);
 }
+// Optional visualization telemetry: accumulate once per substep, never in the contact solve loop.
+struct ImpulseSum { V pointA,pointB,normal;double weight; };
+struct ContactImpulse { ContactReport contact;double impulse; };
+static_assert(sizeof(ImpulseSum)==80 && sizeof(ContactImpulse)==112,"Contact impulse GPU ABI mismatch");
+extern "C" __global__ void accumulateContactImpulses(const V* positions,const Map* maps,const Tri* tris,
+    const Contact* contacts,const int* count,int contactCapacity,unsigned long long* keys,ImpulseSum* sums,int capacity,int* overflow)
+{
+    for(int i=blockIdx.x*blockDim.x+threadIdx.x;i<min(*count,contactCapacity);i+=blockDim.x*gridDim.x)
+    {
+        Contact c=contacts[i];if((c.state&4)||c.impulse<=0||!isfinite(c.impulse)) continue;
+        unsigned source=c.triangleA>=0?unsigned(c.triangleA):(unsigned(c.vertex)|0x80000000u);
+        unsigned long long key=(static_cast<unsigned long long>(source)<<32)|unsigned(c.triangle);
+        unsigned slot=unsigned((key^(key>>33))*0xff51afd7ed558ccdULL)&(capacity-1);
+        bool stored=false;
+        for(int probe=0;probe<128;++probe,slot=(slot+1)&(capacity-1))
+        {
+            auto previous=atomicCAS(keys+slot,~0ULL,key);
+            if(previous!=~0ULL && previous!=key) continue;
+            Tri b=tris[c.triangle];V pa=positions[c.vertex];
+            if(c.triangleA>=0) {Tri a=tris[c.triangleA];pa=positions[a.v[0]]*c.baryA.x+positions[a.v[1]]*c.baryA.y+positions[a.v[2]]*c.baryA.z;}
+            V pb=positions[b.v[0]]*c.bary.x+positions[b.v[1]]*c.bary.y+positions[b.v[2]]*c.bary.z;
+            add(&sums[slot].pointA,pa*c.impulse);add(&sums[slot].pointB,pb*c.impulse);
+            add(&sums[slot].normal,c.normal*c.impulse);atomicAdd(&sums[slot].weight,c.impulse);
+            stored=true;break;
+        }
+        if(!stored) atomicExch(overflow,1);
+    }
+}
+extern "C" __global__ void finishContactImpulses(const Map* maps,const Tri* tris,const int* vertexTriangles,
+    const unsigned long long* keys,const ImpulseSum* sums,int capacity,ContactImpulse* output,int* count)
+{
+    int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=capacity||keys[i]==~0ULL) return;
+    ImpulseSum sum=sums[i];double magnitude=sqrt(dot(sum.normal,sum.normal));
+    if(sum.weight<=0||magnitude<=0||!isfinite(magnitude)) return;
+    unsigned source=unsigned(keys[i]>>32);Tri b=tris[unsigned(keys[i])];
+    int triangleA=(source&0x80000000u)?vertexTriangles[source&0x7fffffffu]:int(source);
+    int bodyA=(source&0x80000000u)?maps[source&0x7fffffffu].body:maps[tris[triangleA].v[0]].body;
+    V pa=sum.pointA*(1./sum.weight),pb=sum.pointB*(1./sum.weight),normal=sum.normal*(1./magnitude);
+    ContactReport report={bodyA,maps[b.v[0]].body,triangleA>=0?tris[triangleA].part:-1,
+        triangleA>=0?tris[triangleA].index:-1,b.part,b.index,pa,pb,normal,dot(pa-pb,normal)};
+    output[atomicAdd(count,1)]={report,magnitude};
+}
 // Notification-only pairs share the response BVH, but never enter the constraint list.
 // The first triangle pair in mesh order wins, independently of CUDA scheduling.
 struct NotificationPair { int x,y,touching; };
