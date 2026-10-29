@@ -11,6 +11,7 @@
 #include "BulletCollision/CollisionShapes/btTriangleMesh.h"
 #include "BulletCollision/CollisionShapes/btBvhTriangleMeshShape.h"
 #include "BulletCollision/Gimpact/btGImpactShape.h"
+#include "BulletCollision/Gimpact/btGImpactCollisionAlgorithm.h"
 #include "BulletCollision/CollisionShapes/btBoxShape.h"
 #include "BulletDynamics/ConstraintSolver/btGeneric6DofSpring2Constraint.h"
 #include <cstdio>
@@ -498,8 +499,53 @@ static void testCallbacks()
     require(dispatcher.getNumManifolds()==0,"removing bodies releases GPU callback manifolds");
 }
 
+static void testToleratedContact(bool gpu, bool touching)
+{
+    btSoftBodyRigidBodyCollisionConfiguration configuration;btCollisionDispatcher dispatcher(&configuration);btDbvtBroadphase broadphase;
+    btGImpactCollisionAlgorithm::registerAlgorithm(&dispatcher);
+    btDeformableMultiBodyConstraintSolver constraints;btDeformableBodySolver solver;
+    btDeformableMultiBodyDynamicsWorld world(&dispatcher,&broadphase,&constraints,&configuration,&solver);
+    world.setGpuXpbdTgsSolver(gpu,1,1,1,0);world.setGravity(btVector3(0,0,0));
+    btTriangleMesh ma,mb;
+    ma.addTriangle(btVector3(-1,-1,0),btVector3(1,-1,0),btVector3(0,1,0));
+    mb.addTriangle(btVector3(.25,-.5,-1),btVector3(.25,-.5,1),btVector3(.25,.5,0));
+    btGImpactMeshShape sa(&ma),sb(&mb);sa.updateBound();sb.updateBound();
+    btRigidBody a(1,nullptr,&sa,btVector3(1,1,1)),b(0,nullptr,&sb);
+    a.setToleratedCollisionAll(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL);
+    if(touching) a.setCollisionFlags(a.getCollisionFlags()|btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH);
+    world.addRigidBody(&a);world.addRigidBody(&b);
+    dispatcher.reportToleratedContacts=true;
+    auto tick=[&](){if(gpu) world.stepSimulation(.001,0);else world.performDiscreteCollisionDetection();};
+    tick();
+    require(!world.hasDeformableStepFailed(),"tolerated contact query succeeds");
+    require(dispatcher.toleratedContacts.size()==1,"one tolerated witness per body pair in either solver");
+    for(const auto& entry:dispatcher.toleratedContacts)
+    {
+        const auto& hit=entry.second;
+        require(hit.triangleA==0&&hit.triangleB==0&&btFabs(hit.normal.length()-1)<1.e-6,"tolerated witness triangle IDs and unit surface normal");
+        require(std::isfinite(double(hit.point.x())),"finite tolerated witness position");
+        require(btFabs(hit.point.x()-.25)<1.e-6&&btFabs(hit.point.z())<1.e-6&&hit.point.y()>=-.500001&&hit.point.y()<=.500001,
+            "tolerated marker lies on both triangles' intersection segment, not at a centroid");
+    }
+    for(int i=0;i<dispatcher.getNumManifolds();++i)
+        require(dispatcher.getManifoldByIndexInternal(i)->getNumContacts()==0,"tolerated witnesses never enter response manifolds");
+    require(a.getLinearVelocity().length2()==0,"tolerated query does not apply impulses");
+    auto t=a.getWorldTransform();t.setOrigin(btVector3(10,0,0));a.setWorldTransform(t);world.updateSingleAabb(&a);tick();
+    require(dispatcher.toleratedContacts.empty(),"separation clears tolerated witnesses");
+    t.setOrigin(btVector3(0,0,0));a.setWorldTransform(t);world.updateSingleAabb(&a);dispatcher.reportToleratedContacts=false;
+    world.setInternalTickCallback([](btDynamicsWorld*,btScalar){});tick();
+    require(dispatcher.toleratedContacts.empty()&&!dispatcher.getInitialCollisionParticipants().empty(),"disabled visualization retains tolerance without witness storage");
+    dispatcher.reportToleratedContacts=true;tick();
+    require(dispatcher.toleratedContacts.size()==1,"re-enabling visualization restores witness");
+    world.removeRigidBody(&a);
+    require(dispatcher.toleratedContacts.empty(),"removing a body clears its witness pointers");
+    world.removeRigidBody(&b);
+}
+
 int main()
 {
+    testToleratedContact(false,false);testToleratedContact(false,true);
+    testToleratedContact(true,false);testToleratedContact(true,true);
     testCallbacks();
     testRigidWorld(1);testRigidWorld(.001);
     testAnchoredWorld(1);testAnchoredWorld(.001);

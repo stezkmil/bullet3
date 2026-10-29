@@ -107,6 +107,7 @@ public:
 	}
 	void clearInitialCollisionParticipants() override
 	{
+        toleratedContacts.clear();
 		initialCollisionParticipants.clear();
 		initialCollisionParticipants0.clear();
 		initialCollisionParticipants1.clear();

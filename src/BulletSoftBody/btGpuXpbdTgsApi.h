@@ -1,9 +1,9 @@
 #ifndef BT_GPU_XPBD_TGS_API_H
 #define BT_GPU_XPBD_TGS_API_H
 
-// ABI 12 adds optional solved contact impulse reporting.
+// ABI 13 adds first-hit tolerated-contact queries and triangle-normal witnesses.
 // POD boundary independent of Bullet's float/double scalar configuration.
-constexpr int BT_GPU_XPBD_ABI_VERSION = 12;
+constexpr int BT_GPU_XPBD_ABI_VERSION = 13;
 struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
@@ -48,6 +48,7 @@ struct btGpuXpbdContactImpulse { btGpuXpbdContactReport contact; double impulse;
 static_assert(sizeof(btGpuXpbdContactImpulse)==112, "Contact impulse GPU ABI mismatch");
 struct btGpuXpbdTarget { int node;btGpuXpbdVec position; };
 struct btGpuXpbdDisabledPair { int bodyA, bodyB; };
+// touching: bit 0 includes touching; bit 1 selects any first hit and its source triangle normal.
 struct btGpuXpbdNotificationPair { int bodyA,bodyB;int touching; };
 static_assert(sizeof(btGpuXpbdSurfaceTriangle)==20 && sizeof(btGpuXpbdContactReport)==104 && sizeof(btGpuXpbdNotificationPair)==12, "Contact report GPU ABI mismatch");
 struct btGpuXpbdSpring

@@ -290,6 +290,7 @@ void btCollisionDispatcher::dispatchAllCollisionPairs(btOverlappingPairCache* pa
 
 	{
 		BT_PROFILE("processAllOverlappingPairs");
+        toleratedContacts.clear();
 		initialCollisionParticipants.clear();
 		initialCollisionParticipants0.clear();
 		initialCollisionParticipants1.clear();

@@ -247,6 +247,11 @@ void btCollisionWorld::performDiscreteCollisionDetection()
 
 void btCollisionWorld::removeCollisionObject(btCollisionObject* collisionObject)
 {
+    auto& witnesses=m_dispatcher1->toleratedContacts;
+    for(auto it=witnesses.begin();it!=witnesses.end();)
+        if(it->first.first==collisionObject||it->first.second==collisionObject) it=witnesses.erase(it);
+        else ++it;
+
 	//bool removeFromBroadphase = false;
 
 	{

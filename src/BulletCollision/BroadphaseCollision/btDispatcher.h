@@ -20,6 +20,7 @@ This is a modified version of the Bullet Continuous Collision Detection and Phys
 #ifndef BT_DISPATCHER_H
 #define BT_DISPATCHER_H
 #include "LinearMath/btScalar.h"
+#include "LinearMath/btVector3.h"
 
 #include <set>
 #include <map>
@@ -97,6 +98,14 @@ public:
 		}
 	};
 	typedef std::unordered_map<std::pair<int, int>, std::tuple<int, uint64_t>, btPreviouslyFoundPairMapHash> btPreviouslyFoundPairMap;  // value int is the time itself, uint64_t is the simulation step number
+
+    struct ToleratedContact
+    {
+        btVector3 point, normal;
+        int triangleA=-1, triangleB=-1;
+    };
+    bool reportToleratedContacts=false;
+    std::map<btInitialCollisionParticipants::value_type,ToleratedContact> toleratedContacts;
 
 	virtual ~btDispatcher();
 

@@ -369,7 +369,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     if(!cache.backend.ready()) { fail(cache.backend.error());return; }
     const auto* api=cache.backend.api();void* state=cache.backend.state();
     cache.dispatcher=getDispatcher();
-    const bool callbacks=queryOnly||m_internalPreTickCallback||m_internalPostDiscreteCollisionDetectionTickCallback||m_internalTickCallback||m_solverCallback||m_actions.size();
+    const bool callbacks=getDispatcher()->reportToleratedContacts||queryOnly||m_internalPreTickCallback||m_internalPostDiscreteCollisionDetectionTickCallback||m_internalTickCallback||m_solverCallback||m_actions.size();
     for(int phase=callbacks?0:1;phase<2;++phase)
     {
     std::vector<btSoftBody*> bodies;std::vector<int> offsets,owners;
@@ -675,7 +675,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
             first->checkIsTolerated(second)||second->checkIsTolerated(first);
         const bool notification=!first->hasContactResponse()||!second->hasContactResponse();
         if(excluded||notification||tolerated) disabled.push_back({a,b});
-        if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0});
+        if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,(((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0)|(tolerated?2:0)});
     }
     if(disabled.size()!=cache.disabled.size()||(!disabled.empty()&&std::memcmp(disabled.data(),cache.disabled.data(),disabled.size()*sizeof(disabled[0]))!=0))
     {
@@ -702,6 +702,9 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
             if(tolerated&&a->hasContactResponse()&&b->hasContactResponse())
             {
                 dispatcher->addInitialCollisionParticipant({a,b});
+                if(dispatcher->reportToleratedContacts)
+                    dispatcher->toleratedContacts.emplace(std::make_pair(a,b),btDispatcher::ToleratedContact{
+                        bulletVector(contact.pointA,units)+cache.origin,bulletVector(contact.normal,1),contact.indexA,contact.indexB});
                 continue;
             }
             auto& manifold=pairs[{contact.bodyA,contact.bodyB}];

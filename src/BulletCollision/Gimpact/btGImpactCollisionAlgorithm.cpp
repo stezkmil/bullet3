@@ -818,9 +818,36 @@ void btGImpactCollisionAlgorithm::gimpact_vs_gimpact(
 	if (!pairsExist)
 		return;
 
-	if (findOnlyFirstTriPair == btFindOnlyFirstPairEnum::PENETRATING && !generateManifoldForGhost)
+	if (findOnlyFirstTriPair != btFindOnlyFirstPairEnum::DISABLED && !generateManifoldForGhost)
 	{
-		m_dispatcher->addInitialCollisionParticipant({body0Wrap->getCollisionObject(), body1Wrap->getCollisionObject()});
+        const auto pair=std::make_pair(body0Wrap->getCollisionObject(),body1Wrap->getCollisionObject());
+        m_dispatcher->addInitialCollisionParticipant(pair);
+        if(m_dispatcher->reportToleratedContacts && !m_dispatcher->toleratedContacts.contains(pair))
+        {
+            for(const auto& results:m_perThreadIntermediateResults)
+            {
+                if(results.empty()) continue;
+                const auto& hit=results.front();
+                btPrimitiveTriangle triangle;
+                grpParams.shape0->getPrimitiveTriangle(hit.index0,triangle,false);
+                triangle.applyTransform(grpParams.orgtrans0);
+                btPrimitiveTriangle otherTriangle;
+                grpParams.shape1->getPrimitiveTriangle(hit.index1,otherTriangle,false);
+                otherTriangle.applyTransform(grpParams.orgtrans1);
+                triangle.buildTriPlane();
+                otherTriangle.buildTriPlane();
+                btVector3 point=hit.point,otherPoint;
+                btScalar distanceSquared;
+                // Reuse the winning pair only; manifold points need not lie on the intersection.
+                triangle.triangle_triangle_distance(otherTriangle,distanceSquared,point,otherPoint);
+                auto normal=(triangle.m_vertices[1]-triangle.m_vertices[0]).cross(triangle.m_vertices[2]-triangle.m_vertices[0]);
+                if(normal.length2()>SIMD_EPSILON*SIMD_EPSILON)
+                    m_dispatcher->toleratedContacts.emplace(pair,btDispatcher::ToleratedContact{
+                        point,
+                        normal.normalized(),hit.index0,hit.index1});
+                break;
+            }
+        }
 		return;
 	}
 

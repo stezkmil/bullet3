@@ -1429,12 +1429,13 @@ extern "C" __global__ void reportNotifications(const Map* maps,const V* position
 {
     int job=blockIdx.x*blockDim.x+threadIdx.x;if(job>=pairCount*triangleCount) return;
     int pair=job/triangleCount,source=job%triangleCount;NotificationPair bodies=pairs[pair];
+    if((bodies.touching&2)&&atomicAdd(winners+pair,0ULL)!=~0ULL) return;
     Tri ta=tris[source];if(maps[ta.v[0]].body!=bodies.x||(atomicAdd(winners+pair,0ULL)>>32)<static_cast<unsigned>(source)) return;
     V a[3]={positions[ta.v[0]],positions[ta.v[1]],positions[ta.v[2]]};
     V an=cross(a[1]-a[0],a[2]-a[0]);double a2=dot(an,an);if(a2<1.e-20) return;an=an*rsqrt(a2);
     Box bound={minimum(a[0],minimum(a[1],a[2])),maximum(a[0],maximum(a[1],a[2]))};
     int stack[64],top=0;stack[top++]=0;
-    while(top&&(atomicAdd(winners+pair,0ULL)>>32)>=static_cast<unsigned>(source))
+    while(top&&((bodies.touching&2)?atomicAdd(winners+pair,0ULL)==~0ULL:(atomicAdd(winners+pair,0ULL)>>32)>=static_cast<unsigned>(source)))
     {
         int index=stack[--top];Bvh node=tree[index];Box box=boxes[index];
         if((node.body>=0&&node.body!=bodies.y)||bound.high.x<box.low.x||bound.low.x>box.high.x||
@@ -1452,8 +1453,10 @@ extern "C" __global__ void reportNotifications(const Map* maps,const V* position
         int deepest=0;
         for(int k=1;k<3;++k) if(dot(a[k]-b[0],bn)<dot(a[deepest]-b[0],bn)) deepest=k;
         double depth=dot(a[deepest]-b[0],bn);
-        if(depth>0||(depth==0&&!bodies.touching)) continue;
-        atomicMin(winners+pair,(static_cast<unsigned long long>(source)<<32)|static_cast<unsigned>(node.triangle));
+        if(depth>0||(depth==0&&!(bodies.touching&1))) continue;
+        const auto key=(static_cast<unsigned long long>(source)<<32)|static_cast<unsigned>(node.triangle);
+        if(bodies.touching&2) {atomicCAS(winners+pair,~0ULL,key);return;}
+        atomicMin(winners+pair,key);
     }
 }
 
@@ -1467,5 +1470,11 @@ extern "C" __global__ void finishNotifications(const V* positions,const Tri* tri
     V bn=cross(b[1]-b[0],b[2]-b[0]);bn=bn*rsqrt(dot(bn,bn));
     int deepest=0;for(int k=1;k<3;++k) if(dot(a[k]-b[0],bn)<dot(a[deepest]-b[0],bn)) deepest=k;
     V pa=a[deepest],pb=trianglePoint(b,closestWeights(pa,b[0],b[1],b[2]));
+    if(pairs[pair].touching&2)
+    {
+        V wa,wb;closestTriangleWeights(a,b,wa,wb);
+        pa=trianglePoint(a,wa);pb=trianglePoint(b,wb);
+        bn=cross(a[1]-a[0],a[2]-a[0]);bn=bn*rsqrt(dot(bn,bn));
+    }
     appendReport({pairs[pair].x,pairs[pair].y,ta.part,ta.index,tb.part,tb.index,pa,pb,bn,dot(pa-pb,bn)},output,outputCount,capacity,failure);
 }
