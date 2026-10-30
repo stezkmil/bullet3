@@ -80,6 +80,63 @@ void testContactReports(const btGpuXpbdTgsApi* api,void* world)
     for(const auto& contact:response)
         require(contact.partA==7&&contact.indexA==41&&contact.partB==9&&contact.indexB==83&&contact.distance<0,
             "vertex response reports retain original incident triangle IDs and penetration");
+    std::vector<btGpuXpbdSurfaceVertex> overlapping(vertices,vertices+6);
+    for(int i=3;i<6;++i) {auto vertex=vertices[i];vertex.body=2;overlapping.push_back(vertex);}
+    btGpuXpbdSurfaceTriangle interleaved[]={{{3,4,5},9,83},{{0,1,2},7,41},{{6,7,8},11,91},{{3,4,5},9,84}};
+    require(api->surface(world,9,overlapping.data(),4,interleaved,.1,0)&&api->disabledPairs(world,1,&pair)&&
+        api->contacts(world,0,nullptr,&count)&&count>0,"body BVH retains allowed overlapping pair");
+    response.resize(count);
+    require(api->downloadContacts(world,count,response.data())!=0,"body BVH filtered reports");
+    for(const auto& contact:response)
+        require(contact.bodyA==0&&contact.bodyB==2,"ignored body subtree produces no contacts while overlapping allowed body does");
+}
+void testCallbackContactReuse(const btGpuXpbdTgsApi* api,void* world)
+{
+    for(bool rigid: {false,true}) for(int substeps: {1,2}) for(int edit=0;edit<9;++edit)
+    {
+        btGpuXpbdVec expectedPosition={},expectedVelocity={};
+        for(bool query: {false,true})
+        {
+            btGpuXpbdNode node={{0,.001,0},1,{0,-1,0},0};
+            auto body=rigidState();body.position=node.position;body.linearVelocity=node.velocity;
+            btGpuXpbdSurfaceVertex maps[]={{{rigid?-2:0,-1,-1,-1},{rigid?0.:1.,0,0,0},{0,0,0},0},
+                {{-1,-1,-1,-1},{0,0,0,0},{-2,0,-2},1},{{-1,-1,-1,-1},{0,0,0,0},{0,0,2},1},{{-1,-1,-1,-1},{0,0,0,0},{2,0,-2},1}};
+            btGpuXpbdSurfaceTriangle triangle={{1,2,3}};
+            if(edit==8) maps[0].offset.x=.5;
+            btGpuXpbdStep step={.01,substeps,{0,-10,0},0,0,10,0,0,1};
+            require(api->upload(world,1,&node,0,nullptr)&&(!rigid||api->rigids(world,1,&body))&&
+                api->surface(world,4,maps,1,&triangle,.1,0),"callback reuse fixture");
+            btGpuXpbdDisabledPair ignored={0,1};
+            if(edit==5) require(api->disabledPairs(world,1,&ignored)!=0,"initial callback exclusion");
+            int count=0;
+            if(query) require(api->contacts(world,0,nullptr,&count)!=0,"callback discovery before edits");
+            if(edit==1) {node.velocity.x=1;body.linearVelocity.x=1;body.force.x=2;}
+            if(edit==2) {node.position.y=1;body.position.y=1;}
+            if(edit==3) {node.inverseMass=0;body=rigidState(0);body.position=node.position;}
+            if(edit==8&&rigid) {body.orientation[2]=std::sqrt(.5);body.orientation[3]=std::sqrt(.5);}
+            require(api->updateNodes(world,1,&node)&&(!rigid||api->updateRigids(world,1,&body)),"callback state repack");
+            if(edit==4) require(api->disabledPairs(world,1,&ignored)!=0,"callback disables pair");
+            if(edit==5) require(api->disabledPairs(world,0,nullptr)!=0,"callback enables pair");
+            if(edit==6)
+            {
+                double coefficients[]={.5,.5};
+                require(api->friction(world,2,coefficients)!=0,"callback changes friction");
+            }
+            if(edit==7&&!rigid)
+            {
+                btGpuXpbdTarget target={0,{0,.1,0}};
+                require(api->targets(world,1,&target)!=0,"callback sets target");
+            }
+            // A second step must refresh contacts even when the first reused a callback query.
+            require(api->step(world,&step)&&api->step(world,&step)&&api->download(world,1,&node)&&
+                (!rigid||api->downloadRigids(world,1,&body)),"callback reuse and following step");
+            auto position=rigid?body.position:node.position,velocity=rigid?body.linearVelocity:node.velocity;
+            if(edit==0) require(position.y>=-1.e-8&&velocity.y>=-1.e-8,"reused contacts stop the falling body at the plane");
+            if(!query) {expectedPosition=position;expectedVelocity=velocity;}
+            else require(distance(position,expectedPosition)<1.e-9&&distance(velocity,expectedVelocity)<1.e-9,
+                "callback discovery reuse or invalidation matches fresh discovery");
+        }
+    }
 }
 void testContactImpulses(const btGpuXpbdTgsApi* api,void* world)
 {
@@ -136,6 +193,12 @@ void testRigidCoupling(const btGpuXpbdTgsApi* api,void* world)
     anchor={softEndpoint(0),softEndpoint(-1),0};node={ {0,0,0},1,{1,0,0},0 };
     require(api->upload(world,1,&node,0,nullptr)&&api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node),"world attachment");
     require(std::fabs(node.position.x)<1.e-12&&std::fabs(node.velocity.x)<1.e-12,"world attachment holds node");
+    for(int i=1;i<=3;++i)
+    {
+        anchor.b.point.x=.01*i;
+        require(api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node),"update captured attachment target");
+        require(std::fabs(node.position.x-anchor.b.point.x)<1.e-10,"captured attachment follows updated target");
+    }
     // Rejected steps must roll back both sides of a coupled island.
     r=rigidState();r.force={std::numeric_limits<double>::max(),0,0};r.inverseMass=100;
     require(api->rigids(world,1,&r)!=0,"finite rigid overflow input");auto accepted=r;
@@ -192,6 +255,16 @@ void testRigidJoints(const btGpuXpbdTgsApi* api,void* world)
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"fixed GPU joint");
     require(distance(r.position,{0,0,0})<1.e-10&&distance(r.linearVelocity,{0,0,0})<1.e-8,"fixed joint holds position under force");
     require(distance(r.angularVelocity,{0,0,0})<1.e-7,"fixed joint holds rotation under torque");
+    for(int i=1;i<=3;++i)
+    {
+        j.points[0].x=.01*i;
+        require(api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"update captured mouse joint frame");
+        require(std::fabs(r.position.x-j.points[0].x)<1.e-9,"captured joint follows updated frame");
+    }
+    require(api->joints(world,0,nullptr)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"remove captured joint");
+    require(r.position.x>j.points[0].x,"removed joint releases body");
+    require(api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"restore captured joint");
+    require(std::fabs(r.position.x-j.points[0].x)<1.e-9,"restored joint holds body");
     r=rigidState(.5);j=freeJoint(-1,0);j.axes[0].flags=2;j.axes[0].velocity=1;j.axes[0].maxForce=.4;step.dt=.1;
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"force limited joint motor");
     require(std::fabs(r.linearVelocity.x-.02)<1.e-10,"motor impulse equals force times time");
@@ -549,6 +622,7 @@ int main()
     testPartitionMomentum(api,world);
     testMaterialModeSwitch(api,world);
     testContactReports(api,world);
+    testCallbackContactReuse(api,world);
     testContactImpulses(api,world);
     testRigidCoupling(api,world);
     testRigidContacts(api,world);

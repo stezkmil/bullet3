@@ -22,6 +22,9 @@ struct State
     CUgraph graph=nullptr;
     CUgraphExec graphExec=nullptr;
     btGpuXpbdStep graphConfig={};
+    bool contactsReady=false;
+    std::vector<btGpuXpbdNode> contactNodes;
+    std::vector<btGpuXpbdRigid> contactRigids;
     CUfunction predict=nullptr,solve=nullptr,settle=nullptr,damp=nullptr;
     bool hasMaterialDamping=false;
     CUfunction predictRigids=nullptr,solveAttachments=nullptr,checkRigids=nullptr,bindRigids=nullptr,applyRigidContacts=nullptr;
@@ -101,6 +104,7 @@ struct State
     }
     void clearSurface()
     {
+        contactsReady=false;contactNodes.clear();contactRigids.clear();
         clearGraph();
         for(auto p:{impulseKeys,impulseSums,impulseReports,impulseCount,impulseOverflow}) if(p) cuMemFree(p);
         impulseKeys=impulseSums=impulseReports=impulseCount=impulseOverflow=0;
@@ -199,6 +203,7 @@ void* create()
     creationError=s->error;destroy(s);return nullptr;
 }
 bool finite(btGpuXpbdVec v) { return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); }
+bool sameVector(btGpuXpbdVec a,btGpuXpbdVec b) { return a.x==b.x&&a.y==b.y&&a.z==b.z; }
 int upload(void* value,int count,const btGpuXpbdNode* nodes,int tetCount,const btGpuXpbdTet* tets)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
@@ -285,6 +290,10 @@ int updateNodes(void* value,int count,const btGpuXpbdNode* nodes)
            !std::isfinite(n.damping)||n.damping<0) { s.error="Invalid node state";return 0; }
         masses[i]=n.inverseMass;
     }
+    if(s.contactsReady)
+        for(int i=0;i<count;++i)
+            if(!sameVector(nodes[i].position,s.contactNodes[i].position)||nodes[i].inverseMass!=s.contactNodes[i].inverseMass)
+                {s.contactsReady=false;break;}
     return s.check(cuMemcpyHtoD(s.nodes,nodes,size_t(count)*sizeof(*nodes))) &&
         s.check(cuMemcpyHtoD(s.inverseMasses,masses.data(),masses.size()*sizeof(double)));
 }
@@ -306,6 +315,9 @@ int disabledPairs(void* value,int count,const btGpuXpbdDisabledPair* pairs)
         keys.push_back((static_cast<unsigned long long>(a)<<32)|static_cast<unsigned int>(b));
     }
     std::sort(keys.begin(),keys.end());keys.erase(std::unique(keys.begin(),keys.end()),keys.end());
+    s.contactsReady=false;
+    if(keys.size()==size_t(s.disabledPairCount))
+        return keys.empty()||s.check(cuMemcpyHtoD(s.disabledPairs,keys.data(),keys.size()*sizeof(keys[0])));
     CUdeviceptr replacement=0;
     if(!s.copy(replacement,keys.data(),keys.size()*sizeof(keys[0])))
     {
@@ -322,6 +334,9 @@ int friction(void* value,int count,const double* coefficients)
     if(count<0||(count&&!coefficients)) { s.error="Invalid friction table";return 0; }
     for(int i=0;i<count;++i) if(!std::isfinite(coefficients[i])||coefficients[i]<0)
         { s.error="Friction must be finite and nonnegative";return 0; }
+    s.contactsReady=false;
+    if(count==s.frictionCount)
+        return !count||s.check(cuMemcpyHtoD(s.friction,coefficients,size_t(count)*sizeof(*coefficients)));
     CUdeviceptr replacement=0;
     if(!s.copy(replacement,coefficients,count*sizeof(double)))
     {
@@ -402,7 +417,21 @@ int surface(void* value,int vertexCount,const btGpuXpbdSurfaceVertex* vertices,i
         int left=build(begin,mid,index),right=build(mid,end,index);tree[index].left=left;tree[index].right=right;
         tree[index].body=tree[left].body==tree[right].body?tree[left].body:-1;return index;
     };
-    build(0,triangleCount,-1);
+    // Keep each body's triangles below one root so pair filters prune before triangle traversal.
+    const auto bodyOf=[&](int triangle) {return vertices[triangles[triangle].vertices[0]].body;};
+    std::sort(order.begin(),order.end(),[&](int a,int b){return bodyOf(a)<bodyOf(b);});
+    std::vector<int> bodyOffsets{0};
+    for(int i=1;i<triangleCount;++i) if(bodyOf(order[i])!=bodyOf(order[i-1])) bodyOffsets.push_back(i);
+    bodyOffsets.push_back(triangleCount);
+    std::function<int(int,int,int)> buildBodies=[&](int begin,int end,int parent)
+    {
+        if(end-begin==1) return build(bodyOffsets[begin],bodyOffsets[end],parent);
+        int index=int(tree.size());tree.push_back({-1,-1,parent,-1,-1});
+        int mid=(begin+end)/2;
+        int left=buildBodies(begin,mid,index),right=buildBodies(mid,end,index);
+        tree[index].left=left;tree[index].right=right;return index;
+    };
+    buildBodies(0,int(bodyOffsets.size())-1,-1);
     int tetCount=s.batches.back();std::vector<btGpuXpbdTet> tets(tetCount);
     if(tetCount&&!s.check(cuMemcpyDtoH(tets.data(),s.tets,tets.size()*sizeof(tets[0])))) return 0;
     std::vector<bool> volumeNode(s.count,false);
@@ -521,6 +550,7 @@ int targets(void* value,int count,const btGpuXpbdTarget* values)
         if(values[i].node<0||values[i].node>=s.count||!finite(values[i].position)||used[values[i].node]) { s.error="Invalid kinematic target";return 0; }
         ids.push_back(values[i].node);used[values[i].node]=true;
     }
+    if(count||s.targetCount) s.contactsReady=false;
     if(ids!=s.targetIds)
     {
         s.clearGraph();
@@ -574,6 +604,13 @@ int setRigids(void* value,int count,const btGpuXpbdRigid* bodies,bool update)
     if(update)
     {
         if(count!=s.rigidCount) {s.error="Rigid update count mismatch";return 0;}
+        if(s.contactsReady)
+            for(int i=0;i<count;++i)
+            {
+                const auto& a=bodies[i];const auto& b=s.contactRigids[i];
+                if(!sameVector(a.position,b.position)||a.inverseMass!=b.inverseMass||
+                   !std::equal(a.orientation,a.orientation+4,b.orientation)) {s.contactsReady=false;break;}
+            }
         return !count||s.check(cuMemcpyHtoD(s.rigids,bodies,size_t(count)*sizeof(*bodies)));
     }
     CUdeviceptr next=0,accepted=0,start=0,impulse=0,torque=0,references=0;
@@ -632,6 +669,9 @@ int attachments(void* value,int count,const btGpuXpbdAttachment* input)
     }
     std::vector<btGpuXpbdAttachment> ordered;std::vector<int> batches{0};
     for(const auto& color:colors) {for(int i:color) ordered.push_back(input[i]);batches.push_back(int(ordered.size()));}
+    // Captured kernels retain pointers and batch bounds; values can change in place.
+    if(batches==s.attachmentBatches)
+        return ordered.empty()||s.check(cuMemcpyHtoD(s.attachments,ordered.data(),ordered.size()*sizeof(ordered[0])));
     CUdeviceptr next=0;if(!s.copy(next,ordered.data(),ordered.size()*sizeof(ordered[0]))) {if(next) cuMemFree(next);return 0;}
     s.clearGraph();if(s.attachments) cuMemFree(s.attachments);s.attachments=next;s.attachmentBatches=std::move(batches);return 1;
 }
@@ -642,6 +682,9 @@ int selfCollision(void* value,int count,const int* bodies)
     std::vector<int> sorted;if(count) sorted.assign(bodies,bodies+count);
     for(int b:sorted) if(b<0) {s.error="Invalid self-collision body ID";return 0;}
     std::sort(sorted.begin(),sorted.end());sorted.erase(std::unique(sorted.begin(),sorted.end()),sorted.end());
+    s.contactsReady=false;
+    if(sorted.size()==size_t(s.selfBodyCount))
+        return sorted.empty()||s.check(cuMemcpyHtoD(s.selfBodies,sorted.data(),sorted.size()*sizeof(sorted[0])));
     CUdeviceptr next=0;if(!s.copy(next,sorted.data(),sorted.size()*sizeof(int))) {if(next) cuMemFree(next);return 0;}
     s.clearGraph();if(s.selfBodies) cuMemFree(s.selfBodies);s.selfBodies=next;s.selfBodyCount=int(sorted.size());return 1;
 }
@@ -674,6 +717,9 @@ int joints(void* value,int count,const btGpuXpbdJoint* input)
     }
     std::vector<btGpuXpbdJoint> ordered;std::vector<int> batches{0};
     for(const auto& color:colors){for(int i:color) ordered.push_back(input[i]);batches.push_back(int(ordered.size()));}
+    // Moving a mouse joint changes its frame, not the captured solver schedule.
+    if(batches==s.jointBatches)
+        return ordered.empty()||s.check(cuMemcpyHtoD(s.joints,ordered.data(),ordered.size()*sizeof(ordered[0])));
     CUdeviceptr next=0;if(!s.copy(next,ordered.data(),ordered.size()*sizeof(ordered[0]))) {if(next) cuMemFree(next);return 0;}
     s.clearGraph();if(s.joints) cuMemFree(s.joints);s.joints=next;s.jointBatches=std::move(batches);return 1;
 }
@@ -716,16 +762,13 @@ bool enqueueStep(State& s,const btGpuXpbdStep* config)
     double externalDt=config->dt/config->substeps,dt=externalDt/config->iterations;auto gravity=config->gravity;
     double speed=config->settlingSpeed,damping=config->settlingDamping;
     int settlingBegin=config->settlingBegin,settlingEnd=config->settlingEnd?config->settlingEnd:s.count;
-    double fullDt=config->dt;
-    void* startArgs[]={&s.nodes,&s.targets,&s.driveStart,&s.targetCount,&fullDt};
-    if(!s.launch(s.startDrive,s.targetCount,startArgs)) return 0;
     for(int k=0;k<config->substeps*config->iterations;++k)
     {
         double forceDt=dt;
         if(k%config->iterations==0 && !s.check(cuMemsetD32Async(s.accumulated,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))) return 0;
         if(s.rigidCount&&k%config->iterations==0&&!s.check(cuMemcpyDtoDAsync(s.startRigids,s.rigids,size_t(s.rigidCount)*sizeof(btGpuXpbdRigid),s.stream))) return 0;
         // PhysX TGS prepares contacts before integrating the first increment.
-        if(s.vertexCount&&k%config->iterations==0)
+        if(s.vertexCount&&k>0&&k%config->iterations==0)
         {
             if(!discoverSurfaceContacts(s)) return false;
         }
@@ -856,6 +899,15 @@ int step(void* value,const btGpuXpbdStep* config)
     const size_t rotationBytes=size_t(s.batches.back())*4*sizeof(float);
     if(config->materialMode==1 && rotationBytes && !s.check(cuMemcpyDtoDAsync(s.acceptedRotations,s.rotations,rotationBytes,s.stream))) return 0;
     if(!s.check(cuMemcpyDtoDAsync(s.acceptedNodes,s.nodes,nodeBytes,s.stream))) return 0;
+    double fullDt=config->dt;
+    void* startArgs[]={&s.nodes,&s.targets,&s.driveStart,&s.targetCount,&fullDt};
+    const bool reuse=s.contactsReady&&!s.targetCount;
+    s.contactsReady=false;
+    if(!s.launch(s.startDrive,s.targetCount,startArgs)||
+       !s.check(cuMemsetD32Async(s.accumulated,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))) return 0;
+    if(rigidBytes&&!s.check(cuMemcpyDtoDAsync(s.startRigids,s.rigids,rigidBytes,s.stream))) return 0;
+    // First-substep discovery is shared with the callback query, independent of graph topology.
+    if(!reuse&&!discoverSurfaceContacts(s)) return 0;
     if(!s.check(cuGraphLaunch(s.graphExec,s.stream)) || !s.check(cuStreamSynchronize(s.stream))) return 0;
     if(!s.check(cuMemcpyDtoH(&failure,s.failure,sizeof(failure)))) return 0;
     if(failure)
@@ -881,6 +933,7 @@ const char* error(void* value) { return value?static_cast<State*>(value)->error.
 int contacts(void* value,int pairCount,const btGpuXpbdNotificationPair* pairs,int* outputCount)
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    s.contactsReady=false;
     if(pairCount<0||(pairCount&&!pairs)||!outputCount|| (s.triangleCount && pairCount>2147483647/s.triangleCount))
         {s.error="Invalid GPU notification query";return 0;}
     s.lastReportCount=0;*outputCount=0;if(!s.vertexCount) return 1;
@@ -899,6 +952,7 @@ int contacts(void* value,int pairCount,const btGpuXpbdNotificationPair* pairs,in
     }
     if(pairCount&&(!s.check(cuMemcpyHtoD(s.notificationPairs,pairs,size_t(pairCount)*sizeof(*pairs)))||
         !s.check(cuMemsetD32Async(s.notificationWinners,0xffffffff,2*pairCount,s.stream)))) return 0;
+    if(s.rigidCount&&!s.check(cuMemcpyDtoDAsync(s.startRigids,s.rigids,size_t(s.rigidCount)*sizeof(btGpuXpbdRigid),s.stream))) return 0;
     if(!s.check(cuMemsetD32Async(s.failure,0,1,s.stream))||!s.check(cuMemsetD32Async(s.reportCount,0,1,s.stream))||
        !s.check(cuMemsetD32Async(s.accumulated,0,s.count*sizeof(btGpuXpbdVec)/sizeof(unsigned),s.stream))||
        !discoverSurfaceContacts(s)) return 0;
@@ -911,6 +965,10 @@ int contacts(void* value,int pairCount,const btGpuXpbdNotificationPair* pairs,in
     int failure=0;
     if(!s.check(cuMemcpyDtoH(&failure,s.failure,sizeof(failure)))||!s.check(cuMemcpyDtoH(&s.lastReportCount,s.reportCount,sizeof(int)))) return 0;
     if(failure||s.lastReportCount>s.contactCapacity) {s.error=failure==4?"GPU callback contact capacity exceeded":failure==2?"GPU callback traversal stack overflow":"Nonfinite GPU callback contact witness";return 0;}
+    s.contactNodes.resize(s.count);s.contactRigids.resize(s.rigidCount);
+    if(!s.check(cuMemcpyDtoH(s.contactNodes.data(),s.nodes,size_t(s.count)*sizeof(btGpuXpbdNode)))||
+       (s.rigidCount&&!s.check(cuMemcpyDtoH(s.contactRigids.data(),s.rigids,size_t(s.rigidCount)*sizeof(btGpuXpbdRigid))))) return 0;
+    s.contactsReady=true;
     *outputCount=s.lastReportCount;return 1;
 }
 int downloadContacts(void* value,int count,btGpuXpbdContactReport* output)
