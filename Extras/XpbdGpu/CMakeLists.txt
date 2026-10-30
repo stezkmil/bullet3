@@ -38,7 +38,7 @@ add_custom_command(OUTPUT "${ptx_header}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
     COMMAND "${xpbd_ptx_command}" "${CMAKE_CURRENT_SOURCE_DIR}/kernels.cu" "${ptx_header}"
     DEPENDS ${xpbd_ptx_dependency} kernels.cu physx_gjk.cuh VERBATIM)
-add_library(BulletGpuXpbdTgs SHARED backend.cpp "${ptx_header}")
+add_library(BulletGpuXpbdTgs SHARED backend.cpp api_adapter.cpp "${ptx_header}")
 target_include_directories(BulletGpuXpbdTgs PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>" "../../src/BulletSoftBody")
 target_link_libraries(BulletGpuXpbdTgs PRIVATE CUDA::cuda_driver)
 target_compile_features(BulletGpuXpbdTgs PRIVATE cxx_std_17)
@@ -72,3 +72,8 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set_target_properties(XpbdCoreTest XpbdLoaderTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<CONFIG>")
 endif()
 add_test(NAME XpbdLoaderTest COMMAND XpbdLoaderTest)
+
+
+# The public ABI remains double; test expected roundoff and overflow against GPU storage.
+target_compile_definitions(XpbdCoreTest PRIVATE XPBD_TEST_FP32=1)
+target_compile_definitions(XpbdLoaderTest PRIVATE XPBD_TEST_FP32=1)

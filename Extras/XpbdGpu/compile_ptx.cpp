@@ -67,6 +67,11 @@ int main(int argc, char** argv)
     std::vector<char> ptx(size);
     if (!check(nvrtcGetPTX(program.handle, ptx.data())))
         return 1;
+    if (std::string(ptx.data()).find(".f64") != std::string::npos)
+    {
+        std::fprintf(stderr, "FP32 kernels unexpectedly contain FP64 PTX instructions\n");
+        return 1;
+    }
     // Do not create an output on compilation failure: a subsequent build must retry.
     std::ofstream output(argv[2], std::ios::binary | std::ios::trunc);
     // Numeric bytes avoid MSVC's string-literal size limit; NVRTC includes the final NUL.

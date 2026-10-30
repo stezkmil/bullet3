@@ -12,6 +12,15 @@ extern "C" __declspec(dllimport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int);
 namespace
 {
 int failures=0;
+#ifdef XPBD_TEST_FP32
+constexpr double scalarRoundoff=2.e-6;
+using SolverScalar=float;
+#else
+constexpr double scalarRoundoff=0;
+using SolverScalar=double;
+#endif
+double tolerance(double strict,double scale=1) { return strict>scalarRoundoff*scale?strict:scalarRoundoff*scale; }
+
 int (*accurateStep)(void*,const btGpuXpbdStep*)=nullptr;
 int mediumStep(void* world,const btGpuXpbdStep* config)
 {
@@ -33,6 +42,21 @@ btGpuXpbdEndpoint softEndpoint(int node)
 btGpuXpbdEndpoint rigidEndpoint(int rigid,btGpuXpbdVec point={0,0,0})
 {
     auto e=softEndpoint(-1);e.rigid=rigid;e.point=point;return e;
+}
+void testCompensatedState(const btGpuXpbdTgsApi* api,void* world)
+{
+    // FP32 accuracy: both motion and impulses are smaller than the high part's ULP per increment.
+    btGpuXpbdNode node={{1.e6,0,0},1,{.001,0,0},0};
+    btGpuXpbdVec force={1.e-5,0,0};
+    btGpuXpbdStep step={.01,1,{0,0,0},0,0,50,0,0,0};
+    require(api->upload(world,1,&node,0,nullptr)&&api->forces(world,1,&force),"compensated state fixture");
+    for(int i=0;i<100;++i)
+        require(api->step(world,&step)&&api->download(world,1,&node)&&api->updateNodes(world,1,&node),
+            "compensated state survives application repacking");
+    const double h=step.dt/step.iterations,increments=100*step.iterations;
+    const double expected=1.e6+increments*h*.001+force.x*h*h*increments*(increments+1)/2;
+    require(std::fabs(node.position.x-expected)<5.e-9,"sub-ULP displacement survives large-coordinate API roundtrips");
+    require(std::fabs(node.velocity.x-(.001+force.x))<1.e-10,"sub-ULP impulses survive API roundtrips");
 }
 void testContactReports(const btGpuXpbdTgsApi* api,void* world)
 {
@@ -133,7 +157,7 @@ void testCallbackContactReuse(const btGpuXpbdTgsApi* api,void* world)
             auto position=rigid?body.position:node.position,velocity=rigid?body.linearVelocity:node.velocity;
             if(edit==0) require(position.y>=-1.e-8&&velocity.y>=-1.e-8,"reused contacts stop the falling body at the plane");
             if(!query) {expectedPosition=position;expectedVelocity=velocity;}
-            else require(distance(position,expectedPosition)<1.e-9&&distance(velocity,expectedVelocity)<1.e-9,
+            else require(distance(position,expectedPosition)<tolerance(1.e-9)&&distance(velocity,expectedVelocity)<tolerance(1.e-9),
                 "callback discovery reuse or invalidation matches fresh discovery");
         }
     }
@@ -159,7 +183,7 @@ void testContactImpulses(const btGpuXpbdTgsApi* api,void* world)
         if(count==1)
         {
             require(api->contactImpulses(world,&count,&impulse,1)!=0,"impulse readback");
-            require(std::fabs(impulse.impulse-.1)<1.e-8&&impulse.contact.normal.y>.999,"reported impulse balances gravity across all substeps");
+            require(std::fabs(impulse.impulse-.1)<tolerance(1.e-8)&&impulse.contact.normal.y>.999,"reported impulse balances gravity across all substeps");
             require(impulse.contact.bodyA==0&&impulse.contact.bodyB==1&&impulse.contact.indexB==42,"impulse body and triangle identity");
         }
         auto invalid=step;invalid.dt=0;
@@ -173,35 +197,35 @@ void testRigidCoupling(const btGpuXpbdTgsApi* api,void* world)
     require(api->upload(world,1,&node,0,nullptr)!=0,"rigid fixture upload");
     auto r=rigidState(.5);r.inverseInertia={1,2,3};r.force={4,0,0};r.torque={0,0,2};
     require(api->rigids(world,1,&r)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"rigid force and torque integration");
-    require(std::fabs(r.linearVelocity.x-.2)<1.e-12,"rigid force impulse");
-    require(std::fabs(r.angularVelocity.z-.6)<1.e-11,"rigid torque impulse");
-    require(std::fabs(r.orientation[0]*r.orientation[0]+r.orientation[1]*r.orientation[1]+r.orientation[2]*r.orientation[2]+r.orientation[3]*r.orientation[3]-1)<1.e-12,"rigid normalized orientation");
+    require(std::fabs(r.linearVelocity.x-.2)<tolerance(1.e-12),"rigid force impulse");
+    require(std::fabs(r.angularVelocity.z-.6)<tolerance(1.e-11),"rigid torque impulse");
+    require(std::fabs(r.orientation[0]*r.orientation[0]+r.orientation[1]*r.orientation[1]+r.orientation[2]*r.orientation[2]+r.orientation[3]*r.orientation[3]-1)<tolerance(1.e-12),"rigid normalized orientation");
     // An off-centre anchor must partition a node impulse into rigid translation and spin.
     node={ {0,1,0},1,{1,0,0},0 };r=rigidState();step.dt=1.e-5;step.substeps=step.iterations=1;
     require(api->upload(world,1,&node,0,nullptr)&&api->rigids(world,1,&r),"off-centre setup");
     btGpuXpbdAttachment anchor={softEndpoint(0),rigidEndpoint(0,{0,1,0}),0};
     require(api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node)&&api->downloadRigids(world,1,&r),"off-centre GPU attachment");
-    require(std::fabs(node.velocity.x-2./3)<1.e-9&&std::fabs(r.linearVelocity.x-1./3)<1.e-9&&std::fabs(r.angularVelocity.z+1./3)<1.e-8,"off-centre effective mass includes inertia");
-    require(std::fabs(node.velocity.x+r.linearVelocity.x-1)<1.e-12,"rigid-soft linear momentum");
+    require(std::fabs(node.velocity.x-2./3)<tolerance(1.e-9)&&std::fabs(r.linearVelocity.x-1./3)<tolerance(1.e-9)&&std::fabs(r.angularVelocity.z+1./3)<tolerance(1.e-8),"off-centre effective mass includes inertia");
+    require(std::fabs(node.velocity.x+r.linearVelocity.x-1)<tolerance(1.e-12),"rigid-soft linear momentum");
     double angular=node.position.x*node.velocity.y-node.position.y*node.velocity.x+r.position.x*r.linearVelocity.y-r.position.y*r.linearVelocity.x+r.angularVelocity.z;
-    require(std::fabs(angular+1)<1.e-8,"rigid-soft angular momentum");
+    require(std::fabs(angular+1)<tolerance(1.e-8),"rigid-soft angular momentum");
     // A fixed endpoint and a soft-soft attachment use the same generalized solve.
     btGpuXpbdNode pair[2]={{{0,0,0},1,{1,0,0},0},{{0,0,0},.5,{0,0,0},0}};
     anchor={softEndpoint(0),softEndpoint(1),0};
     require(api->upload(world,2,pair,0,nullptr)&&api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,2,pair),"soft-soft attachment");
-    require(std::fabs(pair[0].velocity.x-1./3)<1.e-12&&std::fabs(pair[1].velocity.x-1./3)<1.e-12,"soft-soft attachment impulse balance");
+    require(std::fabs(pair[0].velocity.x-1./3)<tolerance(1.e-12)&&std::fabs(pair[1].velocity.x-1./3)<tolerance(1.e-12),"soft-soft attachment impulse balance");
     anchor={softEndpoint(0),softEndpoint(-1),0};node={ {0,0,0},1,{1,0,0},0 };
     require(api->upload(world,1,&node,0,nullptr)&&api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node),"world attachment");
-    require(std::fabs(node.position.x)<1.e-12&&std::fabs(node.velocity.x)<1.e-12,"world attachment holds node");
+    require(std::fabs(node.position.x)<tolerance(1.e-12)&&std::fabs(node.velocity.x)<tolerance(1.e-12),"world attachment holds node");
     for(int i=1;i<=3;++i)
     {
         anchor.b.point.x=.01*i;
         require(api->attachments(world,1,&anchor)&&api->step(world,&step)&&api->download(world,1,&node),"update captured attachment target");
-        require(std::fabs(node.position.x-anchor.b.point.x)<1.e-10,"captured attachment follows updated target");
+        require(std::fabs(node.position.x-anchor.b.point.x)<tolerance(1.e-10),"captured attachment follows updated target");
     }
     // Rejected steps must roll back both sides of a coupled island.
-    r=rigidState();r.force={std::numeric_limits<double>::max(),0,0};r.inverseMass=100;
-    require(api->rigids(world,1,&r)!=0,"finite rigid overflow input");auto accepted=r;
+    r=rigidState();r.force={std::numeric_limits<SolverScalar>::max(),0,0};r.inverseMass=100;
+    require(api->rigids(world,1,&r)!=0,"finite rigid overflow input");require(api->downloadRigids(world,1,&r)!=0,"quantized rigid input");auto accepted=r;
     step.dt=1;require(!api->step(world,&step),"rigid overflow rejection");
     require(api->downloadRigids(world,1,&r)&&std::memcmp(&r,&accepted,sizeof(r))==0,"rigid rollback exact state");
     r=rigidState();r.orientation[3]=2;require(!api->rigids(world,1,&r),"invalid rigid orientation rejected");
@@ -216,7 +240,7 @@ void testRigidContacts(const btGpuXpbdTgsApi* api,void* world)
     btGpuXpbdStep step={.01,2,{0,0,0},0,0,20,0,0,1};
     require(api->step(world,&step)&&api->download(world,1,&node)&&api->downloadRigids(world,1,&r),"rigid-soft contact step");
     require(r.linearVelocity.y<-.1,"soft contact pushes dynamic rigid");
-    require(std::fabs(node.velocity.y+r.linearVelocity.y+1)<1.e-9,"rigid-soft contact conserves momentum");
+    require(std::fabs(node.velocity.y+r.linearVelocity.y+1)<tolerance(1.e-9),"rigid-soft contact conserves momentum");
     require(node.position.y-r.position.y> -1.e-5,"rigid-soft contact limits penetration");
     // A rigid point against a fixed plane exercises the rigid-only contact path.
     node={};r=rigidState();r.position={0,.001,0};r.linearVelocity={0,-1,0};maps[0]={{-2,-1,-1,-1},{0,0,0,0},{0,0,0},0};
@@ -253,39 +277,42 @@ void testRigidJoints(const btGpuXpbdTgsApi* api,void* world)
     for(auto& axis:j.axes) axis.lower=axis.upper=0;
     btGpuXpbdStep step={.01,1,{0,0,0},0,0,20,0,0,0};
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"fixed GPU joint");
-    require(distance(r.position,{0,0,0})<1.e-10&&distance(r.linearVelocity,{0,0,0})<1.e-8,"fixed joint holds position under force");
+    require(distance(r.position,{0,0,0})<tolerance(1.e-10)&&distance(r.linearVelocity,{0,0,0})<tolerance(1.e-8),"fixed joint holds position under force");
+    std::printf("fixed joint residual angular speed: %.9g\n",distance(r.angularVelocity,{0,0,0}));
     require(distance(r.angularVelocity,{0,0,0})<1.e-7,"fixed joint holds rotation under torque");
     for(int i=1;i<=3;++i)
     {
         j.points[0].x=.01*i;
         require(api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"update captured mouse joint frame");
-        require(std::fabs(r.position.x-j.points[0].x)<1.e-9,"captured joint follows updated frame");
+        require(std::fabs(r.position.x-j.points[0].x)<tolerance(1.e-9),"captured joint follows updated frame");
     }
     require(api->joints(world,0,nullptr)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"remove captured joint");
     require(r.position.x>j.points[0].x,"removed joint releases body");
     require(api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"restore captured joint");
-    require(std::fabs(r.position.x-j.points[0].x)<1.e-9,"restored joint holds body");
+    require(std::fabs(r.position.x-j.points[0].x)<tolerance(1.e-9),"restored joint holds body");
     r=rigidState(.5);j=freeJoint(-1,0);j.axes[0].flags=2;j.axes[0].velocity=1;j.axes[0].maxForce=.4;step.dt=.1;
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"force limited joint motor");
-    require(std::fabs(r.linearVelocity.x-.02)<1.e-10,"motor impulse equals force times time");
+    require(std::fabs(r.linearVelocity.x-.02)<tolerance(1.e-10),"motor impulse equals force times time");
     r=rigidState();r.force={2,0,0};j=freeJoint(-1,0);j.axes[0].flags=1;j.axes[0].stiffness=100;j.axes[0].damping=20;step.dt=.02;
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j),"spring joint upload");
     for(int i=0;i<100;++i) require(api->step(world,&step)!=0,"spring joint step");
     require(api->downloadRigids(world,1,&r)&&std::fabs(r.position.x-.02)<1.e-6,"joint spring reaches force over stiffness equilibrium");
     r=rigidState();r.linearVelocity={1,0,0};j=freeJoint(-1,0);j.axes[0].lower=-.01;j.axes[0].upper=.01;
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,1,&r),"joint upper stop");
-    require(std::fabs(r.position.x-.01)<1.e-8&&std::fabs(r.linearVelocity.x)<1.e-7,"joint limit stops at its bound");
+    std::printf("joint limit position error %.9g velocity %.9g\n",r.position.x-.01,r.linearVelocity.x);
+    // FP32 accuracy: the residual velocity is two float ULPs at unit speed.
+    require(std::fabs(r.position.x-.01)<tolerance(1.e-8)&&std::fabs(r.linearVelocity.x)<tolerance(1.e-7),"joint limit stops at its bound");
     r=rigidState();j=freeJoint(-1,0);j.axes[0].flags=6;j.axes[0].velocity=1;j.axes[0].maxForce=100;j.axes[0].servoTarget=.05;
     require(api->rigids(world,1,&r)&&api->joints(world,1,&j),"joint servo setup");
     for(int i=0;i<20;++i) require(api->step(world,&step)!=0,"joint servo step");
     require(api->downloadRigids(world,1,&r)&&std::fabs(r.position.x-.05)<1.e-7,"joint servo reaches target without drift");
     btGpuXpbdRigid pair[2]={rigidState(),rigidState(.5)};pair[0].linearVelocity={1,0,0};j=freeJoint(0,1);j.axes[0].lower=j.axes[0].upper=0;
     require(api->rigids(world,2,pair)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,2,pair),"two body joint");
-    require(std::fabs(pair[0].linearVelocity.x-1./3)<1.e-9&&std::fabs(pair[1].linearVelocity.x-1./3)<1.e-9,"joint transfers momentum by physical masses");
+    require(std::fabs(pair[0].linearVelocity.x-1./3)<tolerance(1.e-9)&&std::fabs(pair[1].linearVelocity.x-1./3)<tolerance(1.e-9),"joint transfers momentum by physical masses");
     pair[0]=rigidState(0);pair[0].linearVelocity={1,0,0};pair[0].angularVelocity={0,0,1};pair[1]=rigidState(.5);
     j=freeJoint(0,1);for(auto& a:j.axes)a.lower=a.upper=0;
     require(api->rigids(world,2,pair)&&api->joints(world,1,&j)&&api->step(world,&step)&&api->downloadRigids(world,2,pair),"kinematic core joint");
-    require(std::fabs(pair[0].position.x-step.dt)<1.e-10&&std::fabs(pair[1].position.x-step.dt)<1.e-7,"kinematic core joint follows translation");
+    require(std::fabs(pair[0].position.x-step.dt)<tolerance(1.e-10)&&std::fabs(pair[1].position.x-step.dt)<1.e-7,"kinematic core joint follows translation");
 }
 void testSelfCollision(const btGpuXpbdTgsApi* api,void* world)
 {
@@ -299,13 +326,13 @@ void testSelfCollision(const btGpuXpbdTgsApi* api,void* world)
         require(api->upload(world,6,nodes,0,nullptr)&&api->surface(world,6,maps,2,triangles,.1,0)&&api->selfCollision(world,enabled,&self),"self collision surface setup");
         btGpuXpbdNode result[6];require(api->step(world,&step)&&api->download(world,6,result),"self collision step");
         double momentum=0,lower=0;for(int i=0;i<6;++i){momentum+=result[i].velocity.y;if(i>=3)lower+=result[i].velocity.y;}
-        require(std::fabs(momentum+3)<1.e-8,"self collision preserves total momentum");
-        require(enabled?lower<-.1:std::fabs(lower)<1.e-12,"self collision enabled only for requested bodies");
+        require(std::fabs(momentum+3)<tolerance(1.e-8),"self collision preserves total momentum");
+        require(enabled?lower<-.1:std::fabs(lower)<tolerance(1.e-12),"self collision enabled only for requested bodies");
     }
     triangles[1]={{0,2,1}};
     require(api->upload(world,3,nodes,0,nullptr)&&api->surface(world,3,maps,2,triangles,.1,0)&&api->selfCollision(world,1,&self),"adjacent self collision setup");
     btGpuXpbdNode result[3];require(api->step(world,&step)&&api->download(world,3,result),"adjacent self collision step");
-    require(std::fabs(result[0].velocity.y+1)<1.e-12,"shared mesh support does not self collide");
+    require(std::fabs(result[0].velocity.y+1)<tolerance(1.e-12),"shared mesh support does not self collide");
 }
 void testMaterialModeSwitch(const btGpuXpbdTgsApi* api,void* world)
 {
@@ -318,10 +345,10 @@ void testMaterialModeSwitch(const btGpuXpbdTgsApi* api,void* world)
     for(int mode:{0,1,0,1}) { step.materialMode=mode;require(api->step(world,&step)!=0,"switch material mode on live state"); }
     require(api->download(world,4,nodes)!=0,"mode switch download");
     double momentum=0;for(const auto& n:nodes) momentum+=n.velocity.x/n.inverseMass;
-    require(std::fabs(momentum-.0032)<1.e-8,"mode switching preserves applied impulse");
+    require(std::fabs(momentum-.0032)<tolerance(1.e-8),"mode switching preserves applied impulse");
     require(nodes[0].position.x>1.e6+1.e-7,"Medium retains small translation at large coordinates");
     auto accepted=std::vector<btGpuXpbdNode>(nodes,nodes+4);
-    force[0].x=std::numeric_limits<double>::max();
+    force[0].x=std::numeric_limits<SolverScalar>::max();
     require(api->forces(world,4,force)!=0,"Medium finite overflow force accepted");
     require(api->step(world,&step)==0,"Medium rejects nonfinite projection");
     require(api->download(world,4,nodes)!=0,"Medium rollback download");
@@ -344,6 +371,7 @@ void testDampedEquilibrium(const btGpuXpbdTgsApi* api,void* world)
         require(api->upload(world,4,nodes,1,&tet)&&api->forces(world,4,force),"damped equilibrium upload");
         for(int i=0;i<2000;++i) if(!api->step(world,&cfg)) { require(false,api->error(world));break; }
         require(api->download(world,4,nodes)!=0,"damped equilibrium download");
+        std::printf("equilibrium beta=%g: actual %.9g expected %.9g extension error %.3f%%\n",beta,nodes[1].position.x,stretch,100*std::fabs(nodes[1].position.x-stretch)/(stretch-1));
         require(std::fabs(nodes[1].position.x-stretch)<(stretch-1)*.002,"damping preserves static StVK stiffness");
     }
 }
@@ -370,7 +398,7 @@ void testMaterialScale(const btGpuXpbdTgsApi* api,void* world)
         {
             auto expected=before[j].position;const double factor=4000*multiplier;
             expected.x+=factor*gradient[j].x;expected.y+=factor*gradient[j].y;expected.z+=factor*gradient[j].z;
-            require(distance(nodes[j].position,expected)<length*1.e-13,"StVK correction agrees with analytic XPBD at every scale");
+            require(distance(nodes[j].position,expected)<tolerance(length*1.e-13,length),"StVK correction agrees with analytic XPBD at every scale");
         }
     }
     // Regrouping identical advancing increments cannot change constant-force integration.
@@ -381,8 +409,8 @@ void testMaterialScale(const btGpuXpbdTgsApi* api,void* world)
         btGpuXpbdStep cfg={.01,grouping?10:1,{0,0,0},0,0,grouping?1:10,0,0,0};
         require(api->upload(world,1,&node,0,nullptr)&&api->forces(world,1,&force)&&api->step(world,&cfg)&&api->download(world,1,&result[grouping]),"force grouping step");
     }
-    require(distance(result[0].position,result[1].position)<1.e-15,"force is integrated at every advancing increment");
-    require(std::fabs(result[0].position.x-.00033)<1.e-15&&std::fabs(result[0].velocity.x-.06)<1.e-15,"force displacement and impulse are correct");
+    require(distance(result[0].position,result[1].position)<tolerance(1.e-15),"force is integrated at every advancing increment");
+    require(std::fabs(result[0].position.x-.00033)<tolerance(1.e-15)&&std::fabs(result[0].velocity.x-.06)<tolerance(1.e-15),"force displacement and impulse are correct");
 }
 void testPartitionMomentum(const btGpuXpbdTgsApi* api,void* world)
 {
@@ -411,6 +439,7 @@ void testPartitionMomentum(const btGpuXpbdTgsApi* api,void* world)
             momentum.y+=n.velocity.y/n.inverseMass;
             momentum.z+=n.velocity.z/n.inverseMass;
         }
+        std::printf("partition momentum error young=%g damping=%g: %.9g\n",young,damping,distance(momentum,{.5,0,0}));
         require(distance(momentum,{.5,0,0})<2.e-5,"unequal partition copies conserve momentum");
     }
 }
@@ -575,7 +604,7 @@ static void testSoftContactMaterial(const btGpuXpbdTgsApi* api,void* world)
         double supportedMomentum=0,totalMomentum=0;
         for(int i=0;i<12;++i) {totalMomentum+=nodes[i].velocity.y;if(i<4)supportedMomentum+=nodes[i].velocity.y;}
         require(supportedMomentum<-.01,"soft contact impulse reaches the surface embedding");
-        for(int i=4;i<8;++i) require(distance(nodes[i].velocity,{0,0,0})<1.e-8,"nearby tetrahedron does not steal soft contact");
+        for(int i=4;i<8;++i) require(distance(nodes[i].velocity,{0,0,0})<tolerance(1.e-8),"nearby tetrahedron does not steal soft contact");
         require(std::fabs(totalMomentum+4)<1.e-6,"embedded soft contact conserves momentum");
     }
 }
@@ -590,12 +619,13 @@ void testInversionRecovery(const btGpuXpbdTgsApi* api,void* world)
         {
             btGpuXpbdNode nodes[]={{{0,0,0},0},{{scale,0,0},0},{{0,scale,0},0},{{0,0,height*scale},1/(scale*scale*scale),{0,0,0},4/scale}};
             require(api->upload(world,4,nodes,1,&tet)!=0,"inversion recovery upload");
+            btGpuXpbdNode uploaded[4];require(api->download(world,4,uploaded)!=0,"fixed node upload baseline");
             for(int k=0;k<500;++k) require(api->step(world,&step)!=0,"inversion recovery step");
             require(api->download(world,4,nodes)!=0,"inversion recovery download");
             require(std::fabs(nodes[3].position.z/scale-1)<.01,"inverted and flat tetrahedra recover rest shape");
-            require(distance(nodes[0].position,{0,0,0})==0&&distance(nodes[1].position,{scale,0,0})==0&&
-                distance(nodes[2].position,{0,scale,0})==0,"recovery preserves fixed nodes");
-            if(height==1) require(distance(nodes[3].position,{0,0,scale})<scale*1.e-10,"recovery leaves rest equilibrium unchanged");
+            // FP32 accuracy: require exact immobility of the stored state, independently of upload rounding.
+            for(int j=0;j<3;++j) require(distance(nodes[j].position,uploaded[j].position)==0,"recovery preserves fixed nodes");
+            if(height==1) require(distance(nodes[3].position,{0,0,scale})<tolerance(scale*1.e-10,scale),"recovery leaves rest equilibrium unchanged");
         }
         btGpuXpbdNode collapsed[4]={};
         for(auto& node:collapsed) node.inverseMass=1;
@@ -622,6 +652,7 @@ int main()
     testPartitionMomentum(api,world);
     testMaterialModeSwitch(api,world);
     testContactReports(api,world);
+    testCompensatedState(api,world);
     testCallbackContactReuse(api,world);
     testContactImpulses(api,world);
     testRigidCoupling(api,world);
@@ -1003,6 +1034,7 @@ int main()
     btGpuXpbdVec editedSurface[4];
     require(api->surfacePositions(world,4,editedSurface)!=0,"state update retains collision mapping");
     require(distance(editedSurface[0],edited[0].position)<1.e-6,"skinning uses replaced node state");
+    require(api->download(world,4,edited.data())!=0,"quantized edited state");
     auto invalidState=edited;invalidState.back().position.x=std::numeric_limits<double>::quiet_NaN();
     require(api->updateNodes(world,4,invalidState.data())==0,"reject invalid edited state");
     state.resize(4);require(api->download(world,4,state.data())!=0,"download after invalid edit");
@@ -1027,7 +1059,7 @@ int main()
     require(api->upload(world,4,accepted.data(),1,&tet)!=0,"rollback mesh");
     require(api->step(world,&cfg)!=0,"rollback accepted step");
     require(api->download(world,4,accepted.data())!=0,"rollback accepted state");
-    btGpuXpbdVec extreme[4]={{std::numeric_limits<double>::max(),0,0},{0,0,0},{0,0,0},{0,0,0}};
+    btGpuXpbdVec extreme[4]={{std::numeric_limits<SolverScalar>::max(),0,0},{0,0,0},{0,0,0},{0,0,0}};
     require(api->forces(world,4,extreme)!=0,"finite overflow force accepted");
     require(api->step(world,&cfg)==0,"nonfinite computed state rejects step");
     state.resize(4);
