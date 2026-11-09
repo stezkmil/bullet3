@@ -69,6 +69,7 @@ struct btGpuXpbdRigid
     btGpuXpbdVec inverseInertia;
     btGpuXpbdVec force, torque;
     float linearDamping, angularDamping;
+    btGpuXpbdVec positionResidual;
 };
 struct btGpuXpbdEndpoint
 {
@@ -76,6 +77,7 @@ struct btGpuXpbdEndpoint
     int nodes[4];
     float weights[4];
     btGpuXpbdVec point;
+    btGpuXpbdVec pointResidual;
 };
 struct btGpuXpbdAttachment
 {
@@ -137,5 +139,5 @@ struct btGpuXpbdTgsApi
 const gpu::btGpuXpbdTgsApi* gpuApi();
 
 static_assert(sizeof(gpu::btGpuXpbdNode)==56 && sizeof(gpu::btGpuXpbdTet)==140 && sizeof(gpu::btGpuXpbdStep)==48,"FP32 simulation layout");
-static_assert(sizeof(gpu::btGpuXpbdSurfaceVertex)==48 && sizeof(gpu::btGpuXpbdRigid)==100 && sizeof(gpu::btGpuXpbdEndpoint)==48,"FP32 coupling layout");
+static_assert(sizeof(gpu::btGpuXpbdSurfaceVertex)==48 && sizeof(gpu::btGpuXpbdRigid)==112 && sizeof(gpu::btGpuXpbdEndpoint)==60,"FP32 coupling layout");
 static_assert(sizeof(gpu::btGpuXpbdContactReport)==64 && sizeof(gpu::btGpuXpbdContactImpulse)==68,"FP32 report layout");

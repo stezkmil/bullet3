@@ -191,6 +191,48 @@ void testContactImpulses(const btGpuXpbdTgsApi* api,void* world)
         require(api->enableContactImpulses(world,0)&&api->step(world,&step)&&api->contactImpulses(world,&count,nullptr,0)&&count==0,"disable clears reports and captured reporting work");
     }
 }
+void testFullyAnchoredBody(const btGpuXpbdTgsApi* api,void* world)
+{
+    // Fractional rigid origins expose sub-ULP attachment errors at small TGS increments.
+    for(double speed : {0.,1.})
+    {
+        std::vector<btGpuXpbdNode> nodes;
+        std::vector<btGpuXpbdAttachment> anchors;
+        auto rigid=rigidState(1.912227698175775);
+        rigid.position={49.99528378248215,49.999457597732544,151.80606079101562};
+        rigid.inverseInertia={.0011204645,.0011925072,.0011316502};rigid.linearVelocity={speed,0,0};
+        for(int x=0;x<5;++x) for(int y=0;y<5;++y) for(int z=0;z<5;++z)
+        {
+            btGpuXpbdVec p={25.*x,25.*y,25.*z};
+            anchors.push_back({softEndpoint(int(nodes.size())),
+                rigidEndpoint(0,{p.x-rigid.position.x,p.y-rigid.position.y,p.z-rigid.position.z}),0});
+            nodes.push_back({p,125,{speed,0,0},0});
+        }
+        const auto initial=nodes;const auto initialRigid=rigid;
+        require(api->upload(world,int(nodes.size()),nodes.data(),0,nullptr)&&api->rigids(world,1,&rigid)&&
+            api->attachments(world,int(anchors.size()),anchors.data()),"fully anchored fixture");
+        btGpuXpbdStep step={.002,16,{0,0,0},0,0,50,0,0,0};
+        for(int i=0;i<3;++i)
+        {
+            require(api->step(world,&step)!=0,"fully anchored step");
+            require(api->download(world,int(nodes.size()),nodes.data())&&api->downloadRigids(world,1,&rigid),"fully anchored download");
+            double error=0,velocityError=0;
+            for(size_t j=0;j<nodes.size();++j)
+            {
+                auto expected=initial[j].position;expected.x+=speed*step.dt*(i+1);
+                error=std::fmax(error,distance(nodes[j].position,expected));
+                velocityError=std::fmax(velocityError,distance(nodes[j].velocity,{speed,0,0}));
+            }
+            require(error<1.e-4&&velocityError<.01,"fully anchored nodes preserve rest or uniform translation");
+            auto expectedRigid=initialRigid.position;expectedRigid.x+=speed*step.dt*(i+1);
+            require(distance(rigid.position,expectedRigid)<1.e-4&&distance(rigid.linearVelocity,{speed,0,0})<.01,
+                "fully anchored rigid preserves rest or uniform translation");
+            require(api->updateNodes(world,int(nodes.size()),nodes.data())&&api->updateRigids(world,1,&rigid),
+                "fully anchored state survives host repacking");
+        }
+    }
+}
+
 void testRigidCoupling(const btGpuXpbdTgsApi* api,void* world)
 {
     btGpuXpbdNode node={};btGpuXpbdStep step={.1,2,{0,0,0},0,0,10,0,0,0,0};
@@ -655,12 +697,14 @@ int main()
     testCompensatedState(api,world);
     testCallbackContactReuse(api,world);
     testContactImpulses(api,world);
+    testFullyAnchoredBody(api,world);
     testRigidCoupling(api,world);
     testRigidContacts(api,world);
     testRigidJoints(api,world);
     testSelfCollision(api,world);
     testInversionRecovery(api,world);
     auto mediumApi=*api;accurateStep=api->step;mediumApi.step=mediumStep;
+    testFullyAnchoredBody(&mediumApi,world);
     testContactImpulses(&mediumApi,world);
     testPartitionMomentum(&mediumApi,world);
     testOutsideStaticFace(&mediumApi,world);

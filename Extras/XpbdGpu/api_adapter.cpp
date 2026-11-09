@@ -75,6 +75,14 @@ template<class D,class S> void convert(D& d,const S& s)
             d.positionResidual={float(s.position.x-d.position.x),float(s.position.y-d.position.y),float(s.position.z-d.position.z)};
             d.velocityResidual={float(s.velocity.x-d.velocity.x),float(s.velocity.y-d.velocity.y),float(s.velocity.z-d.velocity.z)};
         }
+        else if constexpr(std::is_same_v<D,gpu::btGpuXpbdRigid>)
+            d.positionResidual={float(s.position.x-d.position.x),float(s.position.y-d.position.y),float(s.position.z-d.position.z)};
+        else if constexpr(std::is_same_v<D,gpu::btGpuXpbdEndpoint>)
+            d.pointResidual={float(s.point.x-d.point.x),float(s.point.y-d.point.y),float(s.point.z-d.point.z)};
+        else if constexpr(std::is_same_v<S,gpu::btGpuXpbdRigid>)
+        {
+            d.position.x+=s.positionResidual.x;d.position.y+=s.positionResidual.y;d.position.z+=s.positionResidual.z;
+        }
         else if constexpr(std::is_same_v<D,gpu::btGpuXpbdTet>)
         {
             // FP32 accuracy: derive reference edges from the rest matrix, never the possibly deformed input nodes.

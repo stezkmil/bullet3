@@ -562,8 +562,8 @@ extern "C" __global__ void releaseDrive(Node* nodes,const Target* targets,const 
 // Generalized rigid mass and point Jacobians follow PhysX's rigid/deformable
 // attachment formulation. State and arithmetic use single precision here.
 struct Q { float x,y,z,w; };
-struct Rigid { V p;Q q;V v,omega;float w;V invI,force,torque;float damping,angularDamping; };
-struct Endpoint { int rigid;int nodes[4];float weights[4];V point; };
+struct Rigid { V p;Q q;V v,omega;float w;V invI,force,torque;float damping,angularDamping;V pLow; };
+struct Endpoint { int rigid;int nodes[4];float weights[4];V point,pointLow; };
 struct Attachment { Endpoint a,b;float compliance; };
 struct JointAxis { float lower,upper,stiffness,damping,equilibrium,velocity,maxForce,servoTarget,bounce,stopERP,stopCFM,motorERP,motorCFM;int flags; };
 struct Joint { int bodies[2];V points[2];Q orientations[2];JointAxis axes[6];int rotationOrder; };
@@ -593,13 +593,13 @@ __device__ V angularMomentum(Rigid r)
 extern "C" __global__ void predictRigids(Rigid* bodies,int count,float dt,V gravity)
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;
-    Rigid r=bodies[i];if(r.w==0) {r.p=r.p+r.v*dt;r.q=advance(r.q,r.omega*dt);bodies[i]=r;return;}
+    Rigid r=bodies[i];if(r.w==0) {compensatedAdd(r.p,r.pLow,r.v*dt);r.q=advance(r.q,r.omega*dt);bodies[i]=r;return;}
     r.v=r.v*expf(-r.damping*dt)+(r.force*r.w+gravity)*dt;
     V L=angularMomentum(r)*expf(-r.angularDamping*dt)+r.torque*dt;
     // Midpoint orientation keeps torque-free motion from explicitly amplifying spin.
     Rigid mid=r;V omega=inverseInertia(r,L);
     for(int j=0;j<3;++j) {mid.q=advance(r.q,omega*(dt*.5f));omega=inverseInertia(mid,L);}
-    r.p=r.p+r.v*dt;r.q=advance(r.q,omega*dt);r.omega=inverseInertia(r,L);bodies[i]=r;
+    compensatedAdd(r.p,r.pLow,r.v*dt);r.q=advance(r.q,omega*dt);r.omega=inverseInertia(r,L);bodies[i]=r;
 }
 
 __device__ Rigid* activeRigids;
@@ -614,11 +614,11 @@ extern "C" __global__ void bindRigids(Rigid* bodies,Rigid* start,V* impulses,V* 
 }
 struct Map { int nodes[4];float weights[4];V offset;int body; };
 __device__ int rigidIndex(Map m) { return m.nodes[0]<-1?-2-m.nodes[0]:-1; }
-__device__ V rigidPosition(Map m) { Rigid r=activeRigids[rigidIndex(m)];return r.p+rotate(r.q,m.offset); }
+__device__ V rigidPosition(Map m) { Rigid r=activeRigids[rigidIndex(m)];return (r.p+rotate(r.q,m.offset))+r.pLow; }
 __device__ V rigidDelta(Map m)
 {
     Rigid a=activeRigids[rigidIndex(m)],b=startRigids[rigidIndex(m)];
-    return a.p-b.p+rotate(a.q,m.offset)-rotate(b.q,m.offset);
+    return (a.p-b.p)+(a.pLow-b.pLow)+rotate(a.q,m.offset)-rotate(b.q,m.offset);
 }
 __device__ V rigidVelocity(Map m)
 {
@@ -1278,10 +1278,24 @@ extern "C" __global__ void embed(const Node* nodes,const Tet* tets,int tetCount,
     maps[i]=result;
 }
 
-__device__ V endpointPosition(Endpoint e,const Node* nodes,const Rigid* bodies)
+struct EndpointPosition { V high,low; };
+__device__ EndpointPosition endpointPosition(Endpoint e,const Node* nodes,const Rigid* bodies)
 {
-    if(e.rigid>=0) {Rigid r=bodies[e.rigid];return r.p+rotate(r.q,e.point);}
-    V p=e.point;for(int j=0;j<4;++j) if(e.nodes[j]>=0) p=p+nodePosition(nodes[e.nodes[j]])*e.weights[j];return p;
+    EndpointPosition p={e.point,e.pointLow};
+    if(e.rigid>=0)
+    {
+        Rigid r=bodies[e.rigid];V u={r.q.x,r.q.y,r.q.z};
+        // Keep translation and small rotation corrections separate from the large local offset.
+        compensatedAdd(p.high,p.low,cross(u,cross(u,e.point)+e.point*r.q.w)*2.f);
+        compensatedAdd(p.high,p.low,rotate(r.q,e.pointLow)-e.pointLow);
+        compensatedAdd(p.high,p.low,r.p);compensatedAdd(p.high,p.low,r.pLow);
+    }
+    else for(int j=0;j<4;++j) if(e.nodes[j]>=0)
+    {
+        Node n=nodes[e.nodes[j]];
+        compensatedAdd(p.high,p.low,n.p*e.weights[j]);compensatedAdd(p.high,p.low,n.pLow*e.weights[j]);
+    }
+    return p;
 }
 __device__ V endpointResponse(Endpoint e,const Node* nodes,const Rigid* bodies,V impulse)
 {
@@ -1295,7 +1309,7 @@ __device__ void correctEndpoint(Endpoint e,Node* nodes,Rigid* bodies,V* accumula
         Rigid r=bodies[e.rigid];if(r.w==0) return;
         V L=angularMomentum(r)+cross(rotate(r.q,e.point),impulse);
         V dx=impulse*(r.w*dt),angle=inverseInertia(r,cross(rotate(r.q,e.point),impulse))*dt;
-        r.v=r.v+impulse*r.w;r.p=r.p+dx;r.q=advance(r.q,angle);r.omega=inverseInertia(r,L);bodies[e.rigid]=r;
+        r.v=r.v+impulse*r.w;compensatedAdd(r.p,r.pLow,dx);r.q=advance(r.q,angle);r.omega=inverseInertia(r,L);bodies[e.rigid]=r;
     }
     else for(int j=0;j<4;++j) if(e.nodes[j]>=0)
     {
@@ -1306,7 +1320,8 @@ __device__ void correctEndpoint(Endpoint e,Node* nodes,Rigid* bodies,V* accumula
 extern "C" __global__ void solveAttachments(Node* nodes,Rigid* bodies,V* accumulated,const Attachment* attachments,int begin,int count,float dt)
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;Attachment a=attachments[begin+i];
-    V error=endpointPosition(a.a,nodes,bodies)-endpointPosition(a.b,nodes,bodies);
+    auto pa=endpointPosition(a.a,nodes,bodies),pb=endpointPosition(a.b,nodes,bodies);
+    V error=(pa.high-pb.high)+(pa.low-pb.low);
     V axis[3]={{1,0,0},{0,1,0},{0,0,1}},columns[3];float alpha=a.compliance/(dt*dt);
     for(int j=0;j<3;++j) columns[j]=endpointResponse(a.a,nodes,bodies,axis[j])+endpointResponse(a.b,nodes,bodies,axis[j])+axis[j]*alpha;
     float det=dot(columns[0],cross(columns[1],columns[2]));if(det<=0) return;
@@ -1321,7 +1336,7 @@ __device__ void jointImpulse(Rigid& r,V linear,V angular,float impulse,float dt)
 {
     if(r.w==0) return;
     V L=angularMomentum(r)+angular*impulse;
-    V dv=linear*(r.w*impulse);r.v=r.v+dv;r.p=r.p+dv*dt;
+    V dv=linear*(r.w*impulse);r.v=r.v+dv;compensatedAdd(r.p,r.pLow,dv*dt);
     r.q=advance(r.q,inverseInertia(r,angular)*(impulse*dt));r.omega=inverseInertia(r,L);
 }
 extern "C" __global__ void solveJoints(Rigid* bodies,const Joint* joints,int begin,int count,float dt)
@@ -1394,14 +1409,14 @@ extern "C" __global__ void checkRigids(const Rigid* bodies,int count,int* failur
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;Rigid r=bodies[i];
     if(!isfinite(r.p.x)||!isfinite(r.p.y)||!isfinite(r.p.z)||!isfinite(r.v.x)||!isfinite(r.v.y)||!isfinite(r.v.z)||
-       !isfinite(r.omega.x)||!isfinite(r.omega.y)||!isfinite(r.omega.z)||!isfinite(r.q.x)||!isfinite(r.q.y)||!isfinite(r.q.z)||!isfinite(r.q.w)) atomicExch(failure,1);
+       !isfinite(r.pLow.x)||!isfinite(r.pLow.y)||!isfinite(r.pLow.z)||!isfinite(r.omega.x)||!isfinite(r.omega.y)||!isfinite(r.omega.z)||!isfinite(r.q.x)||!isfinite(r.q.y)||!isfinite(r.q.z)||!isfinite(r.q.w)) atomicExch(failure,1);
 }
 
 extern "C" __global__ void applyRigidContacts(Rigid* bodies,int count,float dt,int velocityOnly)
 {
     int i=blockIdx.x*blockDim.x+threadIdx.x;if(i>=count) return;Rigid r=bodies[i];if(r.w==0) return;
     V dv=rigidImpulse[i]*r.w,L=angularMomentum(r)+rigidTorqueImpulse[i];r.v=r.v+dv;
-    if(!velocityOnly) {r.p=r.p+dv*dt;r.q=advance(r.q,inverseInertia(r,rigidTorqueImpulse[i])*dt);}
+    if(!velocityOnly) {compensatedAdd(r.p,r.pLow,dv*dt);r.q=advance(r.q,inverseInertia(r,rigidTorqueImpulse[i])*dt);}
     r.omega=inverseInertia(r,L);bodies[i]=r;
 }
 

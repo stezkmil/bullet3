@@ -594,7 +594,7 @@ int setRigids(void* value,int count,const gpu::btGpuXpbdRigid* bodies,bool updat
     for(int i=0;i<count;++i)
     {
         const auto& r=bodies[i];float q2=0;for(float v:r.orientation) q2+=v*v;
-        if(!finite(r.position)||!finite(r.linearVelocity)||!finite(r.angularVelocity)||!finite(r.force)||!finite(r.torque)||
+        if(!finite(r.position)||!finite(r.positionResidual)||!finite(r.linearVelocity)||!finite(r.angularVelocity)||!finite(r.force)||!finite(r.torque)||
            !finite(r.inverseInertia)||!std::isfinite(r.inverseMass)||r.inverseMass<0||
            !std::isfinite(q2)||std::fabs(q2-1)>2.e-6f||!std::isfinite(r.linearDamping)||r.linearDamping<0||
            !std::isfinite(r.angularDamping)||r.angularDamping<0||r.inverseInertia.x<0||r.inverseInertia.y<0||r.inverseInertia.z<0||
@@ -609,7 +609,7 @@ int setRigids(void* value,int count,const gpu::btGpuXpbdRigid* bodies,bool updat
             for(int i=0;i<count;++i)
             {
                 const auto& a=bodies[i];const auto& b=s.contactRigids[i];
-                if(!sameVector(a.position,b.position)||a.inverseMass!=b.inverseMass||
+                if(!sameVector(a.position,b.position)||!sameVector(a.positionResidual,b.positionResidual)||a.inverseMass!=b.inverseMass||
                    !std::equal(a.orientation,a.orientation+4,b.orientation)) {s.contactsReady=false;break;}
             }
         return !count||s.check(cuMemcpyHtoD(s.rigids,bodies,size_t(count)*sizeof(*bodies)));
@@ -648,7 +648,7 @@ int attachments(void* value,int count,const gpu::btGpuXpbdAttachment* input)
         if(!std::isfinite(a.compliance)||a.compliance<0) {s.error="Invalid attachment compliance";return 0;}
         for(const auto& e:{a.a,a.b})
         {
-            if(e.rigid< -1||e.rigid>=s.rigidCount||!finite(e.point)) {s.error="Invalid attachment endpoint";return 0;}
+            if(e.rigid< -1||e.rigid>=s.rigidCount||!finite(e.point)||!finite(e.pointResidual)) {s.error="Invalid attachment endpoint";return 0;}
             if(e.rigid>=0) entities.push_back(s.count+e.rigid);
             else
             {
@@ -823,6 +823,13 @@ bool enqueueStep(State& s,const gpu::btGpuXpbdStep* config)
             if(!s.launch(s.applyRigidContacts,s.rigidCount,rigidApply)) return 0;
         }
         for(size_t c=1;c<s.attachmentBatches.size();++c)
+        {
+            int begin=s.attachmentBatches[c-1],count=s.attachmentBatches[c]-begin;
+            void* args[]={&s.nodes,&s.rigids,&s.accumulated,&s.attachments,&begin,&count,&dt};
+            if(!s.launch(s.solveAttachments,count,args)) return 0;
+        }
+        // A symmetric sweep avoids amplifying residuals between anchors sharing a rigid body.
+        for(int c=int(s.attachmentBatches.size())-2;c>0;--c)
         {
             int begin=s.attachmentBatches[c-1],count=s.attachmentBatches[c]-begin;
             void* args[]={&s.nodes,&s.rigids,&s.accumulated,&s.attachments,&begin,&count,&dt};
