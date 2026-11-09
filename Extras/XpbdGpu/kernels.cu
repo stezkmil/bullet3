@@ -841,25 +841,36 @@ __device__ void closestCandidate(const V* a,const V* b,V wa,V wb,float& distance
     V delta=trianglePoint(a,wa)-trianglePoint(b,wb);float d=dot(delta,delta);
     if(d<distance) { distance=d;bestA=wa;bestB=wb; }
 }
-__device__ void edgeFaceCandidate(const V* a,const V* b,int i,bool reverse,float& distance,V& bestA,V& bestB)
+__device__ float triangleWitnessRoundoff(const V* a,const V* b)
+{
+    float scale=0;
+    for(int i=0;i<3;++i)
+    {
+        scale=fmaxf(scale,fmaxf(fabsf(a[i].x),fmaxf(fabsf(a[i].y),fabsf(a[i].z))));
+        scale=fmaxf(scale,fmaxf(fabsf(b[i].x),fmaxf(fabsf(b[i].y),fabsf(b[i].z))));
+    }
+    // Reconstructing the same intersection from two FP32 triangles need not give identical points.
+    return 8.f*1.1920928955078125e-7f*scale;
+}
+__device__ void edgeFaceCandidate(const V* a,const V* b,int i,bool reverse,float tolerance,float& distance,V& bestA,V& bestB)
 {
     int j=(i+1)%3;V normal=cross(b[1]-b[0],b[2]-b[0]),edge=a[j]-a[i];
     float denominator=dot(edge,normal);if(fabsf(denominator)<1.e-16f) return;
     float t=dot(b[0]-a[i],normal)/denominator;if(t<0||t>1) return;
     V p=a[i]+edge*t,wb=closestWeights(p,b[0],b[1],b[2]);
-    V d=p-trianglePoint(b,wb);if(dot(d,d)>1.e-10f) return;
+    V d=p-trianglePoint(b,wb);if(dot(d,d)>tolerance*tolerance) return;
     V wa=corner(i)*(1-t)+corner(j)*t;
     if(reverse) closestCandidate(b,a,wb,wa,distance,bestA,bestB);
     else closestCandidate(a,b,wa,wb,distance,bestA,bestB);
 }
 __device__ float closestTriangleWeights(const V* a,const V* b,V& wa,V& wb)
 {
-    float best=3.402823466e38f;wa=wb=corner(0);
+    float best=3.402823466e38f,tolerance=triangleWitnessRoundoff(a,b);wa=wb=corner(0);
     for(int k=0;k<3;++k)
     {
         closestCandidate(a,b,corner(k),closestWeights(a[k],b[0],b[1],b[2]),best,wa,wb);
         closestCandidate(a,b,closestWeights(b[k],a[0],a[1],a[2]),corner(k),best,wa,wb);
-        edgeFaceCandidate(a,b,k,false,best,wa,wb);edgeFaceCandidate(b,a,k,true,best,wa,wb);
+        edgeFaceCandidate(a,b,k,false,tolerance,best,wa,wb);edgeFaceCandidate(b,a,k,true,tolerance,best,wa,wb);
         for(int j=0;j<3;++j)
         {
             float u,v;edgeParameters(a[k],a[(k+1)%3]-a[k],b[j],b[(j+1)%3]-b[j],u,v);
@@ -1516,7 +1527,8 @@ extern "C" __global__ void reportNotifications(const Map* maps,const V* position
         V bn=cross(b[1]-b[0],b[2]-b[0]);float b2=dot(bn,bn);if(b2<1.e-20f) continue;bn=bn*rsqrtf(b2);
         if(triangleSeparation(a,b,an,bn,0)>0) continue;
         V wa,wb;float best=closestTriangleWeights(a,b,wa,wb);
-        if(best>1.e-16f) continue;
+        float roundoff=triangleWitnessRoundoff(a,b);
+        if(best>roundoff*roundoff) continue;
         int deepest=0;
         for(int k=1;k<3;++k) if(dot(a[k]-b[0],bn)<dot(a[deepest]-b[0],bn)) deepest=k;
         float depth=dot(a[deepest]-b[0],bn);

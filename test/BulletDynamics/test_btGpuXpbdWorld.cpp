@@ -420,7 +420,15 @@ static void testKinematicJoint(btScalar metersPerUnit)
     require(body.getWorldTransform().getRotation().angleShortestPath(target.getRotation())<1.e-5,"joint follows kinematic rotation");
     require((joint.getCalculatedTransformB().getOrigin()-body.getWorldTransform().getOrigin()).length()/unit<1.e-8,"joint frame getters are refreshed after GPU solve");
     require(kinematic.getWorldTransform()==target,"kinematic target is not changed by reaction forces");
-    world.stepSimulation(.01,0);require(!world.hasDeformableStepFailed()&&body.getLinearVelocity().length()/unit<1.e-6,"stopped kinematic target stops joint motion");
+    // FP32 joint corrections leave nanometre-per-second velocity residue; also bound drift over one second.
+    for(int step=0;step<100;++step)
+    {
+        world.stepSimulation(.01,0);
+        require(!world.hasDeformableStepFailed()&&body.getLinearVelocity().length()*metersPerUnit<1.e-8,
+            "stopped kinematic target stops joint motion within FP32 precision");
+        require((body.getWorldTransform().getOrigin()-target.getOrigin()).length()*metersPerUnit<1.e-9,
+            "stopped kinematic joint does not accumulate position drift");
+    }
     world.removeConstraint(&joint);world.removeRigidBody(&kinematic);
     for(int order=0;order<6;++order)
     {
@@ -575,8 +583,42 @@ static void testToleratedContact(bool gpu, bool touching)
     world.removeRigidBody(&b);
 }
 
+static void testMovingToleratedIntersection()
+{
+    btSoftBodyRigidBodyCollisionConfiguration configuration;btCollisionDispatcher dispatcher(&configuration);btDbvtBroadphase broadphase;
+    btGImpactCollisionAlgorithm::registerAlgorithm(&dispatcher);
+    btDeformableMultiBodyConstraintSolver constraints;btDeformableBodySolver solver;
+    btDeformableMultiBodyDynamicsWorld world(&dispatcher,&broadphase,&constraints,&configuration,&solver);
+    world.setGpuXpbdTgsSolver(true,.001,1,1,0);world.setGravity(btVector3(0,0,0));
+    btTriangleMesh boxMesh,planeMesh;
+    const btVector3 vertices[]={btVector3(-50,-50,-50),btVector3(50,-50,-50),btVector3(50,50,-50),btVector3(-50,50,-50),
+        btVector3(-50,-50,50),btVector3(50,-50,50),btVector3(50,50,50),btVector3(-50,50,50)};
+    const int faces[][3]={{0,2,1},{0,3,2},{4,5,6},{4,6,7},{0,1,5},{0,5,4},{1,2,6},{1,6,5},{2,3,7},{2,7,6},{3,0,4},{3,4,7}};
+    for(const auto& f:faces) boxMesh.addTriangle(vertices[f[0]],vertices[f[1]],vertices[f[2]]);
+    planeMesh.addTriangle(btVector3(-500,-500,0),btVector3(500,-500,0),btVector3(500,500,0));
+    planeMesh.addTriangle(btVector3(-500,-500,0),btVector3(500,500,0),btVector3(-500,500,0));
+    btGImpactMeshShape boxShape(&boxMesh),planeShape(&planeMesh);boxShape.updateBound();planeShape.updateBound();
+    btRigidBody box(1,nullptr,&boxShape,btVector3(1000,1000,1000)),plane(0,nullptr,&planeShape);
+    box.setToleratedCollisionAll(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL);
+    world.addRigidBody(&box);world.addRigidBody(&plane);dispatcher.reportToleratedContacts=true;
+    for(btScalar x : {btScalar(0),btScalar(.003731),btScalar(.12739),btScalar(1.34567),btScalar(5.6789)})
+    {
+        auto pose=btTransform(btQuaternion::getIdentity(),btVector3(x,0,0));box.setWorldTransform(pose);world.updateSingleAabb(&box);
+        world.performDiscreteCollisionDetection();
+        require(!world.hasDeformableStepFailed(),"moving tolerated intersection query succeeds");
+        if(dispatcher.getInitialCollisionParticipants().empty()) std::fprintf(stderr,"missing tolerance at x=%g\n",double(x));
+        require(!dispatcher.getInitialCollisionParticipants().empty(),"embedded cube retains tolerance after tangential movement");
+        require(dispatcher.toleratedContacts.size()==1,"embedded cube has a tolerated intersection witness");
+    }
+    box.setWorldTransform(btTransform(btQuaternion::getIdentity(),btVector3(0,0,50.01)));world.updateSingleAabb(&box);
+    world.performDiscreteCollisionDetection();
+    require(dispatcher.getInitialCollisionParticipants().empty(),"separated cube does not retain initial tolerance");
+    world.removeRigidBody(&box);world.removeRigidBody(&plane);
+}
+
 int main()
 {
+    testMovingToleratedIntersection();
     testToleratedContact(false,false);testToleratedContact(false,true);
     testToleratedContact(true,false);testToleratedContact(true,true);
     testCallbacks();
