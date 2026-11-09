@@ -313,6 +313,15 @@ void btDeformableMultiBodyDynamicsWorld::setGpuXpbdTgsSolver(bool enabled,btScal
 {
     if(m_gpuXpbdTgsEnabled!=enabled||m_gpuXpbdTgsMetersPerUnit!=metersPerUnit)
     {
+        if(!m_gpuXpbdTgsEnabled&&enabled)
+            for(int b=0;b<m_softBodies.size();++b)
+                for(int a=0;a<m_softBodies[b]->m_deformableAnchors.size();++a)
+                {
+                    auto& anchor=m_softBodies[b]->m_deformableAnchors[a];
+                    // GPU attachments replace CPU anchor freezes; retain independently fixed nodes.
+                    anchor.m_node->m_frozen=btMax(0,anchor.m_node->m_frozen-anchor.m_freezeContribution);
+                    anchor.m_freezeContribution=0;
+                }
         if(m_gpuXpbdTgsEnabled&&!enabled)
             for(int b=0;b<m_softBodies.size();++b)
             {

@@ -2,6 +2,7 @@
 #include "BulletSoftBody/btDeformableMultiBodyDynamicsWorld.h"
 #include "BulletSoftBody/btDeformableMultiBodyConstraintSolver.h"
 #include "BulletSoftBody/btDeformableBodySolver.h"
+#include "BulletSoftBody/btDeformableContactProjection.h"
 #include "BulletSoftBody/btDeformableLinearElasticityForce.h"
 #include "BulletSoftBody/btDeformableNodalForce.h"
 #include "BulletSoftBody/btDeformableMousePickingForce.h"
@@ -327,6 +328,38 @@ static void testRigidWorld(btScalar metersPerUnit)
     world.removeRigidBody(&body);world.removeRigidBody(&ground);
 }
 
+static void testSolverSwitchAnchorFreezes()
+{
+    btSoftBodyRigidBodyCollisionConfiguration configuration;btCollisionDispatcher dispatcher(&configuration);btDbvtBroadphase broadphase;
+    btDeformableMultiBodyConstraintSolver constraints;btDeformableBodySolver solver;
+    btDeformableMultiBodyDynamicsWorld world(&dispatcher,&broadphase,&constraints,&configuration,&solver);
+    btVector3 positions[]={btVector3(0,0,0),btVector3(1,0,0)};
+    btScalar masses[]={1,1};MappedBody soft(&world.getWorldInfo(),2,positions,masses);world.addSoftBody(&soft);
+    btBoxShape shape(btVector3(1,1,1));btRigidBody rigid(1,nullptr,&shape,btVector3(1,1,1));world.addRigidBody(&rigid);
+    soft.appendDeformableAnchor(0,&rigid,1);
+    soft.appendDeformableAnchor(0,&rigid,2);
+    soft.appendDeformableAnchor(1,&rigid,3);
+    soft.m_nodes[1].m_frozen=1; // Explicitly fixed independently of the anchors.
+    btDeformableContactProjection projection(world.getSoftBodyArray());
+    rigid.forceActivationState(ISLAND_SLEEPING);
+    projection.reinitialize(true);projection.setConstraints(world.getSolverInfo());
+    require(soft.m_nodes[0].m_frozen==2&&soft.m_nodes[1].m_frozen==2,"CPU sleeping anchors contribute freeze counts");
+    for(int cycle=0;cycle<2;++cycle)
+    {
+        world.setGpuXpbdTgsSolver(true,.001,2,20,0);
+        require(soft.m_nodes[0].m_frozen==0,"GPU transition releases all CPU anchor freezes on shared node");
+        require(soft.m_nodes[1].m_frozen==1,"GPU transition preserves explicit node freeze");
+        for(int a=0;a<soft.m_deformableAnchors.size();++a)
+            require(soft.m_deformableAnchors[a].m_freezeContribution==0,"GPU transition clears anchor freeze ownership");
+        world.setGpuXpbdTgsSolver(true,.001,2,20,0);
+        require(soft.m_nodes[1].m_frozen==1,"repeated GPU selection preserves explicit freeze");
+        world.setGpuXpbdTgsSolver(false,.001,2,20,0);
+        projection.reinitialize(true);projection.setConstraints(world.getSolverInfo());
+        require(soft.m_nodes[0].m_frozen==2&&soft.m_nodes[1].m_frozen==2,"returning to CPU restores sleeping anchor freezes");
+    }
+    world.removeSoftBody(&soft);world.removeRigidBody(&rigid);
+}
+
 static void testAnchoredWorld(btScalar metersPerUnit)
 {
     btSoftBodyRigidBodyCollisionConfiguration configuration;btCollisionDispatcher dispatcher(&configuration);btDbvtBroadphase broadphase;
@@ -548,6 +581,7 @@ int main()
     testToleratedContact(true,false);testToleratedContact(true,true);
     testCallbacks();
     testRigidWorld(1);testRigidWorld(.001);
+    testSolverSwitchAnchorFreezes();
     testAnchoredWorld(1);testAnchoredWorld(.001);
     testKinematicJoint(1);testKinematicJoint(.001);
 
