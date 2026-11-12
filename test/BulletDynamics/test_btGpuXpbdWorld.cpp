@@ -637,8 +637,85 @@ static void testMovingToleratedIntersection()
     world.removeRigidBody(&box);world.removeRigidBody(&plane);
 }
 
+
+struct CacheTestBody:btRigidBody
+{
+    mutable int checks=0;
+    bool allow=true,cacheable=true;
+    explicit CacheTestBody(btCollisionShape* shape):btRigidBody(1,nullptr,shape,btVector3(1,1,1)) {setCheckCollideWith(true);}
+    bool checkCollideWithOverride(const btCollisionObject* other) const override
+    {++checks;return allow&&btRigidBody::checkCollideWithOverride(other);}
+    bool appendCollisionFilterCacheKey(std::vector<std::uint64_t>& key) const override
+    {
+        btCollisionObject::appendCollisionFilterCacheKey(key);
+        if(cacheable) key.push_back(allow);
+        return cacheable;
+    }
+};
+static void testCollisionFilterCache()
+{
+    btSoftBodyRigidBodyCollisionConfiguration configuration;btCollisionDispatcher dispatcher(&configuration);btDbvtBroadphase broadphase;
+    btDeformableMultiBodyConstraintSolver constraints;btDeformableBodySolver solver;
+    btDeformableMultiBodyDynamicsWorld world(&dispatcher,&broadphase,&constraints,&configuration,&solver);
+    world.setGpuXpbdTgsSolver(true,1,1,1,0);world.setGravity(btVector3(0,0,0));
+    btBoxShape shape(btVector3(1,1,1));CacheTestBody body(&shape);btRigidBody sensor(0,nullptr,&shape),replacement(0,nullptr,&shape);
+    sensor.setWorldTransform(btTransform(btQuaternion::getIdentity(),btVector3(1,0,0)));
+    sensor.setCollisionFlags(sensor.getCollisionFlags()|btCollisionObject::CF_NO_CONTACT_RESPONSE);
+    replacement.setWorldTransform(sensor.getWorldTransform());replacement.setCollisionFlags(sensor.getCollisionFlags());
+    world.addRigidBody(&body);world.addRigidBody(&sensor);
+    const auto query=[&]() {
+        world.performDiscreteCollisionDetection();require(!world.hasDeformableStepFailed(),"filter-cache query succeeds");
+        int contacts=0;for(int i=0;i<dispatcher.getNumManifolds();++i) contacts+=dispatcher.getManifoldByIndexInternal(i)->getNumContacts();
+        return contacts>0;
+    };
+    require(query(),"cache fixture reports contact");const int firstChecks=body.checks;
+    require(query()&&body.checks==firstChecks,"unchanged custom filters are not reevaluated");
+    body.allow=false;require(!query(),"custom membership change invalidates cache");
+    body.allow=true;require(query(),"custom membership restoration invalidates cache");
+    body.setIgnoreCollisionCheck(&sensor,true);require(!query(),"ignore addition invalidates cache");
+    body.setIgnoreCollisionCheck(&sensor,false);require(query(),"ignore removal invalidates cache");
+    sensor.setIgnoreCollisionCheck(&body,true);require(!query(),"reverse ignore addition invalidates cache");
+    sensor.setIgnoreCollisionCheck(&body,false);require(query(),"reverse ignore removal invalidates cache");
+    const int mask=body.getBroadphaseHandle()->m_collisionFilterMask;
+    body.getBroadphaseHandle()->m_collisionFilterMask=0;require(!query(),"mask change invalidates cache");
+    body.getBroadphaseHandle()->m_collisionFilterMask=mask;require(query(),"mask restoration invalidates cache");
+    body.allow=false;body.setCheckCollideWith(false);require(query(),"disabling custom dispatch invalidates cache");
+    body.setCheckCollideWith(true);require(!query(),"enabling custom dispatch invalidates cache");body.allow=true;
+    body.cacheable=false;require(query(),"unkeyed custom filter works");const int unkeyedChecks=body.checks;
+    require(query()&&body.checks>unkeyedChecks,"unknown custom filters remain uncached");
+    body.allow=false;require(!query(),"unknown custom filter mutations remain live");body.allow=true;body.cacheable=true;
+    world.removeRigidBody(&sensor);world.addRigidBody(&replacement);require(query(),"replacement body invalidates cached IDs");
+    world.removeRigidBody(&body);world.addRigidBody(&body);require(query(),"body reordering invalidates cached IDs");
+    replacement.setCollisionFlags(replacement.getCollisionFlags()&~btCollisionObject::CF_NO_CONTACT_RESPONSE);
+    body.setToleratedCollisionAll(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL);
+    require(!query()&&!dispatcher.getInitialCollisionParticipants().empty(),"all-body tolerance replaces response with notification");
+    body.setToleratedCollisionNone();require(query()&&dispatcher.getInitialCollisionParticipants().empty(),"ending tolerance restores response");
+    body.setToleratedCollisionSome(btCollisionObject::InitialCollisionTolerance::HIGH_DETAIL,&replacement);
+    require(!query()&&!dispatcher.getInitialCollisionParticipants().empty(),"pair-specific tolerance invalidates cache");
+    // End tolerance in the collision callback; phase two must recompute filters in the same step.
+    world.setWorldUserInfo(&body);
+    world.setInternalTickCallback([](btDynamicsWorld* w,btScalar) {
+        static_cast<CacheTestBody*>(w->getWorldUserInfo())->setToleratedCollisionNone();
+    },&body,false,true);
+    // Keep the response fixture inside the solver surface-contact envelope.
+    replacement.setWorldTransform(btTransform(btQuaternion::getIdentity(),btVector3(1.999999,0,0)));
+    const int beforeCallback=body.checks;
+    require(world.stepSimulation(.002,0)==1&&!world.hasDeformableStepFailed(),"callback tolerance transition step succeeds");
+    require(body.checks>beforeCallback&&body.getLinearVelocity().length2()>0,"callback tolerance change restores response in same step");
+    body.setWorldTransform(btTransform::getIdentity());body.setLinearVelocity(btVector3(0,0,0));body.setAngularVelocity(btVector3(0,0,0));
+    world.setInternalTickCallback([](btDynamicsWorld* w,btScalar) {
+        auto& objects=w->getCollisionObjectArray();
+        objects[0]->setIgnoreCollisionCheck(objects[1],true);
+    },nullptr,false,true);
+    require(world.stepSimulation(.002,0)==1&&!world.hasDeformableStepFailed(),"callback ignore transition step succeeds");
+    require(body.getLinearVelocity().length2()==0,"callback ignore addition suppresses response in same step");
+    world.setInternalTickCallback(nullptr,nullptr,false,true);
+    world.removeRigidBody(&body);world.removeRigidBody(&replacement);
+}
+
 int main()
 {
+    testCollisionFilterCache();
     testMovingToleratedIntersection();
     testToleratedContact(false,false);testToleratedContact(false,true);
     testToleratedContact(true,false);testToleratedContact(true,true);

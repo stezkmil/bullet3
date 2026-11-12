@@ -38,6 +38,7 @@ struct btCollisionShapeData;
 #include "LinearMath/btAlignedObjectArray.h"
 
 #include <set>
+#include <cstdint>
 #include <map>
 #include <vector>
 
@@ -389,6 +390,21 @@ public:
 	{
 		return m_objectsWithoutCollisionCheck[index];
 	}
+
+    // Opt in only when the key describes every input used by checkCollideWithOverride.
+    // Unknown custom filters remain uncached. Base lists also affect GPU notification/tolerance handling.
+    virtual bool appendCollisionFilterCacheKey(std::vector<std::uint64_t>& key) const
+    {
+        key.push_back(m_checkCollideWith);
+        key.push_back(m_collisionFlags);
+        key.push_back(m_objectsWithoutCollisionCheck.size());
+        for(int i=0;i<m_objectsWithoutCollisionCheck.size();++i)
+            key.push_back(reinterpret_cast<std::uintptr_t>(m_objectsWithoutCollisionCheck[i]));
+        key.push_back(m_objectsWithToleratedCollision.size());
+        for(int i=0;i<m_objectsWithToleratedCollision.size();++i)
+            key.push_back(reinterpret_cast<std::uintptr_t>(m_objectsWithToleratedCollision[i]));
+        return !m_checkCollideWith;
+    }
 
 	virtual bool checkCollideWithOverride(const btCollisionObject* co) const
 	{

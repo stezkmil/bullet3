@@ -81,6 +81,9 @@ struct btDeformableGpuXpbdTgsWorld
     std::vector<unsigned char> key;
     std::vector<btGpuXpbdNode> accepted;
     std::vector<btGpuXpbdDisabledPair> disabled;
+    std::vector<btGpuXpbdNotificationPair> notifications;
+    std::vector<std::uint64_t> filterKey;
+    bool filterCacheValid=false;
     std::vector<btGpuXpbdAttachment> attachments;
     std::vector<btGpuXpbdJoint> joints;
     std::vector<int> selfBodies;
@@ -587,6 +590,7 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     appendKey(key,margin);
     if(cache.key!=key)
     {
+        cache.filterCacheValid=false;cache.filterKey.clear();cache.notifications.clear();
         cache.key.clear();cache.accepted.clear();cache.disabled.clear();cache.attachments.clear();cache.joints.clear();cache.selfBodies.clear();cache.vertices.clear();cache.triangles.clear();
         // Reconstruct the undeformed geometry from element rest edges, even after a reset to a deformed pose.
         struct Edge { int node;btVector3 delta; };
@@ -675,51 +679,73 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
         if(!cache.checked(api->attachments(state,int(attachments.size()),attachments.data()))) {fail(cache.error);return;}
         cache.attachments=attachments;
     }
-    // This fork permits custom collision filters without enabling Bullet's ignore-list dispatch.
-    const auto ignores=[](btCollisionObject* first,const btCollisionObject* second)
-    {
-        for(int i=0;i<first->getNumObjectsWithoutCollision();++i)
-            if(first->getObjectWithoutCollision(i)==second) return true;
-        return false;
-    };
-    std::vector<btGpuXpbdDisabledPair> disabled;
-    std::vector<btGpuXpbdNotificationPair> notifications;
-    // Keep broadphase masks compact instead of materializing every rejected object pair.
+    std::vector<std::uint64_t> filterKey;
+    filterKey.reserve(cache.filterKey.size());
     std::vector<btGpuXpbdBodyFilter> filters(m_collisionObjects.size());
-    std::map<std::pair<int,int>,std::vector<int>> filterGroups;
+    filterKey.push_back(m_collisionObjects.size());
+    bool cacheable=true;
     for(int i=0;i<m_collisionObjects.size();++i)
     {
-        const auto* proxy=m_collisionObjects[i]->getBroadphaseHandle();
-        if(!proxy) continue;
-        filters[i]={proxy->m_collisionFilterGroup,proxy->m_collisionFilterMask};
-        filterGroups[{filters[i].group,filters[i].mask}].push_back(i);
+        const auto* body=m_collisionObjects[i];const auto* proxy=body->getBroadphaseHandle();
+        if(proxy) filters[i]={proxy->m_collisionFilterGroup,proxy->m_collisionFilterMask};
+        filterKey.push_back(reinterpret_cast<std::uintptr_t>(body));
+        filterKey.push_back(proxy!=nullptr);
+        filterKey.push_back(filters[i].group);filterKey.push_back(filters[i].mask);
+        const auto lengthIndex=filterKey.size();filterKey.push_back(0);
+        cacheable=body->appendCollisionFilterCacheKey(filterKey)&&cacheable;
+        filterKey[lengthIndex]=filterKey.size()-lengthIndex-1;
     }
-    if(!cache.checked(api->bodyFilters(state,int(filters.size()),filters.data()))) {fail(cache.error);return;}
-    for(auto ga=filterGroups.begin();ga!=filterGroups.end();++ga)
-    for(auto gb=ga;gb!=filterGroups.end();++gb)
+    // Recheck after collision callbacks too: they can end tolerance or change ignore rules before the solve.
+    if(!cacheable||!cache.filterCacheValid||cache.filterKey!=filterKey)
     {
-        if(!(ga->first.first&gb->first.second)||!(gb->first.first&ga->first.second)) continue;
-        for(size_t ia=0;ia<ga->second.size();++ia)
-        for(size_t ib=(ga==gb?ia+1:0);ib<gb->second.size();++ib)
+        cache.filterCacheValid=false;
+        // This fork permits custom collision filters without enabling Bullet's ignore-list dispatch.
+        const auto ignores=[](btCollisionObject* first,const btCollisionObject* second)
         {
-            int a=ga->second[ia],b=gb->second[ib];if(a>b) std::swap(a,b);
-            auto* first=m_collisionObjects[a];auto* second=m_collisionObjects[b];
-            const bool excluded=ignores(first,second)||ignores(second,first)||!first->checkCollideWith(second)||!second->checkCollideWith(first);
-            const bool tolerated=first->isToleratingInitialCollisionsAll()||second->isToleratingInitialCollisionsAll()||
-                first->checkIsTolerated(second)||second->checkIsTolerated(first);
-            const bool notification=!first->hasContactResponse()||!second->hasContactResponse();
-            if(excluded||notification||tolerated) disabled.push_back({a,b});
-            if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,(((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0)|(tolerated?2:0)});
+            for(int i=0;i<first->getNumObjectsWithoutCollision();++i)
+                if(first->getObjectWithoutCollision(i)==second) return true;
+            return false;
+        };
+        std::vector<btGpuXpbdDisabledPair> disabled;
+        std::vector<btGpuXpbdNotificationPair> notifications;
+        // Keep broadphase masks compact instead of materializing every rejected object pair.
+        std::map<std::pair<int,int>,std::vector<int>> filterGroups;
+        for(int i=0;i<m_collisionObjects.size();++i)
+        {
+            const auto* proxy=m_collisionObjects[i]->getBroadphaseHandle();
+            if(!proxy) continue;
+            filterGroups[{filters[i].group,filters[i].mask}].push_back(i);
         }
+        if(!cache.checked(api->bodyFilters(state,int(filters.size()),filters.data()))) {fail(cache.error);return;}
+        for(auto ga=filterGroups.begin();ga!=filterGroups.end();++ga)
+        for(auto gb=ga;gb!=filterGroups.end();++gb)
+        {
+            if(!(ga->first.first&gb->first.second)||!(gb->first.first&ga->first.second)) continue;
+            for(size_t ia=0;ia<ga->second.size();++ia)
+            for(size_t ib=(ga==gb?ia+1:0);ib<gb->second.size();++ib)
+            {
+                int a=ga->second[ia],b=gb->second[ib];if(a>b) std::swap(a,b);
+                auto* first=m_collisionObjects[a];auto* second=m_collisionObjects[b];
+                const bool excluded=ignores(first,second)||ignores(second,first)||!first->checkCollideWith(second)||!second->checkCollideWith(first);
+                const bool tolerated=first->isToleratingInitialCollisionsAll()||second->isToleratingInitialCollisionsAll()||
+                    first->checkIsTolerated(second)||second->checkIsTolerated(first);
+                const bool notification=!first->hasContactResponse()||!second->hasContactResponse();
+                if(excluded||notification||tolerated) disabled.push_back({a,b});
+                if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,(((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0)|(tolerated?2:0)});
+            }
+        }
+        // Stable ordering makes unchanged custom exclusions cheap to recognize.
+        std::sort(disabled.begin(),disabled.end(),[](const auto& a,const auto& b){return std::tie(a.bodyA,a.bodyB)<std::tie(b.bodyA,b.bodyB);});
+        std::sort(notifications.begin(),notifications.end(),[](const auto& a,const auto& b){return std::tie(a.bodyA,a.bodyB)<std::tie(b.bodyA,b.bodyB);});
+        if(disabled.size()!=cache.disabled.size()||(!disabled.empty()&&std::memcmp(disabled.data(),cache.disabled.data(),disabled.size()*sizeof(disabled[0]))!=0))
+        {
+            if(!cache.checked(api->disabledPairs(state,int(disabled.size()),disabled.data()))) { fail(cache.error);return; }
+            cache.disabled=disabled;
+        }
+        cache.notifications=std::move(notifications);
+        cache.filterKey=std::move(filterKey);cache.filterCacheValid=cacheable;
     }
-    // Stable ordering makes unchanged custom exclusions cheap to recognize.
-    std::sort(disabled.begin(),disabled.end(),[](const auto& a,const auto& b){return std::tie(a.bodyA,a.bodyB)<std::tie(b.bodyA,b.bodyB);});
-    std::sort(notifications.begin(),notifications.end(),[](const auto& a,const auto& b){return std::tie(a.bodyA,a.bodyB)<std::tie(b.bodyA,b.bodyB);});
-    if(disabled.size()!=cache.disabled.size()||(!disabled.empty()&&std::memcmp(disabled.data(),cache.disabled.data(),disabled.size()*sizeof(disabled[0]))!=0))
-    {
-        if(!cache.checked(api->disabledPairs(state,int(disabled.size()),disabled.data()))) { fail(cache.error);return; }
-        cache.disabled=disabled;
-    }
+    const auto& notifications=cache.notifications;
     if(phase==0)
     {
         cache.clearContacts();
