@@ -58,7 +58,9 @@ struct State
     CUdeviceptr impulseKeys=0,impulseSums=0,impulseReports=0,impulseCount=0,impulseOverflow=0;
     bool impulseReporting=false;
     int impulseCapacity=0,lastImpulseCount=0,lastImpulseOverflow=0;
-    CUdeviceptr reports=0,reportCount=0,notificationPairs=0,notificationWinners=0;
+    CUdeviceptr reports=0,reportCount=0,notificationPairs=0,notificationWinners=0,notificationJobs=0;
+    size_t notificationJobCapacity=0;
+    std::map<int,std::pair<int,int>> notificationTriangleRanges;
     int notificationCapacity=0,lastReportCount=0;
     CUdeviceptr targets=0,driveStart=0,inverseMasses=0;
     std::vector<int> targetIds;
@@ -115,8 +117,9 @@ struct State
         if(disabledPairs) cuMemFree(disabledPairs);disabledPairs=0;disabledPairCount=0;
         if(selfBodies) cuMemFree(selfBodies);selfBodies=0;selfBodyCount=0;
         if(incident) cuMemFree(incident);incident=0;
-        for(auto p:{vertexTriangles,reports,reportCount,notificationPairs,notificationWinners}) if(p) cuMemFree(p);
-        vertexTriangles=reports=reportCount=notificationPairs=notificationWinners=0;
+        for(auto p:{vertexTriangles,reports,reportCount,notificationPairs,notificationWinners,notificationJobs}) if(p) cuMemFree(p);
+        vertexTriangles=reports=reportCount=notificationPairs=notificationWinners=notificationJobs=0;
+        notificationJobCapacity=0;notificationTriangleRanges.clear();
         notificationCapacity=lastReportCount=0;
         if(tetBodies) cuMemFree(tetBodies);tetBodies=0;
         if(remapOffsets) cuMemFree(remapOffsets);remapOffsets=0;
@@ -386,6 +389,7 @@ int surface(void* value,int vertexCount,const gpu::btGpuXpbdSurfaceVertex* verti
         points[i]=p;
     }
     std::vector<int> incident(vertexCount,0),vertexTriangles(vertexCount,-1);
+    std::map<int,std::pair<int,int>> notificationTriangleRanges;
     for(int i=0;i<triangleCount;++i)
     {
         auto& c=centers[i];c={0,0,0};int body=-1,rigid=-1;
@@ -399,6 +403,12 @@ int surface(void* value,int vertexCount,const gpu::btGpuXpbdSurfaceVertex* verti
             else if(support!=rigid) {s.error="Triangle spans rigid supports";return 0;}
             c.x+=points[id].x/3;c.y+=points[id].y/3;c.z+=points[id].z/3;
         }
+    }
+    for(int i=0;i<triangleCount;++i)
+    {
+        const int body=vertices[triangles[i].vertices[0]].body;
+        auto range=notificationTriangleRanges.emplace(body,std::make_pair(i,i+1)).first;
+        range->second.second=i+1;
     }
     struct Bvh { int left,right,parent,triangle,body; };
     struct Box { gpu::btGpuXpbdVec low,high; };
@@ -514,6 +524,7 @@ int surface(void* value,int vertexCount,const gpu::btGpuXpbdSurfaceVertex* verti
     { s.clearSurface();return 0; }
     if(!s.check(cuMemAlloc(&s.contactCache,s.contactCapacity*176))||!s.check(cuMemAlloc(&s.contactCount,sizeof(int)))||!s.check(cuMemAlloc(&s.references,s.count*sizeof(int))))
     { s.clearSurface();return 0; }
+    s.notificationTriangleRanges=std::move(notificationTriangleRanges);
     s.vertexCount=vertexCount;s.triangleCount=triangleCount;s.treeCount=int(tree.size());s.margin=margin;s.clearance=clearance;return 1;
 }
 int surfacePositions(void* value,int count,gpu::btGpuXpbdVec* positions)
@@ -951,13 +962,34 @@ int contacts(void* value,int pairCount,const gpu::btGpuXpbdNotificationPair* pai
 {
     auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
     s.contactsReady=false;
-    if(pairCount<0||(pairCount&&!pairs)||!outputCount|| (s.triangleCount && pairCount>2147483647/s.triangleCount))
+    if(pairCount<0||(pairCount&&!pairs)||!outputCount)
         {s.error="Invalid GPU notification query";return 0;}
     s.lastReportCount=0;*outputCount=0;if(!s.vertexCount) return 1;
     if(!s.reports&&!s.check(cuMemAlloc(&s.reports,size_t(s.contactCapacity)*sizeof(gpu::btGpuXpbdContactReport)))) return 0;
     if(!s.reportCount&&!s.check(cuMemAlloc(&s.reportCount,sizeof(int)))) return 0;
     for(int i=0;i<pairCount;++i) if(pairs[i].bodyA<0||pairs[i].bodyB<0||pairs[i].bodyA==pairs[i].bodyB)
         {s.error="Invalid notification body IDs";return 0;}
+    // One block per source-body triangle range, instead of the overflowing pairs x whole-scene product.
+    std::vector<std::array<int,3>> jobs;
+    for(int i=0;i<pairCount;++i)
+    {
+        const auto range=s.notificationTriangleRanges.find(pairs[i].bodyA);
+        if(range==s.notificationTriangleRanges.end()) continue;
+        for(int first=range->second.first;first<range->second.second;)
+        {
+            const int end=first+std::min(128,range->second.second-first);
+            jobs.push_back({i,first,end});first=end;
+        }
+    }
+    if(jobs.size()>2147483647u) {s.error="GPU notification work capacity exceeded";return 0;}
+    if(jobs.size()>s.notificationJobCapacity)
+    {
+        CUdeviceptr replacement=0;
+        if(!s.check(cuMemAlloc(&replacement,jobs.size()*sizeof(jobs[0])))) return 0;
+        if(s.notificationJobs) cuMemFree(s.notificationJobs);
+        s.notificationJobs=replacement;s.notificationJobCapacity=jobs.size();
+    }
+    if(!jobs.empty()&&!s.check(cuMemcpyHtoD(s.notificationJobs,jobs.data(),jobs.size()*sizeof(jobs[0])))) return 0;
     if(pairCount>s.notificationCapacity)
     {
         if(s.notificationPairs) cuMemFree(s.notificationPairs);s.notificationPairs=0;
@@ -975,8 +1007,8 @@ int contacts(void* value,int pairCount,const gpu::btGpuXpbdNotificationPair* pai
        !discoverSurfaceContacts(s)) return 0;
     void* reportArgs[]={&s.positions,&s.maps,&s.triangles,&s.vertexTriangles,&s.contactCache,&s.contactCount,&s.reports,&s.reportCount,&s.contactCapacity,&s.failure};
     if(!s.launch(s.reportContacts,s.contactCapacity,reportArgs)) return 0;
-    void* notificationArgs[]={&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.notificationPairs,&pairCount,&s.triangleCount,&s.notificationWinners,&s.reports,&s.reportCount,&s.contactCapacity,&s.failure};
-    if(!s.launch(s.reportNotifications,pairCount*s.triangleCount,notificationArgs)) return 0;
+    void* notificationArgs[]={&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.notificationPairs,&s.notificationJobs,&s.notificationWinners,&s.reports,&s.reportCount,&s.contactCapacity,&s.failure};
+    if(!jobs.empty()&&!s.check(cuLaunchKernel(s.reportNotifications,static_cast<unsigned>(jobs.size()),1,1,128,1,1,0,s.stream,notificationArgs,nullptr))) return 0;
     void* finishArgs[]={&s.positions,&s.triangles,&s.notificationPairs,&pairCount,&s.notificationWinners,&s.reports,&s.reportCount,&s.contactCapacity,&s.failure};
     if(!s.launch(s.finishNotifications,pairCount,finishArgs)||!s.check(cuStreamSynchronize(s.stream))) return 0;
     int failure=0;

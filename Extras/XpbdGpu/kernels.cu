@@ -1503,10 +1503,11 @@ extern "C" __global__ void finishContactImpulses(const Map* maps,const Tri* tris
 // The first triangle pair in mesh order wins, independently of CUDA scheduling.
 struct NotificationPair { int x,y,touching; };
 extern "C" __global__ void reportNotifications(const Map* maps,const V* positions,const Tri* tris,const Bvh* tree,const Box* boxes,
-    const NotificationPair* pairs,int pairCount,int triangleCount,unsigned long long* winners,ContactReport* output,int* outputCount,int capacity,int* failure)
+    const NotificationPair* pairs,const int* jobs,unsigned long long* winners,ContactReport* output,int* outputCount,int capacity,int* failure)
 {
-    int job=blockIdx.x*blockDim.x+threadIdx.x;if(job>=pairCount*triangleCount) return;
-    int pair=job/triangleCount,source=job%triangleCount;NotificationPair bodies=pairs[pair];
+    const int* job=jobs+size_t(blockIdx.x)*3;
+    int pair=job[0],source=job[1]+threadIdx.x;if(source>=job[2]) return;
+    NotificationPair bodies=pairs[pair];
     if((bodies.touching&2)&&atomicAdd(winners+pair,0ULL)!=~0ULL) return;
     Tri ta=tris[source];if(maps[ta.v[0]].body!=bodies.x||(atomicAdd(winners+pair,0ULL)>>32)<static_cast<unsigned>(source)) return;
     V a[3]={positions[ta.v[0]],positions[ta.v[1]],positions[ta.v[2]]};

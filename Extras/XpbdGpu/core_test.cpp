@@ -87,6 +87,22 @@ void testContactReports(const btGpuXpbdTgsApi* api,void* world)
         }
     }
     require(api->contacts(world,0,nullptr,&count)&&count==0,"notification reports do not persist without a requested pair");
+    {
+        // The old whole-scene dispatch rejected 50,000 x 50,000 jobs, although body 0 has just one triangle.
+        std::vector<btGpuXpbdSurfaceVertex> largeVertices(vertices,vertices+6);
+        for(int i=0;i<3;++i)
+        {
+            auto v=vertices[i];v.body=2;v.offset.x+=100;
+            largeVertices.push_back(v);
+        }
+        for(int i=3;i<6;++i) largeVertices[i].offset.x+=10;
+        std::vector<btGpuXpbdSurfaceTriangle> largeTriangles(50000,{{6,7,8},11,91});
+        largeTriangles[0]=triangles[0];largeTriangles[1]=triangles[1];
+        std::vector<btGpuXpbdNotificationPair> requests(50000,notification);
+        require(api->surface(world,int(largeVertices.size()),largeVertices.data(),int(largeTriangles.size()),largeTriangles.data(),.1,0)&&
+            api->contacts(world,int(requests.size()),requests.data(),&count)&&count==0,
+            "large notification query avoids whole-scene integer overflow");
+    }
     for(int i=3;i<6;++i) vertices[i].offset.x+=10;
     require(api->surface(world,6,vertices,2,triangles,.1,0)&&api->contacts(world,1,&notification,&count)&&count==0,"separated notification pair loses contact");
     require(api->download(world,1,&node)&&distance(node.position,{0,0,0})==0,"report query never advances simulation");
