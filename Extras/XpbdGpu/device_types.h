@@ -1,6 +1,6 @@
 #pragma once
 
-// Internal FP32 storage; the public Bullet API remains ABI 13 with FP64 PODs.
+// Internal FP32 storage; the public Bullet API remains ABI 14 with FP64 PODs.
 namespace gpu
 {
 struct btGpuXpbdVec { float x, y, z; };
@@ -133,6 +133,8 @@ struct btGpuXpbdTgsApi
     int (*enableContactImpulses)(void*, int);
 
     int (*contactImpulses)(void*, int*, btGpuXpbdContactImpulse*, int);
+    // Synchronous, non-throwing callback: 50 before graph creation, 100 when it ends (also on failure).
+    void (*setGraphProgressCallback)(void*, void*, void (*)(void*, int));
 };
 
 }

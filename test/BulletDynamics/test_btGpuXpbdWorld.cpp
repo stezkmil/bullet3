@@ -75,8 +75,15 @@ static void testWorld(btScalar metersPerUnit,bool mapped=false,bool disparateMas
     btAlignedObjectArray<int> selected;for(int i=0;i<4;++i) selected.push_back(i);
     btDeformableNodalForce force(&body,selected,btVector3(btScalar(4)/metersPerUnit,0,0));
     world.addForce(&force);
+    std::vector<int> initializationProgress;
+    world.setGpuXpbdTgsGraphProgressCallback(&initializationProgress,[](void* user,int progress)
+    {
+        static_cast<std::vector<int>*>(user)->push_back(progress);
+    });
     const btScalar dt=.001;
     require(world.stepSimulation(dt,0)==1,"world completes a forced GPU step");
+    require(initializationProgress==std::vector<int>({50,100}),"first world initialization reports one progress interval");
+    world.setGpuXpbdTgsGraphProgressCallback(nullptr,nullptr);
     if(world.hasDeformableStepFailed()) std::fprintf(stderr,"world error: %s\n",world.getGpuXpbdTgsError().c_str());
     require(!world.hasDeformableStepFailed(),"GPU step accepted");
     btVector3 mean(0,0,0);btScalar totalMass=0;

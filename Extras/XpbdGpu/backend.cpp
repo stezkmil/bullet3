@@ -21,6 +21,8 @@ struct State
     CUstream stream=nullptr;
     CUgraph graph=nullptr;
     CUgraphExec graphExec=nullptr;
+    void* graphProgressUser=nullptr;
+    void (*graphProgressCallback)(void*,int)=nullptr;
     gpu::btGpuXpbdStep graphConfig={};
     bool contactsReady=false;
     std::vector<gpu::btGpuXpbdNode> contactNodes;
@@ -892,6 +894,13 @@ int step(void* value,const gpu::btGpuXpbdStep* config)
     if(!s.check(cuMemcpyHtoD(s.failure,&failure,sizeof(failure)))) return 0;
     if(!s.graphExec || !sameStep(*config,s.graphConfig))
     {
+        struct GraphProgress
+        {
+            void* user;
+            void (*callback)(void*,int);
+            ~GraphProgress() { if(callback) callback(user,100); }
+        } progress{s.graphProgressUser,s.graphProgressCallback};
+        if(progress.callback) progress.callback(progress.user,50);
         s.clearGraph();
         if(!s.check(cuStreamBeginCapture(s.stream,CU_STREAM_CAPTURE_MODE_THREAD_LOCAL))) return 0;
         bool captured=enqueueStep(s,config);
@@ -1012,7 +1021,12 @@ int contactImpulses(void* value,int* count,gpu::btGpuXpbdContactImpulse* output,
     *count=s.lastImpulseCount;
     return !output||!s.lastImpulseCount||s.check(cuMemcpyDtoH(output,s.impulseReports,size_t(s.lastImpulseCount)*sizeof(*output)));
 }
-const gpu::btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,updateRigids,joints,selfCollision,contacts,downloadContacts,enableContactImpulses,contactImpulses};
+void setGraphProgressCallback(void* value,void* user,void (*callback)(void*,int))
+{
+    auto& s=*static_cast<State*>(value);
+    s.graphProgressUser=user;s.graphProgressCallback=callback;
+}
+const gpu::btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,updateRigids,joints,selfCollision,contacts,downloadContacts,enableContactImpulses,contactImpulses,setGraphProgressCallback};
 }
 const gpu::btGpuXpbdTgsApi* gpuApi()
 {

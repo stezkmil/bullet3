@@ -173,7 +173,7 @@ int contactImpulses(void* state,int* count,btGpuXpbdContactImpulse* values,int c
 }
 const btGpuXpbdTgsApi api={gpuApi()->create,gpuApi()->destroy,upload,forces,step,download,gpuApi()->error,
     surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,
-    updateRigids,joints,gpuApi()->selfCollision,contacts,downloadContacts,gpuApi()->enableContactImpulses,contactImpulses};
+    updateRigids,joints,gpuApi()->selfCollision,contacts,downloadContacts,gpuApi()->enableContactImpulses,contactImpulses,gpuApi()->setGraphProgressCallback};
 }
 extern "C" __declspec(dllexport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int version)
 { return version==BT_GPU_XPBD_ABI_VERSION?&api:nullptr; }

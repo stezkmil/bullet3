@@ -373,10 +373,20 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
 
     m_solverInfo.m_timeStep=timeStep;m_dispatchInfo.m_timeStep=timeStep;
 
+    // CUDA context/kernel loading and scene upload precede graph capture on the first step.
+    const bool initializing=!m_gpuXpbdTgsWorld;
+    struct InitializationProgress
+    {
+        void* user;
+        void (*callback)(void*,int);
+        ~InitializationProgress() { if(callback) callback(user,100); }
+    } progress{m_gpuXpbdTgsGraphProgressUser,initializing?m_gpuXpbdTgsGraphProgressCallback:nullptr};
+    if(progress.callback) progress.callback(progress.user,50);
     if(!m_gpuXpbdTgsWorld) m_gpuXpbdTgsWorld=std::make_shared<btDeformableGpuXpbdTgsWorld>();
     auto& cache=*m_gpuXpbdTgsWorld;
     if(!cache.backend.ready()) { fail(cache.backend.error());return; }
     const auto* api=cache.backend.api();void* state=cache.backend.state();
+    api->setGraphProgressCallback(state,m_gpuXpbdTgsGraphProgressUser,initializing?nullptr:m_gpuXpbdTgsGraphProgressCallback);
     cache.dispatcher=getDispatcher();
     const bool callbacks=getDispatcher()->reportToleratedContacts||queryOnly||m_internalPreTickCallback||m_internalPostDiscreteCollisionDetectionTickCallback||m_internalTickCallback||m_solverCallback||m_actions.size();
     for(int phase=callbacks?0:1;phase<2;++phase)

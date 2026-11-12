@@ -3,7 +3,7 @@
 
 // ABI 13 adds first-hit tolerated-contact queries and triangle-normal witnesses.
 // POD boundary independent of Bullet's float/double scalar configuration.
-constexpr int BT_GPU_XPBD_ABI_VERSION = 13;
+constexpr int BT_GPU_XPBD_ABI_VERSION = 14;
 struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
@@ -133,6 +133,8 @@ struct btGpuXpbdTgsApi
     int (*enableContactImpulses)(void*, int);
     // Null output queries the count; otherwise capacity must cover all reports. Cleared on each step.
     int (*contactImpulses)(void*, int*, btGpuXpbdContactImpulse*, int);
+    // Synchronous, non-throwing callback: 50 before graph creation, 100 when it ends (also on failure).
+    void (*setGraphProgressCallback)(void*, void*, void (*)(void*, int));
 };
 static_assert(sizeof(btGpuXpbdRigid)==200 && sizeof(btGpuXpbdEndpoint)==80 && sizeof(btGpuXpbdAttachment)==168, "Rigid GPU ABI mismatch");
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);

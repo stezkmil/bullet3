@@ -683,9 +683,31 @@ int main()
     const auto* api=backend.api();void* world=backend.state();
 #else
     require(btGetGpuXpbdTgsApi(5)==nullptr,"reject previous float ABI");
+    require(btGetGpuXpbdTgsApi(13)==nullptr,"reject backend ABI without graph progress callback");
     const auto* api=btGetGpuXpbdTgsApi(BT_GPU_XPBD_ABI_VERSION);void* world=api->create();
 #endif
     if(!world) { std::fprintf(stderr,"%s\n",api->error(nullptr));return 1; }
+    {
+        std::vector<int> progress;
+        api->setGraphProgressCallback(world,&progress,[](void* user,int value)
+        {
+            static_cast<std::vector<int>*>(user)->push_back(value);
+        });
+        btGpuXpbdNode nodes[]={{{0,0,0},1,{0,0,0},0},{{1,0,0},1,{0,0,0},0},
+                              {{0,1,0},1,{0,0,0},0},{{0,0,1},1,{0,0,0},0}};
+        btGpuXpbdTet tet={{0,1,2,3},{1,0,0,0,1,0,0,0,1},1./6,10000,.4,.01};
+        btGpuXpbdStep config={.001,1,{0,0,0},0,0,1};
+        require(api->upload(world,4,nodes,1,&tet)&&api->step(world,&config),"graph progress initial step");
+        require(progress==std::vector<int>({50,100}),"graph creation reports start and finish");
+        progress.clear();
+        require(api->step(world,&config)&&progress.empty(),"cached graph emits no progress");
+        config.iterations=2;
+        require(api->step(world,&config)&&progress==std::vector<int>({50,100}),"graph rebuild reports progress");
+        progress.clear();
+        api->setGraphProgressCallback(world,nullptr,nullptr);
+        config.iterations=3;
+        require(api->step(world,&config)&&progress.empty(),"graph progress can be unregistered");
+    }
     testSoftContactMaterial(api,world);
     testOutsideStaticFace(api,world);
     testBroadGroundContact(api,world);

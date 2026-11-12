@@ -74,6 +74,8 @@ class btDeformableMultiBodyDynamicsWorld : public btMultiBodyDynamicsWorld
 	bool m_deformableStepFailed = false;
 	btScalar m_contactDiscoveryPadding = -1;
 	bool m_gpuXpbdTgsEnabled = false;
+    void* m_gpuXpbdTgsGraphProgressUser = nullptr;
+    void (*m_gpuXpbdTgsGraphProgressCallback)(void*, int) = nullptr;
     bool m_gpuXpbdTgsReportImpulses = false;
     std::vector<btGpuXpbdTgsWorldContactImpulse> m_gpuXpbdTgsContactImpulses;
     std::string m_gpuXpbdTgsImpulseError;
@@ -113,6 +115,14 @@ protected:
 	void addSoftsWithSelfCollisionCheckToOverlappingPairs();
 
 public:
+    // Covers first solver initialization and subsequent graph rebuilds on the simulation thread.
+    // Reports 50 while busy, 100 when finished (including failure).
+    // The callback must not throw or re-enter the world; nullptr unregisters it.
+    void setGpuXpbdTgsGraphProgressCallback(void* user, void (*callback)(void*, int))
+    {
+        m_gpuXpbdTgsGraphProgressUser = user;
+        m_gpuXpbdTgsGraphProgressCallback = callback;
+    }
     void setGpuXpbdTgsImpulseReporting(bool enabled) { m_gpuXpbdTgsReportImpulses=enabled; if(!enabled) m_gpuXpbdTgsContactImpulses.clear(); }
     const std::vector<btGpuXpbdTgsWorldContactImpulse>& getGpuXpbdTgsContactImpulses() const { return m_gpuXpbdTgsContactImpulses; }
     const std::string& getGpuXpbdTgsImpulseError() const { return m_gpuXpbdTgsImpulseError; }
