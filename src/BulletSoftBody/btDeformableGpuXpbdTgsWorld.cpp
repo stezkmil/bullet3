@@ -684,18 +684,37 @@ void btDeformableMultiBodyDynamicsWorld::gpuXpbdTgsSingleStepSimulation(btScalar
     };
     std::vector<btGpuXpbdDisabledPair> disabled;
     std::vector<btGpuXpbdNotificationPair> notifications;
-    for(int a=0;a<m_collisionObjects.size();++a) for(int b=a+1;b<m_collisionObjects.size();++b)
+    // Keep broadphase masks compact instead of materializing every rejected object pair.
+    std::vector<btGpuXpbdBodyFilter> filters(m_collisionObjects.size());
+    std::map<std::pair<int,int>,std::vector<int>> filterGroups;
+    for(int i=0;i<m_collisionObjects.size();++i)
     {
-        auto* first=m_collisionObjects[a];auto* second=m_collisionObjects[b];
-        const auto* pa=first->getBroadphaseHandle();const auto* pb=second->getBroadphaseHandle();
-        const bool excluded=!pa||!pb||!(pa->m_collisionFilterGroup&pb->m_collisionFilterMask)||!(pb->m_collisionFilterGroup&pa->m_collisionFilterMask)||
-           ignores(first,second)||ignores(second,first)||!first->checkCollideWith(second)||!second->checkCollideWith(first);
-        const bool tolerated=first->isToleratingInitialCollisionsAll()||second->isToleratingInitialCollisionsAll()||
-            first->checkIsTolerated(second)||second->checkIsTolerated(first);
-        const bool notification=!first->hasContactResponse()||!second->hasContactResponse();
-        if(excluded||notification||tolerated) disabled.push_back({a,b});
-        if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,(((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0)|(tolerated?2:0)});
+        const auto* proxy=m_collisionObjects[i]->getBroadphaseHandle();
+        if(!proxy) continue;
+        filters[i]={proxy->m_collisionFilterGroup,proxy->m_collisionFilterMask};
+        filterGroups[{filters[i].group,filters[i].mask}].push_back(i);
     }
+    if(!cache.checked(api->bodyFilters(state,int(filters.size()),filters.data()))) {fail(cache.error);return;}
+    for(auto ga=filterGroups.begin();ga!=filterGroups.end();++ga)
+    for(auto gb=ga;gb!=filterGroups.end();++gb)
+    {
+        if(!(ga->first.first&gb->first.second)||!(gb->first.first&ga->first.second)) continue;
+        for(size_t ia=0;ia<ga->second.size();++ia)
+        for(size_t ib=(ga==gb?ia+1:0);ib<gb->second.size();++ib)
+        {
+            int a=ga->second[ia],b=gb->second[ib];if(a>b) std::swap(a,b);
+            auto* first=m_collisionObjects[a];auto* second=m_collisionObjects[b];
+            const bool excluded=ignores(first,second)||ignores(second,first)||!first->checkCollideWith(second)||!second->checkCollideWith(first);
+            const bool tolerated=first->isToleratingInitialCollisionsAll()||second->isToleratingInitialCollisionsAll()||
+                first->checkIsTolerated(second)||second->checkIsTolerated(first);
+            const bool notification=!first->hasContactResponse()||!second->hasContactResponse();
+            if(excluded||notification||tolerated) disabled.push_back({a,b});
+            if(!excluded&&(notification||tolerated)) notifications.push_back({a,b,(((first->getCollisionFlags()|second->getCollisionFlags())&btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH)?1:0)|(tolerated?2:0)});
+        }
+    }
+    // Stable ordering makes unchanged custom exclusions cheap to recognize.
+    std::sort(disabled.begin(),disabled.end(),[](const auto& a,const auto& b){return std::tie(a.bodyA,a.bodyB)<std::tie(b.bodyA,b.bodyB);});
+    std::sort(notifications.begin(),notifications.end(),[](const auto& a,const auto& b){return std::tie(a.bodyA,a.bodyB)<std::tie(b.bodyA,b.bodyB);});
     if(disabled.size()!=cache.disabled.size()||(!disabled.empty()&&std::memcmp(disabled.data(),cache.disabled.data(),disabled.size()*sizeof(disabled[0]))!=0))
     {
         if(!cache.checked(api->disabledPairs(state,int(disabled.size()),disabled.data()))) { fail(cache.error);return; }

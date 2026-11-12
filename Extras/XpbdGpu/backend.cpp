@@ -69,6 +69,9 @@ struct State
     int springCount=0;
     CUdeviceptr nodes=0,tets=0,forces=0,failure=0;
     CUdeviceptr acceptedNodes=0;
+    CUdeviceptr bodyFilters=0;
+    std::vector<gpu::btGpuXpbdBodyFilter> hostBodyFilters;
+    int bodyFilterCount=0;
     CUdeviceptr disabledPairs=0;
     int disabledPairCount=0;
     CUdeviceptr selfBodies=0;
@@ -114,6 +117,7 @@ struct State
         impulseKeys=impulseSums=impulseReports=impulseCount=impulseOverflow=0;
         impulseReporting=false;impulseCapacity=lastImpulseCount=lastImpulseOverflow=0;
         if(friction) cuMemFree(friction);friction=0;frictionCount=0;
+        if(bodyFilters) cuMemFree(bodyFilters);bodyFilters=0;bodyFilterCount=0;hostBodyFilters.clear();
         if(disabledPairs) cuMemFree(disabledPairs);disabledPairs=0;disabledPairCount=0;
         if(selfBodies) cuMemFree(selfBodies);selfBodies=0;selfBodyCount=0;
         if(incident) cuMemFree(incident);incident=0;
@@ -307,6 +311,23 @@ bool updateSurface(State& s)
 {
     void* args[]={&s.nodes,&s.maps,&s.positions,&s.vertexCount};
     return s.launch(s.skin,s.vertexCount,args);
+}
+int bodyFilters(void* value,int count,const gpu::btGpuXpbdBodyFilter* filters)
+{
+    auto& s=*static_cast<State*>(value);Current current(s);if(!current.valid) return 0;
+    if(count<0||(count&&!filters)) {s.error="Invalid body filter table";return 0;}
+    if(count==s.bodyFilterCount&&(!count||!std::memcmp(filters,s.hostBodyFilters.data(),count*sizeof(*filters)))) return 1;
+    CUdeviceptr replacement=0;
+    if(count!=s.bodyFilterCount)
+    {
+        if(!s.copy(replacement,filters,count*sizeof(*filters))) {if(replacement) cuMemFree(replacement);return 0;}
+        s.clearGraph();if(s.bodyFilters) cuMemFree(s.bodyFilters);
+        s.bodyFilters=replacement;s.bodyFilterCount=count;
+    }
+    else if(count&&!s.check(cuMemcpyHtoD(s.bodyFilters,filters,count*sizeof(*filters)))) return 0;
+    s.contactsReady=false;
+    s.hostBodyFilters.clear();if(count) s.hostBodyFilters.assign(filters,filters+count);
+    return 1;
 }
 int disabledPairs(void* value,int count,const gpu::btGpuXpbdDisabledPair* pairs)
 {
@@ -749,11 +770,11 @@ bool discoverSurfaceContacts(State& s)
             if(!updateSurface(s)||!s.check(cuMemsetD32Async(s.ready,0,s.treeCount,s.stream))||!s.check(cuMemsetD32Async(s.contactCount,0,1,s.stream))) return 0;
             void* refitArgs[]={&s.positions,&s.triangles,&s.tree,&s.leaves,&s.boxes,&s.ready,&s.triangleCount};
             if(!s.launch(s.refit,s.triangleCount,refitArgs)) return 0;
-            void* contactArgs[]={&s.nodes,&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.vertexCount,&s.margin,&s.failure,&s.incident,&s.disabledPairs,&s.disabledPairCount,&s.selfBodies,&s.selfBodyCount};
+            void* contactArgs[]={&s.nodes,&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.vertexCount,&s.margin,&s.failure,&s.incident,&s.disabledPairs,&s.disabledPairCount,&s.selfBodies,&s.selfBodyCount,&s.bodyFilters,&s.bodyFilterCount};
             if(!s.launch(s.discoverContacts,s.vertexCount,contactArgs)) return 0;
-            void* triangleArgs[]={&s.nodes,&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.triangleCount,&s.margin,&s.failure,&s.disabledPairs,&s.disabledPairCount,&s.selfBodies,&s.selfBodyCount};
+            void* triangleArgs[]={&s.nodes,&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.triangleCount,&s.margin,&s.failure,&s.disabledPairs,&s.disabledPairCount,&s.selfBodies,&s.selfBodyCount,&s.bodyFilters,&s.bodyFilterCount};
             if(!s.launch(s.discoverTriangleContacts,s.triangleCount,triangleArgs)) return 0;
-            void* volumeArgs[]={&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.incident,&s.volumeBodies,&s.volumeCount,&s.vertexCount,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.margin,&s.failure,&s.disabledPairs,&s.disabledPairCount,&s.selfBodies,&s.selfBodyCount};
+            void* volumeArgs[]={&s.maps,&s.positions,&s.triangles,&s.tree,&s.boxes,&s.incident,&s.volumeBodies,&s.volumeCount,&s.vertexCount,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.margin,&s.failure,&s.disabledPairs,&s.disabledPairCount,&s.selfBodies,&s.selfBodyCount,&s.bodyFilters,&s.bodyFilterCount};
             if(!s.launch(s.discoverVolumeContacts,s.vertexCount*s.volumeCount,volumeArgs)) return 0;
             void* refineArgs[]={&s.nodes,&s.maps,&s.positions,&s.triangles,&s.contactCache,&s.contactCount,&s.contactCapacity,&s.margin,&s.failure};
             if(!s.check(cuLaunchKernel(s.refineTriangleContacts,1024,1,1,32,4,1,0,s.stream,refineArgs,nullptr))) return 0;
@@ -1058,7 +1079,7 @@ void setGraphProgressCallback(void* value,void* user,void (*callback)(void*,int)
     auto& s=*static_cast<State*>(value);
     s.graphProgressUser=user;s.graphProgressCallback=callback;
 }
-const gpu::btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,updateRigids,joints,selfCollision,contacts,downloadContacts,enableContactImpulses,contactImpulses,setGraphProgressCallback};
+const gpu::btGpuXpbdTgsApi api={create,destroy,upload,forces,step,download,error,surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,updateRigids,joints,selfCollision,contacts,downloadContacts,enableContactImpulses,contactImpulses,setGraphProgressCallback,bodyFilters};
 }
 const gpu::btGpuXpbdTgsApi* gpuApi()
 {

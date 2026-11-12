@@ -509,6 +509,20 @@ static void testCallbacks()
     require(dispatcher.getNumManifolds()>0&&body.getWorldTransform()==queryPose&&body.getLinearVelocity()==queryVelocity&&probe.order==queryOrder,
         "explicit GPU collision query retains reports without advancing physics or firing tick callbacks");
     require(CallbackProbe::cpuDispatches==0,"GPU steps and explicit queries do not run CPU narrowphase");
+    const int oldMask=sensor.getBroadphaseHandle()->m_collisionFilterMask;
+    sensor.getBroadphaseHandle()->m_collisionFilterMask=0;
+    world.performDiscreteCollisionDetection();
+    require(dispatcher.getNumManifolds()==0,"mask changes suppress GPU notification pairs immediately");
+    sensor.getBroadphaseHandle()->m_collisionFilterMask=oldMask;
+    world.performDiscreteCollisionDetection();
+    require(dispatcher.getNumManifolds()>0,"mask restoration restores GPU notification pairs");
+    body.setIgnoreCollisionCheck(&sensor,true);
+    world.performDiscreteCollisionDetection();
+    require(dispatcher.getNumManifolds()==0,"custom exclusions still suppress mask-compatible notifications");
+    body.setIgnoreCollisionCheck(&sensor,false);
+    world.performDiscreteCollisionDetection();
+    require(dispatcher.getNumManifolds()>0,"removing custom exclusions restores notifications");
+
     sensor.setCollisionFlags(sensor.getCollisionFlags()|btCollisionObject::CF_FIND_ONLY_FIRST_TOUCH);
     world.performDiscreteCollisionDetection();
     require(CallbackProbe::cpuDispatches>0&&body.getWorldTransform()==queryPose&&probe.order==queryOrder,

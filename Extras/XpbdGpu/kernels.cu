@@ -754,9 +754,14 @@ __device__ float separation(Contact contact,const Node* nodes,const V* accumulat
         mappedPosition(nodes,maps[t.v[1]])*contact.bary.y-mappedPosition(nodes,maps[t.v[2]])*contact.bary.z;
     return dot(delta,contact.normal);
 }
-__device__ bool pairDisabled(int a,int b,const unsigned long long* pairs,int count,const int* selfBodies,int selfBodyCount)
+__device__ bool pairDisabled(int a,int b,const unsigned long long* pairs,int count,const int* selfBodies,int selfBodyCount,const int2* filters,int filterCount)
 {
     if(a<0||b<0) return false; // A mixed BVH branch must still be traversed.
+    if(a!=b&&filterCount)
+    {
+        if(a>=filterCount||b>=filterCount) return true;
+        if(!(filters[a].x&filters[b].y)||!(filters[b].x&filters[a].y)) return true;
+    }
     if(a==b) {int lo=0,hi=selfBodyCount;while(lo<hi){int m=lo+(hi-lo)/2;if(selfBodies[m]<a)lo=m+1;else hi=m;}return lo==selfBodyCount||selfBodies[lo]!=a;}
     if(a>b) { int t=a;a=b;b=t; }
     unsigned long long key=(static_cast<unsigned long long>(a)<<32)|static_cast<unsigned int>(b);
@@ -766,7 +771,7 @@ __device__ bool pairDisabled(int a,int b,const unsigned long long* pairs,int cou
 }
 extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,const V* positions,const Tri* tris,
     const Bvh* tree,const Box* boxes,Contact* cache,int* contactCount,int capacity,int count,float margin,int* failure,const int* incident,
-    const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount)
+    const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount,const int2* filters,int filterCount)
 {
     int vertex=blockIdx.x*blockDim.x+threadIdx.x;if(vertex>=count) return;
     Map point=maps[vertex];V p=positions[vertex];
@@ -777,7 +782,7 @@ extern "C" __global__ void discoverContacts(const Node* nodes,const Map* maps,co
     while(top)
     {
         int index=stack[--top];Bvh node=tree[index];Box box=boxes[index];
-        if(pairDisabled(node.body,point.body,disabledPairs,disabledPairCount,selfBodies,selfBodyCount) || p.x<box.low.x-margin||p.y<box.low.y-margin||p.z<box.low.z-margin||
+        if(pairDisabled(node.body,point.body,disabledPairs,disabledPairCount,selfBodies,selfBodyCount,filters,filterCount) || p.x<box.low.x-margin||p.y<box.low.y-margin||p.z<box.low.z-margin||
            p.x>box.high.x+margin||p.y>box.high.y+margin||p.z>box.high.z+margin) continue;
         if(node.triangle<0)
         {
@@ -913,7 +918,7 @@ __device__ float triangleSeparation(const V* a,const V* b,V an,V bn,float tolera
 }
 extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map* maps,const V* positions,const Tri* tris,
     const Bvh* tree,const Box* boxes,Contact* cache,int* contactCount,int capacity,int count,float margin,int* failure,
-    const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount)
+    const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount,const int2* filters,int filterCount)
 {
     int indexA=blockIdx.x*blockDim.x+threadIdx.x;if(indexA>=count) return;
     Tri ta=tris[indexA];if(!movingTriangle(ta,maps,nodes)) return;
@@ -926,7 +931,7 @@ extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map*
     while(top)
     {
         int index=stack[--top];Bvh node=tree[index];Box box=boxes[index];
-        if(pairDisabled(node.body,body,disabledPairs,disabledPairCount,selfBodies,selfBodyCount)||bound.high.x<box.low.x-margin||bound.low.x>box.high.x+margin||
+        if(pairDisabled(node.body,body,disabledPairs,disabledPairCount,selfBodies,selfBodyCount,filters,filterCount)||bound.high.x<box.low.x-margin||bound.low.x>box.high.x+margin||
             bound.high.y<box.low.y-margin||bound.low.y>box.high.y+margin||bound.high.z<box.low.z-margin||bound.low.z>box.high.z+margin) continue;
         if(node.triangle<0)
         {
@@ -961,12 +966,12 @@ extern "C" __global__ void discoverTriangleContacts(const Node* nodes,const Map*
 // signed contact per source collision vertex and target deformable volume.
 extern "C" __global__ void discoverVolumeContacts(const Map* maps,const V* positions,const Tri* tris,const Bvh* tree,
     const Box* boxes,const int* incident,const int* volumeBodies,int volumeCount,int vertexCount,
-    Contact* cache,int* contactCount,int capacity,float margin,int* failure,const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount)
+    Contact* cache,int* contactCount,int capacity,float margin,int* failure,const unsigned long long* disabledPairs,int disabledPairCount,const int* selfBodies,int selfBodyCount,const int2* filters,int filterCount)
 {
     int job=blockIdx.x*blockDim.x+threadIdx.x;
     if(job>=vertexCount*volumeCount) return;
     int vertex=job%vertexCount,target=volumeBodies[job/vertexCount],source=maps[vertex].body;
-    if(!incident[vertex]||pairDisabled(source,target,disabledPairs,disabledPairCount,selfBodies,selfBodyCount)) return;
+    if(!incident[vertex]||pairDisabled(source,target,disabledPairs,disabledPairCount,selfBodies,selfBodyCount,filters,filterCount)) return;
     bool sourceVolume=false;for(int j=0;j<volumeCount;++j) sourceVolume|=volumeBodies[j]==source;
     if(!sourceVolume) return;
     V p=positions[vertex];int stack[64],top=0;stack[top++]=0;

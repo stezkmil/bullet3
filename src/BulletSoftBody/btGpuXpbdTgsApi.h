@@ -1,9 +1,9 @@
 #ifndef BT_GPU_XPBD_TGS_API_H
 #define BT_GPU_XPBD_TGS_API_H
 
-// ABI 13 adds first-hit tolerated-contact queries and triangle-normal witnesses.
+// ABI 15 adds compact per-body broadphase group/mask filtering.
 // POD boundary independent of Bullet's float/double scalar configuration.
-constexpr int BT_GPU_XPBD_ABI_VERSION = 14;
+constexpr int BT_GPU_XPBD_ABI_VERSION = 15;
 struct btGpuXpbdVec { double x, y, z; };
 struct btGpuXpbdNode
 {
@@ -47,6 +47,7 @@ struct btGpuXpbdContactReport
 struct btGpuXpbdContactImpulse { btGpuXpbdContactReport contact; double impulse; };
 static_assert(sizeof(btGpuXpbdContactImpulse)==112, "Contact impulse GPU ABI mismatch");
 struct btGpuXpbdTarget { int node;btGpuXpbdVec position; };
+struct btGpuXpbdBodyFilter { int group,mask; };
 struct btGpuXpbdDisabledPair { int bodyA, bodyB; };
 // touching: bit 0 includes touching; bit 1 selects any first hit and its source triangle normal.
 struct btGpuXpbdNotificationPair { int bodyA,bodyB;int touching; };
@@ -135,6 +136,8 @@ struct btGpuXpbdTgsApi
     int (*contactImpulses)(void*, int*, btGpuXpbdContactImpulse*, int);
     // Synchronous, non-throwing callback: 50 before graph creation, 100 when it ends (also on failure).
     void (*setGraphProgressCallback)(void*, void*, void (*)(void*, int));
+    // Body-ID indexed group/mask table. Empty table preserves unrestricted legacy filtering.
+    int (*bodyFilters)(void*, int, const btGpuXpbdBodyFilter*);
 };
 static_assert(sizeof(btGpuXpbdRigid)==200 && sizeof(btGpuXpbdEndpoint)==80 && sizeof(btGpuXpbdAttachment)==168, "Rigid GPU ABI mismatch");
 using btGpuXpbdTgsGetApi = const btGpuXpbdTgsApi* (*)(int);

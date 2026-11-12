@@ -1073,6 +1073,31 @@ int main()
         require(api->download(world,count,filtered.data())!=0,"pair filter reenabled state");
         double change=0;for(int i=0;i<count;++i) change+=distance(free[i].velocity,filtered[i].velocity);
         require(change>.01,"reenabling pair invalidates graph and restores contacts");
+        for(int maskCase=0;maskCase<3;++maskCase)
+        {
+            require(api->upload(world,count,input.data(),tetCount,tets)!=0,"mask filter mesh");
+            require(api->surface(world,vertexCount,vertices,triangleCount,triangles,.01,0)!=0,"mask filter surface");
+            btGpuXpbdBodyFilter masks[]={{1,-1},{2,-1}};
+            // Either direction must reject; equal static groups must reject each other too.
+            if(maskCase==0) masks[0].mask=1;
+            if(maskCase==1) masks[1].mask=2;
+            if(maskCase==2) masks[0]=masks[1]={2,-3};
+            require(api->bodyFilters(world,2,masks)!=0,"set body masks");
+            require(api->step(world,&cfg)!=0,"mask filtered step");
+            require(api->download(world,count,filtered.data())!=0,"mask filtered state");
+            for(int i=0;i<count;++i)
+                require(distance(free[i].position,filtered[i].position)<1.e-7&&distance(free[i].velocity,filtered[i].velocity)<1.e-6,
+                    "group masks match free motion");
+            int reports=0;require(api->contacts(world,0,nullptr,&reports)!=0,"cache masked contacts");
+            masks[0]={1,-1};masks[1]={2,-1};
+            require(api->bodyFilters(world,2,masks)!=0,"change masks without resizing");
+            require(api->step(world,&cfg)!=0,"reenabled mask step");
+            require(api->download(world,count,filtered.data())!=0,"reenabled mask state");
+            change=0;for(int i=0;i<count;++i) change+=distance(free[i].velocity,filtered[i].velocity);
+            require(change>.01,"mask changes invalidate cached contacts and restore response");
+            require(api->bodyFilters(world,0,nullptr)!=0,"clear mask table");
+        }
+
     };
     contactNodes[0].position={0,.00025,0};contactNodes[0].velocity={0,-1,0};
     checkFilter(contactNodes,0,nullptr,4,maps.data(),1,&face);

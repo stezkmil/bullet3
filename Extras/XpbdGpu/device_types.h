@@ -1,6 +1,6 @@
 #pragma once
 
-// Internal FP32 storage; the public Bullet API remains ABI 14 with FP64 PODs.
+// Internal FP32 storage; the public Bullet API remains ABI 15 with FP64 PODs.
 namespace gpu
 {
 struct btGpuXpbdVec { float x, y, z; };
@@ -50,6 +50,7 @@ struct btGpuXpbdContactReport
 struct btGpuXpbdContactImpulse { btGpuXpbdContactReport contact; float impulse; };
 
 struct btGpuXpbdTarget { int node;btGpuXpbdVec position; };
+struct btGpuXpbdBodyFilter { int group,mask; };
 struct btGpuXpbdDisabledPair { int bodyA, bodyB; };
 
 struct btGpuXpbdNotificationPair { int bodyA,bodyB;int touching; };
@@ -135,6 +136,8 @@ struct btGpuXpbdTgsApi
     int (*contactImpulses)(void*, int*, btGpuXpbdContactImpulse*, int);
     // Synchronous, non-throwing callback: 50 before graph creation, 100 when it ends (also on failure).
     void (*setGraphProgressCallback)(void*, void*, void (*)(void*, int));
+    // Body-ID indexed group/mask table. Empty table preserves unrestricted legacy filtering.
+    int (*bodyFilters)(void*, int, const btGpuXpbdBodyFilter*);
 };
 
 }

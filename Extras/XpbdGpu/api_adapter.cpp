@@ -34,6 +34,9 @@ template<> struct Fields<gpu::btGpuXpbdContactImpulse> : FieldsbtGpuXpbdContactI
 struct FieldsbtGpuXpbdTarget { template<class T> static auto get(T& v) { return std::tie(v.node,v.position); } };
 template<> struct Fields<btGpuXpbdTarget> : FieldsbtGpuXpbdTarget {};
 template<> struct Fields<gpu::btGpuXpbdTarget> : FieldsbtGpuXpbdTarget {};
+struct FieldsbtGpuXpbdBodyFilter { template<class T> static auto get(T& v) { return std::tie(v.group,v.mask); } };
+template<> struct Fields<btGpuXpbdBodyFilter> : FieldsbtGpuXpbdBodyFilter {};
+template<> struct Fields<gpu::btGpuXpbdBodyFilter> : FieldsbtGpuXpbdBodyFilter {};
 struct FieldsbtGpuXpbdDisabledPair { template<class T> static auto get(T& v) { return std::tie(v.bodyA,v.bodyB); } };
 template<> struct Fields<btGpuXpbdDisabledPair> : FieldsbtGpuXpbdDisabledPair {};
 template<> struct Fields<gpu::btGpuXpbdDisabledPair> : FieldsbtGpuXpbdDisabledPair {};
@@ -122,6 +125,7 @@ int name(void* state,int count,type* values) \
 INPUT(forces,btGpuXpbdVec)
 INPUT(targets,btGpuXpbdTarget)
 INPUT(disabledPairs,btGpuXpbdDisabledPair)
+INPUT(bodyFilters,btGpuXpbdBodyFilter)
 INPUT(updateNodes,btGpuXpbdNode)
 INPUT(springs,btGpuXpbdSpring)
 INPUT(rigids,btGpuXpbdRigid)
@@ -173,7 +177,7 @@ int contactImpulses(void* state,int* count,btGpuXpbdContactImpulse* values,int c
 }
 const btGpuXpbdTgsApi api={gpuApi()->create,gpuApi()->destroy,upload,forces,step,download,gpuApi()->error,
     surface,surfacePositions,embed,targets,disabledPairs,updateNodes,friction,springs,rigids,downloadRigids,attachments,
-    updateRigids,joints,gpuApi()->selfCollision,contacts,downloadContacts,gpuApi()->enableContactImpulses,contactImpulses,gpuApi()->setGraphProgressCallback};
+    updateRigids,joints,gpuApi()->selfCollision,contacts,downloadContacts,gpuApi()->enableContactImpulses,contactImpulses,gpuApi()->setGraphProgressCallback,bodyFilters};
 }
 extern "C" __declspec(dllexport) const btGpuXpbdTgsApi* btGetGpuXpbdTgsApi(int version)
 { return version==BT_GPU_XPBD_ABI_VERSION?&api:nullptr; }
