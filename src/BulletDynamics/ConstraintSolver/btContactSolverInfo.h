@@ -83,6 +83,7 @@ struct btContactSolverInfo : public btContactSolverInfoData
 	// Runtime integration context, supplied by the deformable world each step.
 	// Kept outside the serialized solver-info data layout.
 	bool m_deformable_implicit = false;
+	bool m_deformable_separateContactRecovery = false;
 
 	inline btContactSolverInfo()
 	{

@@ -52,6 +52,7 @@ protected:
 	btScalar implicitConstraintError(const TVStack& dv) const;
 	bool m_implicit;                                               // use implicit scheme if true, explicit scheme if false
 	int m_maxNewtonIterations;                                     // max number of newton iterations
+	int m_maxExplicitLinearIterations = 1200;
 	btScalar m_newtonTolerance;                                    // absolute residual and relative Newton-step tolerance
 	bool m_lineSearch;                                             // If true, use newton's method with line search under implicit scheme
 	bool m_reducedSolver;                                          // flag for reduced soft body solver
@@ -143,6 +144,16 @@ public:
 	}
 
 	void setMaxNewtonIterations(int maxNewtonIterations);
+
+	void setMaxExplicitLinearIterations(int maxIterations)
+	{
+		m_maxExplicitLinearIterations = btMax(1, maxIterations);
+	}
+
+	int getMaxExplicitLinearIterations() const
+	{
+		return m_maxExplicitLinearIterations;
+	}
 
 	int getMaxNewtonIterations() const
 	{

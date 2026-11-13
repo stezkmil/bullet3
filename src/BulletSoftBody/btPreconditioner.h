@@ -283,6 +283,13 @@ public:
 			t.setZero();
 			for (int j = 0; j < lm.m_num_constraints; ++j)
 			{
+				if (lm.m_dynamicAnchor)
+				{
+					const auto& anchor = *lm.m_dynamicAnchor;
+					const btVector3 torque = anchor.m_c1.cross(lm.m_dirs[j]);
+					t[j] += anchor.m_body->getInvMass() + torque.dot(anchor.m_body->getInvInertiaTensorWorld() * torque);
+				}
+
 				for (int i = 0; i < lm.m_num_nodes; ++i)
 				{
 					if (m_implicit)

@@ -71,9 +71,17 @@ void btDeformableBodySolver::solveDeformableConstraints(btScalar solverdt)
 			m_objective->addLagrangeMultiplierRHS(m_residual, m_dv, rhs);
 			m_objective->addLagrangeMultiplier(m_dv, x);
 			m_objective->m_preconditioner->reinitialize(true);
-			// Explicit damping needs the previous absolute-tolerance/full-budget
-			// policy: a small relative residual can still leave large velocity errors.
-			m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false);
+			// Contacts enlarge the coupled system; verify its physical residual before accepting the attachment velocity.
+			if (m_objective->m_projection.m_coupleDynamicAnchors)
+				m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false, true, m_maxExplicitLinearIterations, m_newtonTolerance);
+			else
+				m_cr.solveWithConvergencePolicy(*m_objective, x, rhs, false, false);
+			for (int c = 0; c < m_objective->m_projection.m_lagrangeMultipliers.size(); ++c)
+			{
+				const auto* anchor = m_objective->m_projection.m_lagrangeMultipliers[c].m_dynamicAnchor;
+				if (anchor) anchor->m_body->applyImpulse(x[m_numNodes + c], anchor->m_c1);
+			}
+
 			for (int i = 0; i < m_dv.size(); ++i)
 			{
 				m_dv[i] = x[i];
@@ -469,7 +477,7 @@ void btDeformableBodySolver::updateVelocity()
 			{
 				m_dv[counter].setZero();
 			}
-			if (m_implicit)
+			if (m_implicit || m_objective->m_projection.m_coupleDynamicAnchors)
 			{
 				psb->m_nodes[j].m_v = m_backupVelocity[counter] + m_dv[counter];
 			}
@@ -538,7 +546,9 @@ void btDeformableBodySolver::setupDeformableSolve(bool implicit)
 			}
 			else
 			{
-				m_dv[counter] = psb->m_nodes[j].m_v + psb->m_nodes[j].m_splitv - m_backupVelocity[counter];
+				m_dv[counter] = psb->m_nodes[j].m_v - m_backupVelocity[counter];
+				// The coupled solve advances physical momentum; positional recovery stays in m_splitv.
+				if (!m_objective->m_projection.m_coupleDynamicAnchors) m_dv[counter] += psb->m_nodes[j].m_splitv;
 			}
 			psb->m_nodes[j].m_v = m_backupVelocity[counter];
 			++counter;

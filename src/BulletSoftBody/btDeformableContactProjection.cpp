@@ -35,7 +35,7 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 				btScalar localResidualSquare = constraint.solveConstraint(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
-			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
+			for (int k = 0; !m_deferDynamicAnchors && k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
 				btScalar localResidualSquare = constraint.solveConstraint(infoGlobal);
@@ -58,7 +58,7 @@ btScalar btDeformableContactProjection::update(btCollisionObject** deformableBod
 	return residualSquare;
 }
 
-btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal, const std::unordered_map<const btRigidBody*, btScalar>& penetrations)
+btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal)
 {
 	btScalar residualSquare = 0;
 	for (int i = 0; i < numDeformableBodies; ++i)
@@ -85,13 +85,6 @@ btScalar btDeformableContactProjection::solveSplitImpulse(btCollisionObject** de
 			for (int k = 0; k < m_nodeAnchorConstraints[j].size(); ++k)
 			{
 				btDeformableNodeAnchorConstraint& constraint = m_nodeAnchorConstraints[j][k];
-				{
-					auto it = penetrations.find(constraint.m_anchor->m_body);
-					if (it != penetrations.end())
-						constraint.m_anchor_rigid_penetration = it->second;
-					else
-						constraint.m_anchor_rigid_penetration = 0.0;
-				}
 				btScalar localResidualSquare = constraint.solveSplitImpulse(infoGlobal);
 				residualSquare = btMax(residualSquare, localResidualSquare);
 			}
@@ -162,6 +155,7 @@ void btDeformableContactProjection::setConstraints(const btContactSolverInfo& in
 			{
 				continue;
 			}
+			anchor.m_c2 = anchor.m_node->m_im;
 			anchor.m_c1 = anchor.m_cti.m_colObj->getWorldTransform().getBasis() * anchor.m_local;
 			btDeformableNodeAnchorConstraint constraint(anchor, infoGlobal);
 			m_nodeAnchorConstraints[i].push_back(constraint);
@@ -293,7 +287,7 @@ void btDeformableContactProjection::setProjection()
 				}
 			}
 		}
-		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
+		for (int j = 0; !m_deferDynamicAnchors && j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_constrained = true;
@@ -542,11 +536,12 @@ void btDeformableContactProjection::setLagrangeMultiplier()
 			lm.m_dirs[2] = btVector3(0, 0, 1);
 			m_lagrangeMultipliers.push_back(lm);
 		}
-		for (int j = 0; j < m_nodeAnchorConstraints[i].size(); ++j)
+		for (int j = 0; !m_deferDynamicAnchors && j < m_nodeAnchorConstraints[i].size(); ++j)
 		{
 			int index = m_nodeAnchorConstraints[i][j].m_anchor->m_node->index;
 			m_nodeAnchorConstraints[i][j].m_anchor->m_node->m_constrained = true;
 			LagrangeMultiplier lm;
+			if (m_coupleDynamicAnchors) lm.m_dynamicAnchor = m_nodeAnchorConstraints[i][j].m_anchor;
 			lm.m_num_nodes = 1;
 			lm.m_indices[0] = index;
 			lm.m_weights[0] = 1.0;

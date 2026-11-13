@@ -710,6 +710,37 @@ TEST(ContactRecovery, IntegrationModePreservesExplicitLegacyResponse)
    if(split){probe.solveSplitImpulse(info);EXPECT_GT(probe.split.x(),btScalar(0));EXPECT_NEAR(double(probe.velocity.x()),double(expected),1e-4);}
   }
 }
+TEST(ContactRecovery, CoupledContactsDoNotTurnPenetrationIntoKineticEnergy)
+{
+    btCollisionObject rigid;
+    rigid.setCollisionFlags(btCollisionObject::CF_STATIC_OBJECT);
+    btSoftBody::DeformableRigidContact contact;
+    contact.m_cti.m_colObj = &rigid;
+    contact.m_cti.m_normal = btVector3(1, 0, 0);
+    contact.m_cti.m_contact_point_impulse_magnitude = nullptr;
+    contact.m_c0.setIdentity();
+    contact.m_c5.setIdentity();
+    contact.m_c3 = 0;
+    btContactSolverInfo info;
+    info.m_deformable_separateContactRecovery = true;
+    info.m_splitImpulse = true;
+    info.m_deformable_cfm = 0;
+    for (const btScalar dt : {btScalar(.002), btScalar(.001)})
+    for (const btScalar depth : {btScalar(.01), btScalar(2), btScalar(20)})
+    {
+        info.m_timeStep = dt;
+        contact.m_cti.m_offset = -depth;
+        IntegrationRecoveryProbe probe(contact, info);
+        probe.velocity = btVector3(-100, 5, 0);
+        probe.solveConstraint(info);
+        EXPECT_NEAR(double(probe.velocity.x()), 0, 1e-10);
+        EXPECT_NEAR(double(probe.velocity.y()), 5, 1e-10);
+        probe.solveSplitImpulse(info);
+        EXPECT_GT(probe.split.x(), 0);
+        EXPECT_NEAR(double(probe.velocity.x()), 0, 1e-10);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv)

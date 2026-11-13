@@ -397,6 +397,38 @@ void btDeformableMultiBodyDynamicsWorld::solveConstraints(btScalar timeStep)
 	// set up constraints among multibodies and between multibodies and deformable bodies
 	setupConstraints();
 
+	// Dynamic anchors must share the damping response instead of prescribing
+	// their undamped elastic predictor as a fixed boundary velocity.
+	bool hasDynamicAnchors = false;
+	auto& projection = m_deformableBodySolver->m_objective->m_projection;
+	for (int i = 0; i < projection.m_nodeAnchorConstraints.size(); ++i)
+		hasDynamicAnchors |= projection.m_nodeAnchorConstraints[i].size() > 0;
+	if (hasDynamicAnchors && (m_implicit || !m_useProjection) && !m_deformableBodySolver->isReducedSolver())
+	{
+		if (!m_implicit)
+		{
+			// Include rigid/contact loads in damping, without transferring the raw elastic predictor to the plug.
+			projection.m_deferDynamicAnchors = true;
+			m_solverInfo.m_deformable_separateContactRecovery = true;
+			solveContactConstraints();
+			m_solverInfo.m_deformable_separateContactRecovery = false;
+			projection.m_deferDynamicAnchors = false;
+		}
+		projection.m_coupleDynamicAnchors = !m_implicit;
+		projection.m_deferDynamicAnchors = m_implicit;
+		if (m_useProjection)
+			m_deformableBodySolver->setProjection();
+		else
+			m_deformableBodySolver->setLagrangeMultiplier();
+		projection.m_deferDynamicAnchors = false;
+		m_deformableBodySolver->setupDeformableSolve(m_implicit);
+		m_deformableBodySolver->solveDeformableConstraints(timeStep);
+		projection.m_coupleDynamicAnchors = false;
+		// Implicit elasticity uses a free Newton solve followed by a contact/anchor projection.
+		if (m_implicit) solveContactConstraints();
+		return;
+	}
+
 	// solve contact constraints
 	solveContactConstraints();
 
@@ -544,6 +576,16 @@ void btDeformableMultiBodyDynamicsWorld::setMaxNewtonIterations(int maxNewtonIte
 void btDeformableMultiBodyDynamicsWorld::setNewtonTolerance(btScalar tolerance)
 {
 	m_deformableBodySolver->setNewtonTolerance(tolerance);
+}
+
+void btDeformableMultiBodyDynamicsWorld::setMaxExplicitLinearIterations(int maxIterations)
+{
+	m_deformableBodySolver->setMaxExplicitLinearIterations(maxIterations);
+}
+
+int btDeformableMultiBodyDynamicsWorld::getMaxExplicitLinearIterations() const
+{
+	return m_deformableBodySolver->getMaxExplicitLinearIterations();
 }
 
 int btDeformableMultiBodyDynamicsWorld::getMaxNewtonIterations() const

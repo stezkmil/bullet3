@@ -132,6 +132,25 @@ void btDeformableBackwardEulerObjective::multiply(const TVStack& x, TVStack& b) 
 				b[lm.m_indices[i]] += x[offset + c][j] * lm.m_weights[i] * lm.m_dirs[j];
 			}
 		}
+		// Eliminate the rigid velocity from the coupled momentum equations.
+		// All anchors on the same rigid share its linear and angular response.
+		if (lm.m_dynamicAnchor)
+		{
+			const auto& anchor = *lm.m_dynamicAnchor;
+			btVector3 impulse(0, 0, 0), torque(0, 0, 0);
+			for (int k = 0; k < m_projection.m_lagrangeMultipliers.size(); ++k)
+			{
+				const auto* other = m_projection.m_lagrangeMultipliers[k].m_dynamicAnchor;
+				if (other && other->m_body == anchor.m_body)
+				{
+					impulse += x[offset + k];
+					torque += other->m_c1.cross(x[offset + k]);
+				}
+			}
+			b[offset + c] -= impulse * anchor.m_body->getInvMass()
+				+ (anchor.m_body->getInvInertiaTensorWorld() * torque).cross(anchor.m_c1);
+		}
+
 		// C * x
 		for (int d = 0; d < lm.m_num_constraints; ++d)
 		{

@@ -28,6 +28,7 @@
 
 struct LagrangeMultiplier
 {
+	const btSoftBody::DeformableNodeRigidAnchor* m_dynamicAnchor = nullptr;
 	int m_num_constraints;  // Number of constraints
 	int m_num_nodes;        // Number of nodes in these constraints
 	btScalar m_weights[3];  // weights of the nodes involved, same size as m_num_nodes
@@ -91,9 +92,11 @@ public:
 
 	virtual void reinitialize(bool nodeUpdated);
 
-	btScalar solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal, const std::unordered_map<const btRigidBody*, btScalar>& penetrations);
+	btScalar solveSplitImpulse(btCollisionObject** deformableBodies, int numDeformableBodies, const btContactSolverInfo& infoGlobal);
 
 	virtual void setLagrangeMultiplier();
+	bool m_coupleDynamicAnchors = false;
+	bool m_deferDynamicAnchors = false;
 
 	void checkConstraints(const TVStack& x);
 };

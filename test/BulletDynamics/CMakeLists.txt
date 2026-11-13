@@ -48,3 +48,8 @@ IF(WIN32)
         ADD_TEST(Test_btGpuXpbdWorld_PASS Test_btGpuXpbdWorld)
     ENDIF()
 ENDIF()
+
+ADD_EXECUTABLE(Test_btDeformableAnchor test_btDeformableAnchor.cpp)
+SET_TARGET_PROPERTIES(Test_btDeformableAnchor PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+TARGET_LINK_LIBRARIES(Test_btDeformableAnchor BulletSoftBody)
+ADD_TEST(Test_btDeformableAnchor_PASS Test_btDeformableAnchor)

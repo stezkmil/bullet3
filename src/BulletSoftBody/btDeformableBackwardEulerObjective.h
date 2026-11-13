@@ -176,6 +176,14 @@ public:
 		for (int i = 0; i < m_projection.m_lagrangeMultipliers.size(); ++i)
 		{
 			const LagrangeMultiplier& lm = m_projection.m_lagrangeMultipliers[i];
+			if (lm.m_dynamicAnchor)
+			{
+				const auto& anchor = *lm.m_dynamicAnchor;
+				extended_residual[offset + i] = anchor.m_body->getVelocityInLocalPoint(anchor.m_c1)
+					- m_backupVelocity[anchor.m_node->index];
+				continue;
+			}
+
 			extended_residual[offset + i].setZero();
 			for (int d = 0; d < lm.m_num_constraints; ++d)
 			{

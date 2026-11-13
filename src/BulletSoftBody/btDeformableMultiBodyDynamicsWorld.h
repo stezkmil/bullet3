@@ -246,6 +246,10 @@ public:
 
 	void setNewtonTolerance(btScalar tolerance);
 
+	void setMaxExplicitLinearIterations(int maxIterations);
+
+	int getMaxExplicitLinearIterations() const;
+
 	int getMaxNewtonIterations() const;
 
 	void setUseProjection(bool useProjection)
