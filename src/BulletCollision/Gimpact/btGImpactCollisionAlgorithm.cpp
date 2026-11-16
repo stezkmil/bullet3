@@ -200,6 +200,7 @@ btGImpactCollisionAlgorithm::btGImpactCollisionAlgorithm(const btCollisionAlgori
 	m_manifoldPtr = NULL;
 	m_convex_algorithm = NULL;
 	m_algorithmForSoftVsRigid = NULL;
+	m_algorithmForSoftVsSoft = NULL;
 }
 
 btGImpactCollisionAlgorithm::~btGImpactCollisionAlgorithm()

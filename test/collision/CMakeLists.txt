@@ -41,3 +41,8 @@ IF (INTERNAL_ADD_POSTFIX_EXECUTABLE_NAMES)
 			SET_TARGET_PROPERTIES(Test_Collision PROPERTIES  MINSIZEREL_POSTFIX "_MinsizeRel")
 			SET_TARGET_PROPERTIES(Test_Collision PROPERTIES  RELWITHDEBINFO_POSTFIX "_RelWithDebugInfo")
 ENDIF(INTERNAL_ADD_POSTFIX_EXECUTABLE_NAMES)
+
+ADD_EXECUTABLE(Test_CollisionAllocation test_collision_allocation.cpp)
+SET_TARGET_PROPERTIES(Test_CollisionAllocation PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+TARGET_LINK_LIBRARIES(Test_CollisionAllocation BulletSoftBody BulletDynamics BulletCollision LinearMath gtest)
+ADD_TEST(Test_CollisionAllocation_PASS Test_CollisionAllocation)

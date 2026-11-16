@@ -75,8 +75,8 @@ public:
 
 	void* allocate(int size)
 	{
-		// release mode fix
-		(void)size;
+		if (size > m_elemSize)
+			return NULL;
 		btMutexLock(&m_mutex);
 		btAssert(!size || size <= m_elemSize);
 		//btAssert(m_freeCount>0);  // should return null if all full
